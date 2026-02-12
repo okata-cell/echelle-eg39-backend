@@ -19,10 +19,18 @@ router.post('/register', [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('Erreurs de validation:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { firstName, lastName, email, phone, password } = req.body;
+    // Nettoyer les données
+    const firstName = String(req.body.firstName).trim();
+    const lastName = String(req.body.lastName).trim();
+    const email = String(req.body.email).trim().toLowerCase();
+    const phone = String(req.body.phone).trim();
+    const password = req.body.password;
+
+    console.log('Tentative inscription - Email:', email, '- Phone:', phone);
 
     // Vérifier si l'utilisateur existe déjà
     const existingUser = await pool.query(
@@ -31,6 +39,7 @@ router.post('/register', [
     );
 
     if (existingUser.rows.length > 0) {
+      console.log('Utilisateur déjà existant pour email:', email, 'ou phone:', phone);
       return res.status(400).json({ error: 'Email ou téléphone déjà utilisé' });
     }
 
@@ -53,6 +62,7 @@ router.post('/register', [
     );
 
     const user = result.rows[0];
+    console.log('Utilisateur créé avec succès - ID:', user.id);
 
     // Générer le token JWT
     const token = jwt.sign(
@@ -74,8 +84,25 @@ router.post('/register', [
       token
     });
   } catch (error) {
-    console.error('Erreur inscription:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    console.error('Erreur inscription complète:', error);
+    
+    // Messages d'erreur spécifiques selon le type d'erreur
+    if (error.code === '23505') {
+      // PostgreSQL unique violation
+      return res.status(400).json({ error: 'Email ou téléphone déjà utilisé (doublon)' });
+    }
+    
+    if (error.code === 'ECONNREFUSED') {
+      return res.status(500).json({ error: 'Base de données non disponible' });
+    }
+    
+    if (error.code === '23502') {
+      // PostgreSQL not null violation
+      return res.status(400).json({ error: 'Un champ requis est manquant' });
+    }
+    
+    // Erreur générique mais avec détail en log
+    res.status(500).json({ error: 'Erreur serveur lors de l\'inscription' });
   }
 });
 
