@@ -1,7 +1,7 @@
 const pool = require('./database');
 const bcrypt = require('bcryptjs');
 
-async function migrate() {
+async function runMigrations({ closePool = false } = {}) {
   const client = await pool.connect();
   
   try {
@@ -114,7 +114,7 @@ async function migrate() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_demandes_statut ON demandes_achat(statut)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_locations_statut ON locations(statut)');
 
-    // Créer un admin par défaut
+    // Créer un admin par défaut (idempotent via ON CONFLICT)
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@echelle-eg39.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
     const adminPhone = process.env.ADMIN_PHONE || '+22890014329';
@@ -158,8 +158,15 @@ async function migrate() {
     throw error;
   } finally {
     client.release();
-    await pool.end();
+    if (closePool) {
+      await pool.end();
+    }
   }
 }
 
-migrate().catch(console.error);
+// Exécution directe (CLI) ou export pour utilisation au démarrage du serveur
+if (require.main === module) {
+  runMigrations({ closePool: true }).catch(console.error);
+}
+
+module.exports = { runMigrations };
