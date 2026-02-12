@@ -36,10 +36,10 @@ router.post('/register', [
 
     // Déterminer le rôle (admin si email/phone/password contient "admin")
     const role = (
-      email.toLowerCase().includes('admin') || 
-      phone.toLowerCase().includes('admin') ||
-      password.toLowerCase().includes('admin')
-    ) ? 'admin' : 'client';
+  String(email).toLowerCase().includes('admin') || 
+  String(phone).toLowerCase().includes('admin') ||
+  String(password).toLowerCase().includes('admin')
+) ? 'admin' : 'client';
 
     // Hasher le mot de passe
     const hashedPassword = await bcrypt.hash(password, 10);
