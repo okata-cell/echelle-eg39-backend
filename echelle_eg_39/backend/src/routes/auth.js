@@ -32,14 +32,16 @@ router.post('/register', [
 
     console.log('Tentative inscription - Email:', email, '- Phone:', phone);
 
-    // Vérifier si l'utilisateur existe déjà
+    // Vérifier si l'utilisateur existe déjà (avec logs détaillés)
     const existingUser = await pool.query(
-      'SELECT id FROM users WHERE email = $1 OR phone = $2',
+      'SELECT id, email, phone FROM users WHERE LOWER(email) = LOWER($1) OR phone = $2',
       [email, phone]
     );
 
+    console.log('Résultat vérification utilisateur:', existingUser.rows.length, 'lignes');
+
     if (existingUser.rows.length > 0) {
-      console.log('Utilisateur déjà existant pour email:', email, 'ou phone:', phone);
+      console.log('Utilisateur déjà existant:', existingUser.rows[0]);
       return res.status(400).json({ error: 'Email ou téléphone déjà utilisé' });
     }
 
