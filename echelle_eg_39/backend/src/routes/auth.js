@@ -27,8 +27,25 @@ router.post('/register', [
     const firstName = String(req.body.firstName).trim();
     const lastName = String(req.body.lastName).trim();
     const email = String(req.body.email).trim().toLowerCase();
-    const phone = String(req.body.phone).trim();
+    // Nettoyer le téléphone: supprimer les espaces,traits d'union, et ajouter le +228 si absent
+    let phone = String(req.body.phone).trim().replace(/[\s\-]/g, '');
+    if (!phone.startsWith('+')) {
+      if (phone.startsWith('228')) {
+        phone = '+' + phone;
+      } else if (phone.length === 8) {
+        phone = '+228' + phone;
+      } else {
+        phone = '+228' + phone;
+      }
+    }
     const password = req.body.password;
+
+    console.log('=== DONNÉES REÇUES ===');
+    console.log('firstName:', firstName);
+    console.log('lastName:', lastName);
+    console.log('email:', email, '- longueur:', email.length);
+    console.log('phone:', phone, '- longueur:', phone.length);
+    console.log('=====================');
 
     console.log('Tentative inscription - Email:', email, '- Phone:', phone);
 
