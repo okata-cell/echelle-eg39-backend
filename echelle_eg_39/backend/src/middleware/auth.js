@@ -8,7 +8,9 @@ const authMiddleware = (req, res, next) => {
       return res.status(401).json({ error: 'Token manquant' });
     }
 
-    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    // Utiliser la même clé par défaut que pour la génération du token
+    const jwtSecret = process.env.JWT_SECRET || 'echelle-eg39-secret-key-2024';
+    const decoded = jwt.verify(token, jwtSecret);
     req.user = decoded;
     next();
   } catch (error) {

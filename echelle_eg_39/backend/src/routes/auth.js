@@ -64,10 +64,11 @@ router.post('/register', [
     const user = result.rows[0];
     console.log('Utilisateur créé avec succès - ID:', user.id);
 
-    // Générer le token JWT
+    // Générer le token JWT avec valeur par défaut
+    const jwtSecret = process.env.JWT_SECRET || 'echelle-eg39-secret-key-2024';
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '30d' }
     );
 
@@ -137,10 +138,11 @@ router.post('/login', [
       return res.status(401).json({ error: 'Identifiants invalides' });
     }
 
-    // Générer le token JWT
+    // Générer le token JWT avec valeur par défaut
+    const jwtSecret = process.env.JWT_SECRET || 'echelle-eg39-secret-key-2024';
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
-      process.env.JWT_SECRET,
+      jwtSecret,
       { expiresIn: '30d' }
     );
 
