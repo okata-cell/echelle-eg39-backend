@@ -27,17 +27,32 @@ router.post('/register', [
     const firstName = String(req.body.firstName).trim();
     const lastName = String(req.body.lastName).trim();
     const email = String(req.body.email).trim().toLowerCase();
-    // Nettoyer le téléphone: supprimer les espaces,traits d'union, et ajouter le +228 si absent
-    let phone = String(req.body.phone).trim().replace(/[\s\-]/g, '');
+    
+    // Nettoyer le téléphone: supprimer les espaces, traits d'union, et ajouter le +228 si absent
+    let phone = String(req.body.phone).trim().replace(/[\s\-\(\)]/g, '');
+    
+    // Formater le téléphone pour le Togo
     if (!phone.startsWith('+')) {
       if (phone.startsWith('228')) {
         phone = '+' + phone;
       } else if (phone.length === 8) {
         phone = '+228' + phone;
       } else {
-        phone = '+228' + phone;
+        // Si le numéro est déjà long, on ne préfixe pas
+        if (phone.length <= 8) {
+          phone = '+228' + phone;
+        } else {
+          phone = '+' + phone;
+        }
       }
     }
+    
+    // Vérifier que le téléphone ne dépasse pas 20 caractères (limite DB)
+    if (phone.length > 20) {
+      console.log('❌ Téléphone trop long:', phone, '- Longueur:', phone.length);
+      return res.status(400).json({ error: 'Numéro de téléphone invalide (trop long)' });
+    }
+    
     const password = req.body.password;
 
     console.log('=== DONNÉES REÇUES ===');
@@ -81,17 +96,36 @@ router.post('/register', [
     );
 
     const user = result.rows[0];
-    console.log('Utilisateur créé avec succès - ID:', user.id);
+    console.log('✅ Utilisateur créé avec succès - ID:', user.id);
+    console.log('Données utilisateur:', {
+      id: user.id,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      email: user.email,
+      phone: user.phone,
+      role: user.role
+    });
 
     // Générer le token JWT avec valeur par défaut
+    console.log('🔑 Génération du token JWT...');
     const jwtSecret = process.env.JWT_SECRET || 'echelle-eg39-secret-key-2024';
-    const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
-      jwtSecret,
-      { expiresIn: '30d' }
-    );
+    console.log('JWT Secret présent:', jwtSecret ? 'Oui' : 'Non');
+    
+    let token;
+    try {
+      token = jwt.sign(
+        { userId: user.id, email: user.email, role: user.role },
+        jwtSecret,
+        { expiresIn: '30d' }
+      );
+      console.log('✅ Token JWT généré avec succès');
+    } catch (jwtError) {
+      console.error('❌ ERREUR lors de la génération du token JWT:', jwtError);
+      throw jwtError;
+    }
 
-    res.status(201).json({
+    console.log('📤 Préparation de la réponse...');
+    const responseData = {
       message: 'Inscription réussie',
       user: {
         id: user.id,
@@ -102,27 +136,51 @@ router.post('/register', [
         role: user.role
       },
       token
-    });
+    };
+    console.log('Réponse à envoyer:', JSON.stringify(responseData, null, 2));
+
+    console.log('📨 Envoi de la réponse 201...');
+    res.status(201).json(responseData);
+    console.log('✅ Réponse envoyée avec succès');
   } catch (error) {
-    console.error('Erreur inscription complète:', error);
+    console.error('❌ ==================== ERREUR INSCRIPTION ====================');
+    console.error('Type d\'erreur:', error.name);
+    console.error('Message:', error.message);
+    console.error('Code:', error.code);
+    console.error('Stack:', error.stack);
+    console.error('Détails complets:', error);
+    console.error('=============================================================');
     
     // Messages d'erreur spécifiques selon le type d'erreur
     if (error.code === '23505') {
       // PostgreSQL unique violation
+      console.log('⚠️  Violation de contrainte unique (doublon détecté)');
       return res.status(400).json({ error: 'Email ou téléphone déjà utilisé (doublon)' });
     }
     
     if (error.code === 'ECONNREFUSED') {
+      console.log('⚠️  Connexion à la base de données refusée');
       return res.status(500).json({ error: 'Base de données non disponible' });
     }
     
     if (error.code === '23502') {
       // PostgreSQL not null violation
+      console.log('⚠️  Champ requis manquant (NOT NULL violation)');
       return res.status(400).json({ error: 'Un champ requis est manquant' });
     }
     
+    if (error.code === '22001') {
+      // PostgreSQL string data right truncation
+      console.log('⚠️  Données trop longues pour un champ');
+      return res.status(400).json({ error: 'Un des champs dépasse la longueur maximale autorisée' });
+    }
+    
     // Erreur générique mais avec détail en log
-    res.status(500).json({ error: 'Erreur serveur lors de l\'inscription' });
+    console.log('⚠️  Erreur serveur non catégorisée');
+    res.status(500).json({ 
+      error: 'Erreur serveur',
+      details: process.env.NODE_ENV === 'development' ? error.message : undefined
+    });
   }
 });
 
