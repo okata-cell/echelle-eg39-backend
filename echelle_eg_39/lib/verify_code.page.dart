@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'forgot_password.page.dart';
 import 'reset_password.page.dart';
+import 'api_service.dart';
 
 class VerifyCodePage extends StatefulWidget {
   final String contactInfo; // Email ou téléphone utilisé
@@ -20,7 +21,7 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
   final TextEditingController codeController = TextEditingController();
   bool isLoading = false;
 
-  void verifyCode() {
+  void verifyCode() async {
     final code = codeController.text.trim();
     
     if (code.isEmpty) {
@@ -47,14 +48,15 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
       isLoading = true;
     });
 
-    // Simulation de vérification du code
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      // Appeler l'API pour vérifier le code
+      final result = await ApiService.verifyResetCode(code, widget.contactInfo);
+
       setState(() {
         isLoading = false;
       });
 
-      // Code de test "123456" pour la démonstration
-      if (code == "123456" || code == "783456" || code == "987654") {
+      if (result['success'] == true) {
         // Code valide, aller à la page de réinitialisation
         if (mounted) {
           Navigator.pushReplacement(
@@ -70,14 +72,27 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
       } else {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Code de vérification invalide"),
+            SnackBar(
+              content: Text(result['error'] ?? 'Code invalide'),
               backgroundColor: Colors.red,
             ),
           );
         }
       }
-    });
+    } catch (e) {
+      setState(() {
+        isLoading = false;
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: ${e.toString()}'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
   }
 
   @override

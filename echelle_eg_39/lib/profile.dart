@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'dart:io';
 import 'login.page.dart';
 
@@ -988,6 +989,39 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
+  /// Fonction pour se déconnecter et supprimer la session
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Supprimer toutes les données de session
+    await prefs.remove('token');
+    await prefs.remove('isLoggedIn');
+    await prefs.remove('isAdmin');
+    await prefs.remove('userIdentifier');
+    await prefs.remove('userPassword');
+    await prefs.remove('userEmail');
+    await prefs.remove('userPhone');
+    await prefs.remove('userName');
+    
+    print('✅ Session utilisateur supprimée');
+    
+    if (!mounted) return;
+    
+    // Naviguer vers la page de connexion en supprimant l'historique
+    Navigator.pushAndRemoveUntil(
+      context,
+      MaterialPageRoute(builder: (context) => const LoginPage()),
+      (route) => false,
+    );
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Déconnexion réussie !'),
+        backgroundColor: Colors.green,
+      ),
+    );
+  }
+
   /// Affiche la dialog de confirmation de déconnexion
   void _showLogoutDialog(BuildContext context) {
     showDialog(
@@ -1003,15 +1037,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
           TextButton(
             onPressed: () {
               Navigator.pop(context);
-              // Navigation vers la page de login et suppression de l'historique
-              Navigator.pushAndRemoveUntil(
-                context,
-                MaterialPageRoute(builder: (context) => const LoginPage()),
-                (route) => false,
-              );
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Déconnexion réussie !')),
-              );
+              // Appeler la fonction de déconnexion
+              logout();
             },
             child: const Text('Confirmer'),
           ),

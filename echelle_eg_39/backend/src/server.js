@@ -1,4 +1,5 @@
 const express = require('express');
+require('express-async-errors'); // Doit être importé avant tout autre module
 const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');

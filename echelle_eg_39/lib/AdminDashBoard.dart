@@ -8,14 +8,14 @@ import 'admin_prolongations_page.dart';
 
 
 
-class AdminDashboard extends StatefulWidget {
-  const AdminDashboard({super.key});
+class AdminDashBoard extends StatefulWidget {
+  const AdminDashBoard({super.key});
 
   @override
-  State<AdminDashboard> createState() => _AdminDashboardState();
+  State<AdminDashBoard> createState() => _AdminDashBoardState();
 }
 
-class _AdminDashboardState extends State<AdminDashboard> {
+class _AdminDashBoardState extends State<AdminDashBoard> {
   int currentIndex = 0;
 
 

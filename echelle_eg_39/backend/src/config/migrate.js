@@ -14,13 +14,24 @@ async function runMigrations({ closePool = false } = {}) {
         first_name VARCHAR(100) NOT NULL,
         last_name VARCHAR(100) NOT NULL,
         email VARCHAR(255) UNIQUE NOT NULL,
-        phone VARCHAR(20) UNIQUE NOT NULL,
+        phone VARCHAR(25) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         role VARCHAR(20) DEFAULT 'client' CHECK (role IN ('client', 'admin')),
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Mettre à jour le champ phone s'il existe déjà avec l'ancienne taille
+    try {
+      await client.query(`
+        ALTER TABLE users ALTER COLUMN phone TYPE VARCHAR(25)
+      `);
+      console.log('✅ Colonne phone mise à jour vers VARCHAR(25)');
+    } catch (e) {
+      // Ignorer si la colonne a déjà la bonne taille ou n'existe pas
+      console.log('ℹ️  Colonne phone déjà à jour ou inexistante');
+    }
 
     // Table: appareils
     await client.query(`

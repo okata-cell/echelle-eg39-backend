@@ -1,59 +1,37 @@
-# TODO - Ajout du formulaire "Nouvelle vente" dans admin_ventes_page.dart
+# Plan de correction du problème d'inscription
 
-## Étapes à compléter :
+## Problème
+- 1er clic → Erreur 500 "Erreur serveur" (mais le compte est créé)
+- 2e clic → "Email ou téléphone déjà utilisé"
 
-### ✅ Étape 1: Analyse des fichiers existants
-- [x] Analyse du fichier admin_ventes_page.dart
-- [x] Analyse du data_manager.dart pour les clients
-- [x] Analyse de la structure des produits existants
-- [x] Compréhension de l'architecture des onglets
+## Corrections appliquées
 
-### ✅ Étape 2: Modification de la structure des onglets
-- [x] Modifier le TabController pour passer de 4 à 5 onglets
-- [x] Ajouter l'onglet "Nouvelle vente" dans la liste des TabBar
-- [x] Ajouter le widget _buildNouvelleVente() dans TabBarView
+### 1. ✅ Base de données (migrate.js)
+- Augmenté VARCHAR(20) → VARCHAR(25) pour le champ phone
+- Ajouté ALTER TABLE pour mettre à jour les bases existantes
 
-### ✅ Étape 3: Implémentation du formulaire
-- [x] Créer la méthode _buildNouvelleVente()
-- [x] Ajouter un DropdownButtonFormField pour sélectionner le client
-- [x] Ajouter un DropdownButtonFormField pour sélectionner le produit (avec prix)
-- [x] Ajouter un TextFormField pour la date de commande (avec DatePicker)
-- [x] Définir le statut initial sur "Confirmée"
-- [x] Ajouter un bouton "Enregistrer la vente"
+### 2. ✅ Backend (auth.js)
+- Amélioré la gestion des erreurs avec messages spécifiques
+- Amélioré les logs pour le débogage
+- Meilleure détection des erreurs JWT
 
-### ✅ Étape 4: Fonctionnalités du formulaire
-- [x] Implémenter la validation du formulaire
-- [x] Implémenter la logique d'ajout de nouvelle vente
-- [x] Implémenter le changement de statut (Confirmée → En cours)
-- [x] Ajouter les messages de confirmation
+### 3. ✅ Server (server.js)
+- Ajouté `express-async-errors` pour capturer les erreurs async
 
-### ✅ Étape 5: Tests et intégration
-- [x] Tester la compilation (aucune erreur de syntaxe)
-- [x] Lancer l'application Flutter (succès)
-- [x] Vérifier que l'application se charge correctement
-- [x] Interface utilisateur créée avec succès
+### 4. ✅ Dependencies (package.json)
+- Ajouté `express-async-errors`
 
-## ✅ MISSION ACCOMPLIE !
+## Instructions de déploiement
 
-Le formulaire "Nouvelle vente" a été entièrement implémenté dans admin_ventes_page.dart avec :
+Pour appliquer les corrections, vous devez :
 
-1. **Onglet ajouté** : "Nouvelle vente" avec icône panier d'achat
-2. **Formulaire complet** avec :
-   - Sélection du client (dropdown depuis DataManager)
-   - Sélection du produit (dropdown avec prix affiché)
-   - Date de commande (DatePicker intégré)
-   - Statut initial "Confirmée"
-   - Bouton "Enregistrer la vente"
-3. **Fonctionnalités** :
-   - Validation du formulaire
-   - Génération automatique d'ID de vente
-   - Changement de statut vers "En cours" après enregistrement
-   - Messages de confirmation
-   - Réinitialisation automatique du formulaire
-4. **Intégration** : La nouvelle vente s'ajoute à la liste existante et est visible dans l'onglet "Commandes"
+1. **Installer la nouvelle dépendance :**
+   ```bash
+   cd backend && npm install
+   ```
 
-## Détails techniques :
-- Client: Utiliser DataManager().clients
-- Produit: Utiliser la liste _produits existante
-- Statut: Initial "Confirmée", change vers "En cours" après enregistrement
-- Interface: Cohérente avec le design existant
+2. **Redéployer le backend** (sur Render ou autre hébergeur)
+
+3. **Tester l'inscription** dans l'application Flutter
+
+## Statut: Terminé ✅

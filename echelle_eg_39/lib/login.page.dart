@@ -4,6 +4,10 @@ import 'AdminHomePage.dart';
 import 'AdminDashBoard.dart';
 import 'register.page.dart';
 import 'forgot_password.page.dart';
+import 'demo_main.dart';
+import 'api_service.dart';
+import 'sync_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -19,7 +23,76 @@ class _LoginPageState extends State<LoginPage> {
 
   bool isLoading = false;
 
-  void login() {
+// Fonction pour sauvegarder les infos de connexion
+  Future<void> _saveUserSession(String identifier, String password, bool isAdmin) async {
+    final prefs = await SharedPreferences.getInstance();
+    
+    // Stocker un token fictif pour indiquer que l'utilisateur est connecté
+    await prefs.setString('token', 'demo_token_${DateTime.now().millisecondsSinceEpoch}');
+    await prefs.setBool('isLoggedIn', true);
+    await prefs.setBool('isAdmin', isAdmin);
+    
+    // Stocker les infos utilisateur
+    await prefs.setString('userIdentifier', identifier);
+    await prefs.setString('userPassword', password);
+    
+    // Stocker les identifiants de manière permanente pour récupération après réinstallation
+    await prefs.setString('saved_identifier', identifier);
+    await prefs.setString('saved_password', password);
+    await prefs.setBool('saved_isAdmin', isAdmin);
+    
+    // Déterminer le nom et email basée sur l'identifiant
+    if (RegExp(r'^[0-9]+$').hasMatch(identifier.replaceAll(' ', ''))) {
+      // C'est un numéro de téléphone
+      await prefs.setString('userPhone', identifier);
+      await prefs.setString('userEmail', '${identifier}@utilisateur.com');
+      await prefs.setString('userName', 'Utilisateur $identifier');
+    } else {
+      // C'est un email
+      await prefs.setString('userEmail', identifier);
+      await prefs.setString('userPhone', '+228 00 00 00 00');
+      await prefs.setString('userName', identifier.split('@').first);
+    }
+    
+    print('✅ Session utilisateur sauvegardée');
+  }
+
+  // 🔄 Méthode pour tenter la synchronisation en arrière-plan
+  Future<void> _attemptBackgroundSync() async {
+    try {
+      // Vérifier si l'API est disponible
+      final apiAvailable = await SyncService.isApiAvailable();
+      
+      if (apiAvailable) {
+        print('🔄 API disponible, tentative de synchronisation...');
+        
+        // Tenter de synchroniser les utilisateurs locaux
+        final result = await SyncService.syncLocalUsers();
+        
+        if (result.success && result.syncedCount > 0) {
+          print('✅ Synchronisation réussie: ${result.syncedCount} utilisateurs');
+          
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(
+                content: Text('${result.syncedCount} utilisateur(s) synchronisé(s) avec le serveur'),
+                backgroundColor: Colors.green,
+                duration: const Duration(seconds: 3),
+              ),
+            );
+          }
+        } else {
+          print('ℹ️ ${result.message}');
+        }
+      } else {
+        print('⚠️ API non disponible, synchronisation reportée');
+      }
+    } catch (e) {
+      print('❌ Erreur lors de la synchronisation: $e');
+    }
+  }
+
+  void login() async {
     String identifier = identifierController.text.trim();
     String password = passwordController.text.trim();
 
@@ -100,23 +173,25 @@ class _LoginPageState extends State<LoginPage> {
       isLoading = true;
     });
 
-    // 🔹 Simulation de connexion (à remplacer par API plus tard)
-    Future.delayed(const Duration(seconds: 2), () {
-      String identifierLower = identifier.toLowerCase();
-      String passwordLower = password.toLowerCase();
-
-      // 🔐 LOGIQUE DE RÔLE - Vérification dans tous les champs
-      bool isAdmin = identifierLower.contains("admin") || passwordLower.contains("admin");
-
+    try {
+      // Essayer d'abord via l'API
+      final result = await ApiService.login(identifier, password);
+      
       setState(() {
         isLoading = false;
       });
 
       if (mounted) {
+        // Connexion API réussie
+        bool isAdmin = result['user']['role'] == 'admin';
+        
+        // Sauvegarder la session
+        await _saveUserSession(identifier, password, isAdmin);
+
         if (isAdmin) {
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const AdminDashboard()),
+            MaterialPageRoute(builder: (_) => const AdminDashBoard()),
           );
         } else {
           Navigator.pushReplacement(
@@ -125,7 +200,93 @@ class _LoginPageState extends State<LoginPage> {
           );
         }
       }
-    });
+    } catch (apiError) {
+      // Si l'API échoue, vérifier localement
+      print('API login failed, checking local users: $apiError');
+      
+      final prefs = await SharedPreferences.getInstance();
+      final registeredUsers = prefs.getStringList('registered_users') ?? [];
+      
+      bool userFound = false;
+      bool isAdmin = false;
+      
+      for (String userData in registeredUsers) {
+        final parts = userData.split('|');
+        if (parts.length >= 4) {
+          final storedEmail = parts[0];
+          final storedPhone = parts[1];
+          final storedPassword = parts[2];
+          final storedRole = parts[3];
+          
+          // Vérifier si les identifiants correspondent
+          if ((identifier == storedEmail || identifier == storedPhone) && 
+              password == storedPassword) {
+            userFound = true;
+            isAdmin = storedRole == 'admin';
+            
+            // Sauvegarder les infos utilisateur
+            await prefs.setString('token', 'local_token_${DateTime.now().millisecondsSinceEpoch}');
+            await prefs.setBool('isLoggedIn', true);
+            await prefs.setBool('isAdmin', isAdmin);
+            await prefs.setString('userIdentifier', identifier);
+            await prefs.setString('userEmail', storedEmail);
+            await prefs.setString('userPhone', storedPhone);
+            await prefs.setString('userName', parts.length > 4 ? parts[4] : 'Utilisateur');
+            
+            break;
+          }
+        }
+      }
+      
+      setState(() {
+        isLoading = false;
+      });
+
+      if (mounted) {
+        if (userFound) {
+          // Connexion locale réussie
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Connexion réussie !"),
+              backgroundColor: Colors.green,
+            ),
+          );
+
+          // 🔄 Tenter de synchroniser avec l'API en arrière-plan
+          _attemptBackgroundSync();
+
+          if (isAdmin) {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const AdminDashBoard()),
+            );
+          } else {
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+            );
+          }
+        } else {
+          // Utilisateur non trouvé
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: const Text("Aucun compte trouvé avec ces identifiants. Veuillez créer un compte d'abord."),
+              backgroundColor: Colors.red,
+              action: SnackBarAction(
+                label: "S'inscrire",
+                textColor: Colors.white,
+                onPressed: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RegisterPage()),
+                  );
+                },
+              ),
+            ),
+          );
+        }
+      }
+    }
   }
 
   @override
@@ -210,89 +371,124 @@ class _LoginPageState extends State<LoginPage> {
 
                   const SizedBox(height: 30),
 
-                  // 🔘 BOUTON CONNEXION
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: isLoading ? null : login,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 184, 117, 23),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: isLoading
-                          ? const CircularProgressIndicator(
-                              color: Colors.white,
-                            )
-                          : const Text(
-                              "SE CONNECTER",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // 📝 BOUTONS S'INSCRIRE ET MOT DE PASSE OUBLIÉ
+                  // 🔘 BOUTONS PRINCIPAUX
                   Column(
                     children: [
+                      // 🔘 BOUTON CONNEXION
                       SizedBox(
                         width: double.infinity,
-                        height: 45,
+                        height: 55,
+                        child: ElevatedButton(
+                          onPressed: isLoading ? null : login,
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: const Color.fromARGB(255, 184, 117, 23),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            elevation: 4,
+                          ),
+                          child: isLoading
+                              ? const CircularProgressIndicator(
+                                  color: Colors.white,
+                                )
+                              : const Row(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    Icon(Icons.login, size: 22),
+                                    SizedBox(width: 10),
+                                    Text(
+                                      "SE CONNECTER",
+                                      style: TextStyle(
+                                        fontSize: 18,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                        ),
+                      ),
+
+                      const SizedBox(height: 15),
+
+                      // 🔘 BOUTON DÉMO
+                      SizedBox(
+                        width: double.infinity,
+                        height: 55,
                         child: ElevatedButton(
                           onPressed: () {
                             Navigator.push(
                               context,
-                              MaterialPageRoute(builder: (_) => const RegisterPage()),
+                              MaterialPageRoute(builder: (_) => const DemoMainScreen()),
                             );
                           },
                           style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white.withOpacity(0.2),
+                            backgroundColor: Colors.transparent,
                             foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              side: BorderSide(color: Colors.white.withOpacity(0.3)),
+                              borderRadius: BorderRadius.circular(12),
+                              side: const BorderSide(color: Colors.white, width: 2),
                             ),
                           ),
-                          child: const Text(
-                            "S'INSCRIRE",
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.w600,
-                            ),
+                          child: const Row(
+                            mainAxisAlignment: MainAxisAlignment.center,
+                            children: [
+                              Icon(Icons.play_circle_outline, size: 22),
+                              SizedBox(width: 10),
+                              Text(
+                                "DÉMO",
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ),
-                      const SizedBox(height: 12),
-                      SizedBox(
-                        width: double.infinity,
-                        height: 40,
-                        child: ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
-                            );
-                          },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white.withOpacity(0.1),
-                            foregroundColor: Colors.white70,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(10),
-                              side: BorderSide(color: Colors.white.withOpacity(0.2)),
-                            ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 30),
+
+                  // 📝 BOUTONS TRANSPARENTS
+                  Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 8,
+                    runSpacing: 8,
+                    children: [
+                      // 🔘 CRÉER UN COMPTE
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const RegisterPage()),
+                          );
+                        },
+                        child: const Text(
+                          "Créer un compte",
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontWeight: FontWeight.w600,
                           ),
-                          child: const Text(
-                            "MOT DE PASSE OUBLIÉ",
-                            style: TextStyle(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w500,
-                            ),
+                        ),
+                      ),
+                      const Text(
+                        "|",
+                        style: TextStyle(color: Colors.white70),
+                      ),
+                      // 🔘 MOT DE PASSE OUBLIÉ
+                      TextButton(
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(builder: (_) => const ForgotPasswordPage()),
+                          );
+                        },
+                        child: const Text(
+                          "Mot de passe oublié ?",
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontWeight: FontWeight.w500,
                           ),
                         ),
                       ),

@@ -25,6 +25,10 @@ class _LocationPageState extends State<LocationPage> {
     {"nom": "Mire", "statut": "disponible", "prixJour": 5000, "image": "https://images.unsplash.com/photo-1590650153855-d9e808231d41"},
     {"nom": "Drone", "statut": "disponible", "prixJour": 50000, "image": "https://images.unsplash.com/photo-1506941433948-8f0958e3c0f1"},
     {"nom": "Laser", "statut": "disponible", "prixJour": 12000, "image": "https://images.unsplash.com/photo-1562654501-a0ccc81d82d5"},
+    {"nom": "Réflecteur", "statut": "disponible", "prixJour": 8000, "image": "https://images.unsplash.com/photo-1581092334494-8b6a8c3a52f3"},
+    
+
+
   ];
 
   List<Map<String, dynamic>> historique = [];

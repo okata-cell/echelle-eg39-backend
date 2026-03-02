@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'data_manager.dart';
+import 'api_service.dart';
+import 'login.page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class Product {
   final int id;
@@ -32,7 +35,7 @@ class _VenteScreenState extends State<VenteScreen> {
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
 
-  final List<String> _categories = ['Tous', 'GPS', 'Station totale', 'Niveau'];
+  final List<String> _categories = ['Tous', 'GPS', 'Station totale', 'Niveau', 'Mire', 'Drone', 'Laser', 'Réflecteur'];
 
   List<Product> get _products => _dataManager.appareils.map((a) => Product(
     id: int.parse(a.id.substring(4)),
@@ -91,7 +94,7 @@ class _VenteScreenState extends State<VenteScreen> {
                     });
                   },
                   decoration: InputDecoration(
-                    hintText: 'Rechercher un produit...',
+                    hintText: 'Rechercher un appareil...',
                     prefixIcon: const Icon(Icons.search, color: Color(0xFF9CA3AF)),
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -161,36 +164,107 @@ class _VenteScreenState extends State<VenteScreen> {
   }
 
   // Gérer l'achat d'un produit
-  void _handleAchat(Product product) {
-    // Informations client fictives (à remplacer par les vraies infos du client connecté)
-    // Dans une vraie application, vous récupéreriez ces infos depuis le profil de l'utilisateur
-    const String clientNom = 'Utilisateur';
-    const String clientEmail = 'user@exemple.com';
-    const String clientPhone = '+228 90 01 43 29';
-
-    // Enregistrer la demande d'achat
-    final demandeId = _dataManager.addDemandeAchat(
-      clientNom: clientNom,
-      clientEmail: clientEmail,
-      clientPhone: clientPhone,
-      produitId: 'APP-${product.id.toString().padLeft(3, '0')}',
-      produitNom: product.name,
-      produitPrix: product.price,
-      quantite: 1,
-    );
-
-    // Afficher une confirmation au client
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('Demande d\'achat envoyée pour ${product.name}'),
-        backgroundColor: const Color(0xFF059669),
-        duration: const Duration(seconds: 3),
-        action: SnackBarAction(
-          label: 'OK',
-          textColor: Colors.white,
-          onPressed: () {},
+  void _handleAchat(Product product) async {
+    // Vérifier si l'utilisateur est connecté
+    final token = await ApiService.getToken();
+    if (token == null) {
+      // Afficher un dialogue pour se connecter
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Connexion requise'),
+          content: const Text('Veuillez vous connecter pour acheter un appareil.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginPage()),
+                );
+              },
+              child: const Text('Se connecter'),
+            ),
+          ],
         ),
-      ),
+      );
+      return;
+    }
+
+    // Si connecté, afficher la boîte de dialogue d'achat
+    _showAchatDialog(product);
+  }
+
+  // Boîte de dialogue pour confirmer l'achat
+  void _showAchatDialog(Product product) async {
+    // Récupérer les infos utilisateur depuis SharedPreferences
+    final prefs = await SharedPreferences.getInstance();
+    final userName = prefs.getString('userName') ?? 'Client connecté';
+    final userEmail = prefs.getString('userEmail') ?? 'client@exemple.com';
+    final userPhone = prefs.getString('userPhone') ?? '+228 00 00 00 00';
+
+    if (!mounted) return;
+
+    showDialog(
+      context: context,
+      builder: (BuildContext ctx) {
+        return AlertDialog(
+          title: Text('Acheter ${product.name}'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Produit: ${product.name}'),
+              const SizedBox(height: 8),
+              Text('Prix: ${product.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ')}FCFA'),
+              const SizedBox(height: 8),
+              Text('Statut: ${product.inStock ? "En stock" : "Rupture de stock"}'),
+              const SizedBox(height: 16),
+              const Text(
+                'Voulez-vous confirmer cette demande d\'achat ?',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(ctx).pop(),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                // Enregistrer la demande d'achat avec les infos utilisateur
+                _dataManager.addDemandeAchat(
+                  clientNom: userName,
+                  clientEmail: userEmail,
+                  clientPhone: userPhone,
+                  produitId: 'APP-${product.id.toString().padLeft(3, '0')}',
+                  produitNom: product.name,
+                  produitPrix: product.price,
+                  quantite: 1,
+                );
+                Navigator.of(ctx).pop();
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Demande d\'achat envoyée pour ${product.name}'),
+                    backgroundColor: const Color(0xFF059669),
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF059669),
+              ),
+              child: const Text('Confirmer'),
+            ),
+          ],
+        );
+      },
     );
   }
 

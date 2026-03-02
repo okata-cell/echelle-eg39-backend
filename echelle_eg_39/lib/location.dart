@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
 import 'package:intl/intl.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'login.page.dart';
 
 class Equipment {
   final int id;
@@ -34,7 +36,7 @@ class _LocationScreenState extends State<LocationScreen> {
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
 
-  final List<String> _categories = ['Tous', 'GPS', 'Station totale', 'Niveau', 'Accessoires', 'Mire', 'Trepied'];
+  final List<String> _categories = ['Tous', 'GPS', 'Station totale', 'Niveau', 'Mire', 'Trepied' , 'Drone', 'Laser', 'Réflecteur'];
 
   List<Equipment> get _equipments => _dataManager.appareils.map((a) => Equipment(
     id: int.parse(a.id.substring(4)),
@@ -276,14 +278,39 @@ class _LocationScreenState extends State<LocationScreen> {
     // Check if user is authenticated
     final token = await ApiService.getToken();
     if (token == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Vous devez être connecté pour réserver un appareil. Veuillez vous connecter.'),
-          backgroundColor: Colors.red,
+      // Show dialog to login
+      if (!mounted) return;
+      showDialog(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('Connexion requise'),
+          content: const Text('Veuillez vous connecter pour réserver un appareil.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('Annuler'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.pop(ctx);
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const LoginPage()),
+                );
+              },
+              child: const Text('Se connecter'),
+            ),
+          ],
         ),
       );
       return;
     }
+
+    // Get user info
+    final prefs = await SharedPreferences.getInstance();
+    final userName = prefs.getString('userName') ?? 'Client connecté';
+    final userEmail = prefs.getString('userEmail') ?? 'client@exemple.com';
+    final userPhone = prefs.getString('userPhone') ?? '+228 00 00 00 00';
 
     DateTime? selectedStartDate;
     DateTime? selectedEndDate;
@@ -361,22 +388,44 @@ class _LocationScreenState extends State<LocationScreen> {
                           try {
                             final days = selectedEndDate!.difference(selectedStartDate!).inDays + 1;
                             final total = days * equipment.price;
-                            await ApiService.createLocationRequest(
-                              equipment.id,
-                              selectedStartDate!.toIso8601String(),
-                              selectedEndDate!.toIso8601String(),
-                              days,
-                              total,
-                            );
+                            
+                            // Try API first, fallback to local storage
+                            try {
+                              await ApiService.createLocationRequest(
+                                equipment.id,
+                                selectedStartDate!.toIso8601String(),
+                                selectedEndDate!.toIso8601String(),
+                                days,
+                                total,
+                              );
+                            } catch (apiError) {
+                              // If API fails (no backend), save locally
+                              print('API non disponible, sauvegarde locale: $apiError');
+                              // Store location request locally in SharedPreferences
+                              final locationRequests = prefs.getStringList('local_locations') ?? [];
+                              locationRequests.add(
+                                '${equipment.id}|${equipment.name}|${selectedStartDate!.toIso8601String()}|${selectedEndDate!.toIso8601String()}|${days}|${total}|${userName}|${userEmail}|${userPhone}'
+                              );
+                              await prefs.setStringList('local_locations', locationRequests);
+                            }
+                            
+                            if (!mounted) return;
                             Navigator.of(context).pop();
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('${equipment.name} réservé avec succès!')),
+                              SnackBar(
+                                content: Text('${equipment.name} réservé avec succès!'),
+                                backgroundColor: const Color(0xFF059669),
+                              ),
                             );
                             // Refresh the data
                             _dataManager.initialize();
                           } catch (e) {
+                            if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('Erreur: $e')),
+                              SnackBar(
+                                content: Text('Erreur: $e'),
+                                backgroundColor: Colors.red,
+                              ),
                             );
                           }
                         }

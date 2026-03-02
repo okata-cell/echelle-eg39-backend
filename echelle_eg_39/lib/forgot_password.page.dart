@@ -2,6 +2,7 @@
 import 'package:flutter/material.dart';
 import 'login.page.dart';
 import 'verify_code.page.dart';
+import 'api_service.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
   const ForgotPasswordPage({super.key});
@@ -44,26 +45,68 @@ class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
       isLoading = true;
     });
 
+    try {
+      // Appeler l'API pour demander le code de réinitialisation
+      final result = await ApiService.requestPasswordReset(
+        identifier, 
+        useEmail ? 'email' : 'phone'
+      );
 
-    // Simulation de demande de réinitialisation
-    Future.delayed(const Duration(seconds: 2), () {
+      setState(() {
+        isLoading = false;
+      });
+
+      if (result['success'] == true) {
+        if (mounted) {
+          // Afficher le code en mode développement
+          String message = 'Code de vérification envoyé !';
+          if (result['verificationCode'] != null) {
+            message += '\nCode: ${result['verificationCode']}';
+          }
+          
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(message),
+              backgroundColor: Colors.green,
+              duration: const Duration(seconds: 4),
+            ),
+          );
+
+          // Aller à la page de vérification du code
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => VerifyCodePage(
+                contactInfo: result['contactInfo'] ?? identifier,
+                isEmail: useEmail,
+              ),
+            ),
+          );
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['message'] ?? 'Erreur lors de l\'envoi du code'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
       setState(() {
         isLoading = false;
       });
 
       if (mounted) {
-        // Aller directement à la page de vérification du code
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) => VerifyCodePage(
-              contactInfo: identifier,
-              isEmail: useEmail,
-            ),
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Erreur: ${e.toString()}'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-    });
+    }
   }
 
   @override

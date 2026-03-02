@@ -121,7 +121,7 @@ class ApiService {
     }
   }
 
-  static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String dateDebut, String dateFin, int nombreJours, int total) async {
+static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String dateDebut, String dateFin, int nombreJours, int total) async {
     final token = await getToken();
     if (token == null) throw Exception('Not authenticated');
 
@@ -145,5 +145,125 @@ class ApiService {
     } else {
       throw Exception(jsonDecode(response.body)['error']);
     }
+  }
+
+  // ============================================
+  // FONCTIONS: Réinitialisation du mot de passe
+  // ============================================
+
+  /// Demander un code de réinitialisation de mot de passe
+  static Future<Map<String, dynamic>> requestPasswordReset(String contact, String contactType) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/forgot-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'contact': contact,
+          'contactType': contactType,
+        }),
+      );
+
+      print('📡 Forgot Password Status Code: ${response.statusCode}');
+      print('📡 Forgot Password Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['error'] ?? 'Erreur lors de la demande de réinitialisation');
+      }
+    } catch (e) {
+      if (e is Exception) rethrow;
+      print('❌ Erreur réseau forgot-password: $e');
+      throw Exception('Impossible de contacter le serveur. Vérifiez votre connexion internet.');
+    }
+  }
+
+  /// Vérifier le code de réinitialisation
+  static Future<Map<String, dynamic>> verifyResetCode(String code, String contact) async {
+    try {
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/verify-code'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'code': code,
+          'contact': contact,
+        }),
+      );
+
+      print('📡 Verify Code Status Code: ${response.statusCode}');
+      print('📡 Verify Code Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        // Sauvegarder le token temporaire
+        if (data['tempToken'] != null) {
+          await setTempToken(data['tempToken']);
+        }
+        return data;
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['error'] ?? 'Code invalide ou expiré');
+      }
+    } catch (e) {
+      if (e is Exception) rethrow;
+      print('❌ Erreur réseau verify-code: $e');
+      throw Exception('Impossible de contacter le serveur. Vérifiez votre connexion internet.');
+    }
+  }
+
+  /// Réinitialiser le mot de passe
+  static Future<Map<String, dynamic>> resetPassword(String newPassword) async {
+    try {
+      final tempToken = await getTempToken();
+      if (tempToken == null) {
+        throw Exception('Session de réinitialisation expirée. Veuillez recommencer.');
+      }
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/auth/reset-password'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'tempToken': tempToken,
+          'newPassword': newPassword,
+        }),
+      );
+
+      print('📡 Reset Password Status Code: ${response.statusCode}');
+      print('📡 Reset Password Response: ${response.body}');
+
+      if (response.statusCode == 200) {
+        // Supprimer le token temporaire après utilisation
+        await removeTempToken();
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        final errorData = jsonDecode(response.body);
+        throw Exception(errorData['error'] ?? 'Erreur lors de la réinitialisation du mot de passe');
+      }
+    } catch (e) {
+      if (e is Exception) rethrow;
+      print('❌ Erreur réseau reset-password: $e');
+      throw Exception('Impossible de contacter le serveur. Vérifiez votre connexion internet.');
+    }
+  }
+
+  /// Sauvegarder le token temporaire
+  static Future<void> setTempToken(String token) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('temp_reset_token', token);
+  }
+
+  /// Récupérer le token temporaire
+  static Future<String?> getTempToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString('temp_reset_token');
+  }
+
+  /// Supprimer le token temporaire
+  static Future<void> removeTempToken() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('temp_reset_token');
   }
 }

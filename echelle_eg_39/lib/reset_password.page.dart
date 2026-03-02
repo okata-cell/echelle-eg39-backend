@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'login.page.dart';
+import 'api_service.dart';
 
 class ResetPasswordPage extends StatefulWidget {
   final String contactInfo; // Email ou téléphone utilisé
@@ -23,7 +24,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
 
-  void resetPassword() {
+  void resetPassword() async {
     final newPassword = newPasswordController.text.trim();
     final confirmPassword = confirmPasswordController.text.trim();
 
@@ -61,32 +62,58 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
       isLoading = true;
     });
 
-    // Simulation de réinitialisation
-    Future.delayed(const Duration(seconds: 2), () {
+    try {
+      // Appeler l'API pour réinitialiser le mot de passe
+      final result = await ApiService.resetPassword(newPassword);
+
+      setState(() {
+        isLoading = false;
+      });
+
+      if (result['success'] == true) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Mot de passe mis à jour avec succès !"),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+
+        // Retour à la page de connexion après 2 secondes
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            Navigator.pushAndRemoveUntil(
+              context,
+              MaterialPageRoute(builder: (_) => const LoginPage()),
+              (route) => false,
+            );
+          }
+        });
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(result['error'] ?? 'Erreur lors de la réinitialisation'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
       setState(() {
         isLoading = false;
       });
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Mot de passe mis à jour avec succès !"),
-            backgroundColor: Colors.green,
+          SnackBar(
+            content: Text('Erreur: ${e.toString()}'),
+            backgroundColor: Colors.red,
           ),
         );
       }
-
-      // Retour à la page de connexion après 2 secondes
-      Future.delayed(const Duration(seconds: 2), () {
-        if (mounted) {
-          Navigator.pushAndRemoveUntil(
-            context,
-            MaterialPageRoute(builder: (_) => const LoginPage()),
-            (route) => false, // Supprime toutes les pages de la pile
-          );
-        }
-      });
-    });
+    }
   }
 
   @override

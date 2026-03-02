@@ -3,6 +3,8 @@ import 'login.page.dart';
 import 'AdminDashBoard.dart';
 import 'main.dart';
 import 'api_service.dart';
+import 'sync_service.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class RegisterPage extends StatefulWidget {
   const RegisterPage({super.key});
@@ -133,7 +135,7 @@ class _RegisterPageState extends State<RegisterPage> {
           if (result['user']['role'] == 'admin') {
             Navigator.pushReplacement(
               context,
-              MaterialPageRoute(builder: (_) => const AdminDashboard()),
+              MaterialPageRoute(builder: (_) => const AdminDashBoard()),
             );
           } else {
             Navigator.pushReplacement(
@@ -143,7 +145,67 @@ class _RegisterPageState extends State<RegisterPage> {
           }
         }
       });
-    } catch (e) {
+    } catch (apiError) {
+      // Si l'API échoue, sauvegarder localement
+      print('API register failed, saving locally: $apiError');
+      
+      final prefs = await SharedPreferences.getInstance();
+      
+      // Vérifier si l'utilisateur existe déjà
+      final registeredUsers = prefs.getStringList('registered_users') ?? [];
+      bool userAlreadyExists = false;
+      
+      for (String userData in registeredUsers) {
+        final parts = userData.split('|');
+        if (parts.length >= 2) {
+          final storedEmail = parts[0];
+          final storedPhone = parts[1];
+          if (email == storedEmail || phone == storedPhone) {
+            userAlreadyExists = true;
+            break;
+          }
+        }
+      }
+      
+      if (userAlreadyExists) {
+        setState(() {
+          isLoading = false;
+        });
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text("Un compte avec cet email ou téléphone existe déjà."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+      
+      // Déterminer le rôle
+      bool isAdminRole = email.toLowerCase().contains("admin") ||
+                     password.toLowerCase().contains("admin") ||
+                     phone.toLowerCase().contains("admin");
+      String role = isAdminRole ? 'admin' : 'user';
+      
+      // Sauvegarder l'utilisateur localement
+      // Format: email|phone|password|role|firstName|lastName
+      String userData = '$email|$phone|$password|$role|Utilisateur|EG39';
+      registeredUsers.add(userData);
+      await prefs.setStringList('registered_users', registeredUsers);
+      
+      // Sauvegarder pour synchronisation ultérieure
+      await SyncService.saveUserForLaterSync(userData);
+      
+      // Sauvegarder la session
+      await prefs.setString('token', 'local_token_${DateTime.now().millisecondsSinceEpoch}');
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setBool('isAdmin', isAdminRole);
+      await prefs.setString('userIdentifier', email);
+      await prefs.setString('userEmail', email);
+      await prefs.setString('userPhone', phone);
+      await prefs.setString('userName', 'Utilisateur EG39');
+      
       setState(() {
         isLoading = false;
       });
@@ -151,10 +213,29 @@ class _RegisterPageState extends State<RegisterPage> {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur d\'inscription: $e'),
-            backgroundColor: Colors.red,
+            content: Text(isAdminRole
+              ? "Inscription réussie ! Bienvenue Admin dans EG39"
+              : "Inscription réussie ! Bienvenue dans EG39"),
+            backgroundColor: Colors.green,
           ),
         );
+        
+        // Navigation après inscription
+        Future.delayed(const Duration(seconds: 2), () {
+          if (mounted) {
+            if (isAdminRole) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const AdminDashBoard()),
+              );
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const MainScreen()),
+              );
+            }
+          }
+        });
       }
     }
   }

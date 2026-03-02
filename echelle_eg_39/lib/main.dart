@@ -4,10 +4,13 @@ import 'package:echelle_eg_39/ventes.dart';
 import 'package:flutter/material.dart';
 import 'location.dart';
 import 'LocationsMenu.dart';
-import 'admin_ventes_page.dart';  // Import de notre page admin_ventes_page
+import 'admin_ventes_page.dart';
 import 'historique.dart';
 import 'service.dart';
 import 'profile.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'AdminDashBoard.dart';
+import 'sync_service.dart';
 
 void main() {
   runApp(const EchelleEG39App());
@@ -26,7 +29,164 @@ class EchelleEG39App extends StatelessWidget {
         fontFamily: 'Roboto',
         scaffoldBackgroundColor: const Color(0xFFF9FAFB),
       ),
-      home: const LoginPage(),
+      home: const SplashScreen(),
+    );
+  }
+}
+
+// Écran de démarrage qui vérifie la session utilisateur
+class SplashScreen extends StatefulWidget {
+  const SplashScreen({Key? key}) : super(key: key);
+
+  @override
+  State<SplashScreen> createState() => _SplashScreenState();
+}
+
+class _SplashScreenState extends State<SplashScreen> {
+  @override
+  void initState() {
+    super.initState();
+    _checkSession();
+  }
+
+  // 🔄 Méthode de synchronisation au démarrage
+  Future<void> _attemptStartupSync() async {
+    try {
+      // Vérifier si l'API est disponible
+      final apiAvailable = await SyncService.isApiAvailable();
+      
+      if (apiAvailable) {
+        print('🔄 API disponible au démarrage, vérification synchronisation...');
+        
+        // Synchroniser les utilisateurs en attente
+        final pendingResult = await SyncService.syncPendingUsers();
+        
+        // Synchroniser les utilisateurs locaux non encore synchronisés
+        final localResult = await SyncService.syncLocalUsers();
+        
+        final totalSynced = pendingResult.syncedCount + localResult.syncedCount;
+        
+        if (totalSynced > 0) {
+          print('✅ Synchronisation au démarrage: $totalSynced utilisateur(s)');
+        } else {
+          print('ℹ️ Aucune synchronisation nécessaire au démarrage');
+        }
+      } else {
+        print('⚠️ API non disponible au démarrage, synchronisation reportée');
+      }
+    } catch (e) {
+      print('❌ Erreur synchronisation au démarrage: $e');
+    }
+  }
+
+Future<void> _checkSession() async {
+    final prefs = await SharedPreferences.getInstance();
+    bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
+    bool isAdmin = prefs.getBool('isAdmin') ?? false;
+
+    // Vérifier si l'utilisateur a des identifiants sauvegardés pour récupération après réinstallation
+    final savedIdentifier = prefs.getString('saved_identifier');
+    final savedPassword = prefs.getString('saved_password');
+    final savedIsAdmin = prefs.getBool('saved_isAdmin') ?? false;
+
+    // 🔄 Tenter de synchroniser les utilisateurs locaux au démarrage
+    await _attemptStartupSync();
+
+    // Attendre un peu pour l'effet visuel
+    await Future.delayed(const Duration(seconds: 2));
+
+    if (!mounted) return;
+
+    if (isLoggedIn) {
+      // Rediriger vers la page appropriée selon le rôle
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => isAdmin ? const AdminDashBoard() : const MainScreen(),
+        ),
+      );
+    } else if (savedIdentifier != null && savedPassword != null) {
+      // Utilisateur a des identifiants sauvegardés - restaurer la session automatiquement
+      // et naviguer vers la page appropriée
+      await prefs.setBool('isLoggedIn', true);
+      await prefs.setBool('isAdmin', savedIsAdmin);
+      await prefs.setString('userIdentifier', savedIdentifier);
+      await prefs.setString('userPassword', savedPassword);
+      
+      // Restaurer les infos utilisateur
+      if (RegExp(r'^[0-9]+$').hasMatch(savedIdentifier.replaceAll(' ', ''))) {
+        await prefs.setString('userPhone', savedIdentifier);
+        await prefs.setString('userEmail', '${savedIdentifier}@utilisateur.com');
+        await prefs.setString('userName', 'Utilisateur $savedIdentifier');
+      } else {
+        await prefs.setString('userEmail', savedIdentifier);
+        await prefs.setString('userPhone', '+228 00 00 00 00');
+        await prefs.setString('userName', savedIdentifier.split('@').first);
+      }
+      
+      print('✅ Session restaurée automatiquement pour: $savedIdentifier');
+      
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(
+          builder: (_) => savedIsAdmin ? const AdminDashBoard() : const MainScreen(),
+        ),
+      );
+    } else {
+      // Pas de session, afficher la page de connexion
+      Navigator.pushReplacement(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+      );
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+          ),
+        ),
+        child: const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(
+                Icons.height,
+                size: 80,
+                color: Colors.white,
+              ),
+              SizedBox(height: 20),
+              Text(
+                'ÉCHELLE EG39',
+                style: TextStyle(
+                  fontSize: 32,
+                  fontWeight: FontWeight.bold,
+                  color: Colors.white,
+                  letterSpacing: 2,
+                ),
+              ),
+              SizedBox(height: 10),
+              Text(
+                'Topographie - BTP',
+                style: TextStyle(
+                  fontSize: 16,
+                  color: Color(0xFFBFDBFE),
+                ),
+              ),
+              SizedBox(height: 40),
+              CircularProgressIndicator(
+                color: Colors.white,
+              ),
+            ],
+          ),
+        ),
+      ),
     );
   }
 }
