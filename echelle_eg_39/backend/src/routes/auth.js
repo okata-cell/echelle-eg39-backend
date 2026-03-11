@@ -449,9 +449,12 @@ router.post('/login', [
     }
     
     // Chercher l'utilisateur par email ou téléphone
+    // $1 = email normalise (minuscules)
+    // $2 = telephone normalise (avec +228)
+    // $3 = telephone original (tel que saisi par l'utilisateur)
     const result = await pool.query(
-      'SELECT * FROM users WHERE LOWER(email) = $1 OR phone = $1 OR phone = $2',
-      [normalizedEmail, normalizedPhone]
+      'SELECT * FROM users WHERE LOWER(email) = $1 OR phone = $2 OR phone = $3',
+      [normalizedEmail, normalizedPhone, identifier]
     );
 
     if (result.rows.length === 0) {
