@@ -458,7 +458,7 @@ router.post('/login', [
     );
 
     if (result.rows.length === 0) {
-      return res.status(401).json({ error: 'Identifiants invalides' });
+      return res.status(401).json({ error: 'L\'email ou le mot de passe est incorrect, reverifier vos donnees' });
     }
 
     const user = result.rows[0];
@@ -466,7 +466,7 @@ router.post('/login', [
     // Vérifier le mot de passe
     const isValidPassword = await bcrypt.compare(password, user.password_hash);
     if (!isValidPassword) {
-      return res.status(401).json({ error: 'Identifiants invalides' });
+      return res.status(401).json({ error: 'L\'email ou le mot de passe est incorrect, reverifier vos donnees' });
     }
 
     // Générer le token JWT avec valeur par défaut
