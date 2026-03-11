@@ -157,6 +157,9 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
   /// Demander un code de réinitialisation de mot de passe
   static Future<Map<String, dynamic>> requestPasswordReset(String contact, String contactType) async {
     try {
+      print('📡 Envoi requête forgot-password vers: $baseUrl/auth/forgot-password');
+      print('📡 Données: contact=$contact, contactType=$contactType');
+      
       final response = await http.post(
         Uri.parse('$baseUrl/auth/forgot-password'),
         headers: {'Content-Type': 'application/json'},
@@ -172,12 +175,17 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         return data;
+      } else if (response.statusCode == 404) {
+        throw Exception('Route non trouvée. Vérifiez la connexion au serveur.');
       } else {
         final errorData = jsonDecode(response.body);
         throw Exception(errorData['error'] ?? 'Erreur lors de la demande de réinitialisation');
       }
     } catch (e) {
-      if (e is Exception) rethrow;
+      if (e is Exception) {
+        print('❌ Erreur forgot-password: $e');
+        rethrow;
+      }
       print('❌ Erreur réseau forgot-password: $e');
       throw Exception('Impossible de contacter le serveur. Vérifiez votre connexion internet.');
     }

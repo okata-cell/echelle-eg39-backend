@@ -23,19 +23,26 @@ router.post('/forgot-password', [
   body('contact').trim().notEmpty().withMessage('Email ou téléphone requis'),
   body('contactType').trim().notEmpty().withMessage('Type de contact requis (email ou phone)'),
 ], async (req, res) => {
+  const errors = validationResult(req);
+  if (!errors.isEmpty()) {
+    console.log('❌ Erreurs de validation forgot-password:', errors.array());
+    return res.status(400).json({ error: errors.array()[0].msg });
+  }
+
+  const { contact, contactType } = req.body;
+  
+  // Validation supplémentaire du type de contact
+  if (contactType !== 'email' && contactType !== 'phone') {
+    return res.status(400).json({ error: 'Type de contact invalide (doit être email ou phone)' });
+  }
+
+  const normalizedContact = contactType === 'email' 
+    ? contact.toLowerCase().trim() 
+    : contact.replace(/[\s\-\(\)]/g, '');
+
+  console.log(`🔐 Demande de réinitialisation pour: ${normalizedContact} (${contactType})`);
+
   try {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
-
-    const { contact, contactType } = req.body;
-    const normalizedContact = contactType === 'email' 
-      ? contact.toLowerCase().trim() 
-      : contact.replace(/[\s\-\(\)]/g, '');
-
-    console.log(`🔐 Demande de réinitialisation pour: ${normalizedContact} (${contactType})`);
-
     // Chercher l'utilisateur
     const userQuery = contactType === 'email'
       ? 'SELECT id, email, phone FROM users WHERE LOWER(email) = $1'
@@ -84,7 +91,6 @@ router.post('/forgot-password', [
       await sendVerificationCode(userContact, contactType, verificationCode, userName);
     } catch (sendError) {
       console.error('⚠️ Erreur envoi code (continuant quand même):', sendError);
-      // On continue même si l'envoi échoue en mode développement
     }
 
     // En développement, retourner le code pour les tests
@@ -93,7 +99,6 @@ router.post('/forgot-password', [
     res.json({
       message: 'Code de vérification envoyé avec succès',
       success: true,
-      // En développement, retourner le code pour les tests
       ...(isDev && { verificationCode: verificationCode }),
       contactInfo: userContact,
       contactType: contactType
@@ -101,7 +106,7 @@ router.post('/forgot-password', [
 
   } catch (error) {
     console.error('❌ Erreur forgot-password:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    res.status(500).json({ error: 'Erreur serveur lors de la demande de réinitialisation' });
   }
 });
 
@@ -432,10 +437,21 @@ router.post('/login', [
 
     const { identifier, password } = req.body;
 
+    // Normaliser l'identifiant: 
+    // - Pour les emails: convertir en minuscules
+    // - Pour les telephones: ajouter le prefixe +228 si absent
+    let normalizedEmail = identifier.toLowerCase().trim();
+    let normalizedPhone = identifier.replace(/[\s\-\(\)]/g, '');
+    
+    // Ajouter le prefixe +228 pour les numeros togo sans prefixe
+    if (!normalizedPhone.startsWith('+') && /^\d{8,}$/.test(normalizedPhone)) {
+      normalizedPhone = '+228' + normalizedPhone;
+    }
+    
     // Chercher l'utilisateur par email ou téléphone
     const result = await pool.query(
-      'SELECT * FROM users WHERE email = $1 OR phone = $1',
-      [identifier]
+      'SELECT * FROM users WHERE LOWER(email) = $1 OR phone = $1 OR phone = $2',
+      [normalizedEmail, normalizedPhone]
     );
 
     if (result.rows.length === 0) {
