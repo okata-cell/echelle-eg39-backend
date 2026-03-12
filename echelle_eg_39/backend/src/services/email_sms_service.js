@@ -56,7 +56,7 @@ async function sendResetCodeByEmail(emailAddress, code, userName) {
 
   var msg = {
     to: emailAddress,
-    from: 'echelleeg39@gmail.com',
+    from: 'okataolaniyi@gmail.com',
     subject: 'Reinitialisation mot de passe - ECHELLE EG39',
     text: textContent,
     html: htmlContent
