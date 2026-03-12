@@ -2,6 +2,8 @@
 import 'package:echelle_eg_39/login.page.dart';
 import 'package:echelle_eg_39/ventes.dart';
 import 'package:flutter/material.dart';
+import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import 'location.dart';
 import 'LocationsMenu.dart';
 import 'admin_ventes_page.dart';
@@ -12,7 +14,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'AdminDashBoard.dart';
 import 'sync_service.dart';
 
-void main() {
+// Variable globale pour suivre l'état de Firebase
+bool isFirebaseReady = false;
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  
+  // Initialiser Firebase avec timeout
+  try {
+    await Firebase.initializeApp().timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        print('⚠️ Firebase initialization timed out');
+        throw Exception('Firebase timeout');
+      },
+    );
+    isFirebaseReady = true;
+    print('✅ Firebase initialized successfully');
+  } catch (e) {
+    print('❌ Firebase initialization failed: $e');
+    isFirebaseReady = false;
+    // Continuer quand même si Firebase échoue (mode offline)
+  }
+  
   runApp(const EchelleEG39App());
 }
 
@@ -46,41 +70,106 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-    _checkSession();
+    // Lancer la vérification de session mais sans bloquer l'affichage
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _checkSession();
+    });
   }
 
-  // 🔄 Méthode de synchronisation au démarrage
+  // 🔄 Méthode de synchronisation au démarrage (en arrière-plan)
   Future<void> _attemptStartupSync() async {
     try {
-      // Vérifier si l'API est disponible
-      final apiAvailable = await SyncService.isApiAvailable();
+      // Vérifier si l'API est disponible avec un timeout court
+      final apiAvailable = await SyncService.isApiAvailable().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () {
+          print('⚠️ API check timed out');
+          return false;
+        },
+      );
       
       if (apiAvailable) {
         print('🔄 API disponible au démarrage, vérification synchronisation...');
         
-        // Synchroniser les utilisateurs en attente
-        final pendingResult = await SyncService.syncPendingUsers();
+        // Synchroniser les utilisateurs en attente (avec timeout)
+        await SyncService.syncPendingUsers().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            print('⚠️ syncPendingUsers timed out');
+            return SyncResult(success: false, syncedCount: 0, message: 'Timeout');
+          },
+        );
         
-        // Synchroniser les utilisateurs locaux non encore synchronisés
-        final localResult = await SyncService.syncLocalUsers();
+        // Synchroniser les utilisateurs locaux (avec timeout)
+        await SyncService.syncLocalUsers().timeout(
+          const Duration(seconds: 5),
+          onTimeout: () {
+            print('⚠️ syncLocalUsers timed out');
+            return SyncResult(success: false, syncedCount: 0, message: 'Timeout');
+          },
+        );
         
-        final totalSynced = pendingResult.syncedCount + localResult.syncedCount;
-        
-        if (totalSynced > 0) {
-          print('✅ Synchronisation au démarrage: $totalSynced utilisateur(s)');
-        } else {
-          print('ℹ️ Aucune synchronisation nécessaire au démarrage');
-        }
+        print('✅ Synchronisation au démarrage terminée');
       } else {
         print('⚠️ API non disponible au démarrage, synchronisation reportée');
       }
     } catch (e) {
       print('❌ Erreur synchronisation au démarrage: $e');
+      // Ne pas bloquer - continuer même en cas d'erreur
     }
   }
 
-Future<void> _checkSession() async {
+  Future<void> _checkSession() async {
+    // Lancer la synchronisation en arrière-plan (ne pas attendre)
+    _attemptStartupSync();
+    
     final prefs = await SharedPreferences.getInstance();
+    
+    // === CORRECTION: Vérifier d'abord si Firebase Auth a un utilisateur connecté ===
+    // Cela permet de restaurer la session même après fermeture de l'app
+    // Vérifier que Firebase est prêt avant d'utiliser FirebaseAuth
+    if (isFirebaseReady) {
+      try {
+        final firebaseUser = FirebaseAuth.instance.currentUser;
+        if (firebaseUser != null) {
+          // Utilisateur Firebase connecté - restaurer la session
+          print('✅ Firebase session found: ${firebaseUser.email}');
+          
+          String identifier = firebaseUser.email ?? firebaseUser.phoneNumber ?? '';
+          String password = prefs.getString('userPassword') ?? '';
+          bool isAdmin = prefs.getBool('isAdmin') ?? false;
+          
+          // Sauvegarder pour restauration permanente
+          if (prefs.getString('saved_identifier') == null) {
+            await prefs.setString('saved_identifier', identifier);
+            await prefs.setString('saved_password', password);
+            await prefs.setBool('saved_isAdmin', isAdmin);
+          }
+          
+          await prefs.setBool('isLoggedIn', true);
+          await prefs.setBool('isAdmin', isAdmin);
+          await prefs.setString('userIdentifier', identifier);
+          await prefs.setString('userEmail', identifier);
+          
+          if (!mounted) return;
+          
+          // Naviguer vers l'écran principal
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => isAdmin ? const AdminDashBoard() : const MainScreen(),
+            ),
+          );
+          return;
+        }
+      } catch (e) {
+        print('⚠️ Error checking Firebase session: $e');
+      }
+    } else {
+      print('⚠️ Firebase not initialized, skipping Firebase session check');
+    }
+    // === FIN CORRECTION ===
+    
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     bool isAdmin = prefs.getBool('isAdmin') ?? false;
 
@@ -89,11 +178,8 @@ Future<void> _checkSession() async {
     final savedPassword = prefs.getString('saved_password');
     final savedIsAdmin = prefs.getBool('saved_isAdmin') ?? false;
 
-    // 🔄 Tenter de synchroniser les utilisateurs locaux au démarrage
-    await _attemptStartupSync();
-
-    // Attendre un peu pour l'effet visuel
-    await Future.delayed(const Duration(seconds: 2));
+    // Attendre un peu pour l'effet visuel minimum
+    await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
 

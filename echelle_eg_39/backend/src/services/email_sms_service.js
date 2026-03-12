@@ -43,7 +43,7 @@ async function sendResetCodeByEmail(emailAddress, code, userName) {
   textContent += 'Bonjour ' + (userName || 'Client') + ',\n\n';
   textContent += 'Votre code de verification: ' + code + '\n\n';
   textContent += 'Ce code expire dans 15 minutes.\n\n';
-  textContent += '2024 ECHELLE EG39 - Topographie BTP';
+  textContent += '2026 ECHELLE EG39 - Topographie BTP';
 
   // Verifier si SendGrid est configure
   if (!process.env.SENDGRID_API_KEY) {
@@ -56,7 +56,7 @@ async function sendResetCodeByEmail(emailAddress, code, userName) {
 
   var msg = {
     to: emailAddress,
-    from: '"ECHELLE EG39" <noreply@echelle-eg39.com>',
+    from: 'echelleeg39@gmail.com',
     subject: 'Reinitialisation mot de passe - ECHELLE EG39',
     text: textContent,
     html: htmlContent
@@ -101,8 +101,7 @@ async function sendResetCodeBySMS(phone, code) {
     
     const result = await at.SMS.send({
       to: [formattedPhone],
-      message: message,
-      from: 'ECHELLE39' // Sender ID (optionnel, peut être ignoré par l'opérateur)
+      message: message
     });
     
     console.log('✅ SMS envoye avec succes:', JSON.stringify(result));
