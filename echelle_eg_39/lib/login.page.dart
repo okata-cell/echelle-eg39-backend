@@ -270,7 +270,7 @@ class _LoginPageState extends State<LoginPage> {
           // Utilisateur non trouvé
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text("Aucun compte trouvé avec ces identifiants. Veuillez créer un compte d'abord."),
+              content: const Text("L'email ou le mot de passe est incorrect, veuillez reverifier vos identifiants ou creer un compte"),
               backgroundColor: Colors.red,
               action: SnackBarAction(
                 label: "S'inscrire",
