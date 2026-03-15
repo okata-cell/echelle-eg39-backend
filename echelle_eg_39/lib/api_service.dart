@@ -3,8 +3,8 @@ import 'dart:convert';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ApiService {
-  // Utiliser le backend de production Render
-  static const String baseUrl = 'https://echelle-eg39-backend.onrender.com/api'; // Production
+  // URL du backend Render - NOTE: Le suffixe "-1" est important !
+  static const String baseUrl = 'https://echelle-eg39-backend-1.onrender.com/api'; // Production
   // static const String baseUrl = 'http://10.0.2.2:3000/api'; // Android emulator
   // static const String baseUrl = 'http://localhost:3000/api'; // iOS simulator / web
 
@@ -276,5 +276,55 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
   static Future<void> removeTempToken() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('temp_reset_token');
+  }
+
+  // ============================================
+  // FONCTIONS: Locations et Historique
+  // ============================================
+
+  /// Récupérer toutes les locations de l'utilisateur connecté
+  static Future<List<Map<String, dynamic>>> getLocations({String? statut}) async {
+    final token = await getToken();
+    if (token == null) throw Exception('Not authenticated');
+
+    String url = '$baseUrl/locations';
+    if (statut != null) {
+      url += '?statut=$statut';
+    }
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['locations']);
+    } else {
+      throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la récupération des locations');
+    }
+  }
+
+  /// Récupérer toutes les demandes d'achat de l'utilisateur connecté
+  static Future<List<Map<String, dynamic>>> getDemandesAchat({String? statut}) async {
+    final token = await getToken();
+    if (token == null) throw Exception('Not authenticated');
+
+    String url = '$baseUrl/demandes';
+    if (statut != null) {
+      url += '?statut=$statut';
+    }
+
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['demandes']);
+    } else {
+      throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la récupération des demandes');
+    }
   }
 }
