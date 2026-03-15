@@ -225,13 +225,31 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
         });
       }
     } catch (e) {
+      String errorMsg = 'Erreur de chargement';
+      
+      // Analyser le type d'erreur pour un message plus clair
+      final errorStr = e.toString().toLowerCase();
+      
+      if (errorStr.contains('not authenticated') || errorStr.contains('token')) {
+        // Vérifier si c'est un token demo
+        errorMsg = 'Session expirée ou invalide. Veuillez vous reconnecter.';
+      } else if (errorStr.contains('socketexception') || errorStr.contains('connection')) {
+        errorMsg = 'Connexion internet impossible. Vérifiez votre connexion.';
+      } else if (errorStr.contains('500') || errorStr.contains('serveur')) {
+        errorMsg = 'Serveur temporairement indisponible. Réessayez plus tard.';
+      } else if (errorStr.contains('invalid') || errorStr.contains('token invalide')) {
+        errorMsg = 'Session expirée. Veuillez vous reconnecter.';
+      } else {
+        errorMsg = 'Une erreur est survenue. Veuillez réessayer.';
+      }
+      
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = e.toString();
+          _errorMessage = errorMsg;
         });
-        print('Erreur chargement historique: $e');
       }
+      print('Erreur chargement historique: $e');
     }
   }
 

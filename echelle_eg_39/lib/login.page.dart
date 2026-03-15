@@ -27,8 +27,8 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _saveUserSession(String identifier, String password, bool isAdmin) async {
     final prefs = await SharedPreferences.getInstance();
     
-    // Stocker un token fictif pour indiquer que l'utilisateur est connecté
-    await prefs.setString('token', 'demo_token_${DateTime.now().millisecondsSinceEpoch}');
+    // NOTE: Le token est déjà sauvegardé par ApiService.login()
+    // Ne pas surécrire avec un token fictif ici
     await prefs.setBool('isLoggedIn', true);
     await prefs.setBool('isAdmin', isAdmin);
     
@@ -225,7 +225,7 @@ class _LoginPageState extends State<LoginPage> {
             isAdmin = storedRole == 'admin';
             
             // Sauvegarder les infos utilisateur
-            await prefs.setString('token', 'local_token_${DateTime.now().millisecondsSinceEpoch}');
+            // NOTE: Pas de vrai token car c'est un login local
             await prefs.setBool('isLoggedIn', true);
             await prefs.setBool('isAdmin', isAdmin);
             await prefs.setString('userIdentifier', identifier);
@@ -270,7 +270,7 @@ class _LoginPageState extends State<LoginPage> {
           // Utilisateur non trouvé
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: const Text("L'email ou le mot de passe est incorrect, veuillez reverifier vos identifiants ou creer un compte"),
+              content: const Text("L'email ou le mot de passe est incorrect, veuillez reverifier vos identifiants ou creér un nouveau compte"),
               backgroundColor: Colors.red,
               action: SnackBarAction(
                 label: "S'inscrire",

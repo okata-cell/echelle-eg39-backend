@@ -197,8 +197,8 @@ class _RegisterPageState extends State<RegisterPage> {
       // Sauvegarder pour synchronisation ultérieure
       await SyncService.saveUserForLaterSync(userData);
       
-      // Sauvegarder la session
-      await prefs.setString('token', 'local_token_${DateTime.now().millisecondsSinceEpoch}');
+      // NOTE: Le token est déjà sauvegardé par ApiService.register()
+      // Ne pas surécrire avec un token fictif ici
       await prefs.setBool('isLoggedIn', true);
       await prefs.setBool('isAdmin', isAdminRole);
       await prefs.setString('userIdentifier', email);
