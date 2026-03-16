@@ -28,6 +28,7 @@ class Transaction {
   final int extensionCount;
   final int unpaidExtensionAmount;
   final String? adminComment;
+  final String? clientEmail;
 
   Transaction({
     required this.id,
@@ -45,6 +46,7 @@ class Transaction {
     this.extensionCount = 0,
     this.unpaidExtensionAmount = 0,
     this.adminComment,
+    this.clientEmail,
   })  : dailyRate = dailyRate ?? 0,
         extensionIds = extensionIds ?? [];
 
@@ -64,6 +66,7 @@ class Transaction {
     int? extensionCount,
     int? unpaidExtensionAmount,
     String? adminComment,
+    String? clientEmail,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -81,6 +84,7 @@ class Transaction {
       extensionCount: extensionCount ?? this.extensionCount,
       unpaidExtensionAmount: unpaidExtensionAmount ?? this.unpaidExtensionAmount,
       adminComment: adminComment ?? this.adminComment,
+      clientEmail: clientEmail ?? this.clientEmail,
     );
   }
 }
@@ -112,8 +116,19 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   // ── Filtres ───────────────────────────────────────────────────────────────
 
   List<Transaction> get _filteredTransactions {
-    if (_selectedFilter == 'Tous') return _allTransactions;
-    return _allTransactions.where((t) {
+    // D'abord filtrer par utilisateur connecté
+    List<Transaction> userTransactions = _allTransactions;
+    
+    // Si l'email de l'utilisateur est disponible, filtrer par email
+    if (_currentUserEmail.isNotEmpty) {
+      userTransactions = _allTransactions.where((t) {
+        return t.clientEmail == _currentUserEmail;
+      }).toList();
+    }
+    
+    // Ensuite filtrer par statut
+    if (_selectedFilter == 'Tous') return userTransactions;
+    return userTransactions.where((t) {
       if (_selectedFilter == 'En cours') {
         return t.status == 'en-cours';
       }
@@ -208,6 +223,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           dailyRate: loc['prixJournalier'] as int? ?? 0,
           invoiceNumber: loc['code'] as String?,
           adminComment: loc['commentaireAdmin'] as String?,
+          clientEmail: loc['clientEmail'] as String?,
         ));
       }
 
@@ -223,6 +239,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           isPaid: false,
           invoiceNumber: demande['code'] as String?,
           adminComment: demande['commentaireAdmin'] as String?,
+          clientEmail: demande['clientEmail'] as String?,
         ));
       }
 
