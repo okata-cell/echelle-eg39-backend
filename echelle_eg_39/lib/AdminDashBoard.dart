@@ -5,6 +5,8 @@ import 'appareils.page.dart';
 import 'LocationsMenu.dart';
 import 'admin_ventes_page.dart';
 import 'admin_prolongations_page.dart';
+import 'login.page.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 
 
@@ -27,6 +29,51 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
     const AdminProlongationsPage(),
   ];
 
+  /// Afficher le dialogue de confirmation de déconnexion
+  void _showLogoutDialog(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Se déconnecter'),
+        content: const Text('Êtes-vous sûr de vouloir vous déconnecter ?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              logout();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            child: const Text('Se déconnecter'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// Fonction de déconnexion
+  Future<void> logout() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('token');
+    await prefs.remove('isLoggedIn');
+    await prefs.remove('isAdmin');
+    await prefs.remove('userEmail');
+    await prefs.remove('userPhone');
+    await prefs.remove('userName');
+    
+    if (mounted) {
+      Navigator.of(context).pushAndRemoveUntil(
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -36,6 +83,13 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
           style: TextStyle(fontSize: 16),
         ),
         flexibleSpace: const SizedBox.shrink(),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.logout, color: Colors.red),
+            onPressed: () => _showLogoutDialog(context),
+            tooltip: 'Se déconnecter',
+          ),
+        ],
       ),
       body: pages[currentIndex],
       bottomNavigationBar: BottomNavigationBar(
