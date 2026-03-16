@@ -185,9 +185,11 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     try {
       // Charger les locations
       final locations = await ApiService.getLocations();
+      print('📡 Locations reçues: ${locations.length}');
       
       // Charger les demandes d'achat
       final demandes = await ApiService.getDemandesAchat();
+      print('📡 Demandes d\'achat reçues: ${demandes.length}');
 
       // Convertir en transactions
       final List<Transaction> transactions = [];

@@ -292,10 +292,15 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       url += '?statut=$statut';
     }
 
+    print('📡 API getLocations: $url');
+    
     final response = await http.get(
       Uri.parse(url),
       headers: {'Authorization': 'Bearer $token'},
     );
+
+    print('📡 getLocations status: ${response.statusCode}');
+    print('📡 getLocations body: ${response.body}');
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
@@ -315,10 +320,15 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       url += '?statut=$statut';
     }
 
+    print('📡 API getDemandesAchat: $url');
+    
     final response = await http.get(
       Uri.parse(url),
       headers: {'Authorization': 'Bearer $token'},
     );
+
+    print('📡 getDemandesAchat status: ${response.statusCode}');
+    print('📡 getDemandesAchat body: ${response.body}');
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
