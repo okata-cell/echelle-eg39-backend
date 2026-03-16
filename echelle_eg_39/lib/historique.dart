@@ -120,6 +120,8 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     // On affiche toutes les transactions retournées par l'API
     List<Transaction> userTransactions = _allTransactions;
     
+    print('🔍 Filtres: ${_selectedFilter}, Transactions total: ${userTransactions.length}');
+    
     // Filtrer par statut uniquement
     if (_selectedFilter == 'Tous') return userTransactions;
     return userTransactions.where((t) {
@@ -242,6 +244,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           _allTransactions = transactions;
           _isLoading = false;
         });
+        print('✅ Transactions mises à jour: ${transactions.length}');
       }
     } catch (e) {
       String errorMsg = 'Erreur de chargement';
