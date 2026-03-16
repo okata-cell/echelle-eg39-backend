@@ -493,6 +493,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                             itemCount: _filteredTransactions.length,
                             itemBuilder: (context, index) {
                               final transaction = _filteredTransactions[index];
+                              print('🎫 Affichage transaction: ${transaction.type} - ${transaction.title}');
                               return _buildEnhancedTransactionCard(transaction);
                             },
                           ),
