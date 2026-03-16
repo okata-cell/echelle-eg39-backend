@@ -220,6 +220,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           status: _convertStatut(demande['statut'] as String? ?? 'en-attente'),
           isPaid: false,
           invoiceNumber: demande['code'] as String?,
+          adminComment: demande['commentaireAdmin'] as String?,
         ));
       }
 
