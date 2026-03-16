@@ -339,7 +339,7 @@ class _LocationPageState extends State<LocationPage> {
             DropdownButtonFormField(
               value: clientChoisi,
               decoration: const InputDecoration(labelText: 'Ou sélectionner un client'),
-              items: clientNames.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
+              items: _dataManager.clientNames.map((c) => DropdownMenuItem(value: c, child: Text(c))).toList(),
               onChanged: (v) => setState(() => clientChoisi = v),
             ),
             const SizedBox(height: 10),
