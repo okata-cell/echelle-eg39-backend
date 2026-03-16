@@ -337,4 +337,31 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la récupération des demandes');
     }
   }
+
+  /// Créer une demande d'achat
+  static Future<Map<String, dynamic>> createDemandeAchat(int appareilId, int quantite) async {
+    final token = await getToken();
+    if (token == null) throw Exception('Not authenticated');
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/demandes'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
+      body: jsonEncode({
+        'appareilId': appareilId,
+        'quantite': quantite,
+      }),
+    );
+
+    print('📡 createDemandeAchat status: ${response.statusCode}');
+    print('📡 createDemandeAchat body: ${response.body}');
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la création de la demande');
+    }
+  }
 }

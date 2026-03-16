@@ -355,16 +355,35 @@ class _VenteScreenState extends State<VenteScreen> {
               child: const Text('Annuler'),
             ),
             ElevatedButton(
-              onPressed: () {
-                _dataManager.addDemandeAchat(
-                  clientNom: userName,
-                  clientEmail: userEmail,
-                  clientPhone: userPhone,
-                  produitId: product.produitId,
-                  produitNom: product.name,
-                  produitPrix: product.price,
-                  quantite: 1,
-                );
+              onPressed: () async {
+                // Envoyer la demande au backend
+                try {
+                  await ApiService.createDemandeAchat(
+                    product.id,
+                    1,
+                  );
+                  // Ajouter aussi en local pour affichage immédiat
+                  _dataManager.addDemandeAchat(
+                    clientNom: userName,
+                    clientEmail: userEmail,
+                    clientPhone: userPhone,
+                    produitId: product.produitId,
+                    produitNom: product.name,
+                    produitPrix: product.price,
+                    quantite: 1,
+                  );
+                } catch (e) {
+                  // Si l'API échoue, ajouter quand même en local
+                  _dataManager.addDemandeAchat(
+                    clientNom: userName,
+                    clientEmail: userEmail,
+                    clientPhone: userPhone,
+                    produitId: product.produitId,
+                    produitNom: product.name,
+                    produitPrix: product.price,
+                    quantite: 1,
+                  );
+                }
                 Navigator.of(ctx).pop();
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
