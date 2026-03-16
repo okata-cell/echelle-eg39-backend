@@ -196,8 +196,8 @@ class _VenteScreenState extends State<VenteScreen> {
   // ── Gérer le clic sur "Acheter" ───────────────────────────────────────────
 
   void _handleAchat(Product product) async {
-    // 1. Vérifier l'authentification
-    final token = await ApiService.getToken();
+    // 1. Vérifier l'authentification - avec reconnexion automatique si nécessaire
+    final token = await ApiService.ensureAuthenticated();
     if (!mounted) return;
 
     if (token == null) {

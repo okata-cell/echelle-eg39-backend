@@ -13,6 +13,40 @@ class ApiService {
     return prefs.getString('token');
   }
 
+  /// Méthode pour s'assurer que l'utilisateur est authentifié.
+  /// Si le token est manquant mais que des identifiants sont sauvegardés,
+  /// tente une reconnexion automatique.
+  static Future<String?> ensureAuthenticated() async {
+    // 1. Vérifier si un token existe déjà
+    String? token = await getToken();
+    if (token != null) {
+      return token;
+    }
+    
+    // 2. Si pas de token, vérifier si des identifiants sont sauvegardés
+    final prefs = await SharedPreferences.getInstance();
+    final savedIdentifier = prefs.getString('saved_identifier');
+    final savedPassword = prefs.getString('saved_password');
+    
+    if (savedIdentifier != null && savedPassword != null) {
+      // 3. Tenter une reconnexion automatique
+      print('🔄 Token manquant, tentative de reconnexion automatique...');
+      try {
+        final result = await login(savedIdentifier, savedPassword);
+        if (result['token'] != null) {
+          print('✅ Reconnexion automatique réussie');
+          return result['token'];
+        }
+      } catch (e) {
+        print('❌ Échec de la reconnexion automatique: $e');
+        // Ne pas throw, retourner null pour que l'utilisateur soit redirigé vers login
+      }
+    }
+    
+    // 4. Pas de token et pas d'identifiants sauvegardés
+    return null;
+  }
+
   static Future<void> setToken(String token) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('token', token);
@@ -109,7 +143,7 @@ class ApiService {
   }
 
   static Future<Map<String, dynamic>> getMe() async {
-    final token = await getToken();
+    final token = await ensureAuthenticated();
     if (token == null) throw Exception('Not authenticated');
 
     final response = await http.get(
@@ -125,7 +159,7 @@ class ApiService {
   }
 
 static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String dateDebut, String dateFin, int nombreJours, int total) async {
-    final token = await getToken();
+    final token = await ensureAuthenticated();
     if (token == null) throw Exception('Not authenticated');
 
     final response = await http.post(
@@ -284,7 +318,7 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
 
   /// Récupérer toutes les locations de l'utilisateur connecté
   static Future<List<Map<String, dynamic>>> getLocations({String? statut}) async {
-    final token = await getToken();
+    final token = await ensureAuthenticated();
     if (token == null) throw Exception('Not authenticated');
 
     String url = '$baseUrl/locations';
@@ -312,7 +346,7 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
 
   /// Récupérer toutes les demandes d'achat de l'utilisateur connecté
   static Future<List<Map<String, dynamic>>> getDemandesAchat({String? statut}) async {
-    final token = await getToken();
+    final token = await ensureAuthenticated();
     if (token == null) throw Exception('Not authenticated');
 
     String url = '$baseUrl/demandes';
@@ -340,7 +374,7 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
 
   /// Créer une demande d'achat
   static Future<Map<String, dynamic>> createDemandeAchat(int appareilId, int quantite) async {
-    final token = await getToken();
+    final token = await ensureAuthenticated();
     if (token == null) throw Exception('Not authenticated');
 
     final response = await http.post(

@@ -282,8 +282,8 @@ class _EquipmentCardState extends State<_EquipmentCard> {
   // ───────────────────────── Reservation dialog ─────────────────────────────
 
   void _handleReservePressed() async {
-    // Check authentication first
-    final token = await ApiService.getToken();
+    // Check authentication first - avec reconnexion automatique si nécessaire
+    final token = await ApiService.ensureAuthenticated();
     if (!mounted) return;
 
     if (token == null) {
