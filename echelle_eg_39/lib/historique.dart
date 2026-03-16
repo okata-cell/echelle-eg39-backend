@@ -116,17 +116,11 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   // ── Filtres ───────────────────────────────────────────────────────────────
 
   List<Transaction> get _filteredTransactions {
-    // D'abord filtrer par utilisateur connecté
+    // Pas de filtrage par email - le backend gère déjà le filtrage par utilisateur
+    // On affiche toutes les transactions retournées par l'API
     List<Transaction> userTransactions = _allTransactions;
     
-    // Si l'email de l'utilisateur est disponible, filtrer par email
-    if (_currentUserEmail.isNotEmpty) {
-      userTransactions = _allTransactions.where((t) {
-        return t.clientEmail == _currentUserEmail;
-      }).toList();
-    }
-    
-    // Ensuite filtrer par statut
+    // Filtrer par statut uniquement
     if (_selectedFilter == 'Tous') return userTransactions;
     return userTransactions.where((t) {
       if (_selectedFilter == 'En cours') {

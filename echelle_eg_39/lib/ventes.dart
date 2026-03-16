@@ -385,6 +385,7 @@ class _VenteScreenState extends State<VenteScreen> {
                   );
                 }
                 Navigator.of(ctx).pop();
+                if (!mounted) return;
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(

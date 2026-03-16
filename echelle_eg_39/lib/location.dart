@@ -57,7 +57,13 @@ class _LocationScreenState extends State<LocationScreen> {
     super.initState();
     _loadCurrentUser();
     _dataManager.initialize();
-    _dataManager.addListener(() => setState(() {}));
+    _dataManager.addListener(_onDataManagerChanged);
+  }
+
+  void _onDataManagerChanged() {
+    if (mounted) {
+      setState(() {});
+    }
   }
 
   Future<void> _loadCurrentUser() async {
@@ -70,7 +76,7 @@ class _LocationScreenState extends State<LocationScreen> {
 
   @override
   void dispose() {
-    _dataManager.removeListener(() => setState(() {}));
+    _dataManager.removeListener(_onDataManagerChanged);
     super.dispose();
   }
 
