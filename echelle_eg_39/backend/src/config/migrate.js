@@ -79,7 +79,8 @@ async function runMigrations({ closePool = false } = {}) {
         date_fin DATE NOT NULL,
         prix_journalier INTEGER NOT NULL,
         montant_total INTEGER NOT NULL,
-        statut VARCHAR(20) DEFAULT 'en_cours' CHECK (statut IN ('en_cours', 'termine', 'en_retard')),
+        statut VARCHAR(20) DEFAULT 'en_attente' CHECK (statut IN ('en_attente', 'en_cours', 'termine', 'rejetee', 'en_retard')),
+        commentaire_admin TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )

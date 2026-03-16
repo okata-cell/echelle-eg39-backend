@@ -27,6 +27,7 @@ class Transaction {
   final List<String> extensionIds;
   final int extensionCount;
   final int unpaidExtensionAmount;
+  final String? adminComment;
 
   Transaction({
     required this.id,
@@ -43,6 +44,7 @@ class Transaction {
     List<String>? extensionIds,
     this.extensionCount = 0,
     this.unpaidExtensionAmount = 0,
+    this.adminComment,
   })  : dailyRate = dailyRate ?? 0,
         extensionIds = extensionIds ?? [];
 
@@ -61,6 +63,7 @@ class Transaction {
     List<String>? extensionIds,
     int? extensionCount,
     int? unpaidExtensionAmount,
+    String? adminComment,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -77,6 +80,7 @@ class Transaction {
       extensionIds: extensionIds ?? this.extensionIds,
       extensionCount: extensionCount ?? this.extensionCount,
       unpaidExtensionAmount: unpaidExtensionAmount ?? this.unpaidExtensionAmount,
+      adminComment: adminComment ?? this.adminComment,
     );
   }
 }
@@ -113,7 +117,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       if (_selectedFilter == 'En cours') {
         return t.status == 'en-cours';
       }
-      if (_selectedFilter == 'Terminés') return t.status == 'termine';
+      if (_selectedFilter == 'Terminés') return t.status == 'termine' || t.status == 'rejetee';
       if (_selectedFilter == 'En attente') return t.status == 'en-attente';
       return true;
     }).toList();
@@ -201,6 +205,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           isPaid: loc['montantTotal'] != null,
           dailyRate: loc['prixJournalier'] as int? ?? 0,
           invoiceNumber: loc['code'] as String?,
+          adminComment: loc['commentaireAdmin'] as String?,
         ));
       }
 
@@ -280,7 +285,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       case 'en-attente':
         return 'en-attente';
       case 'rejetee':
-        return 'termine';
+        return 'rejetee';
       default:
         return 'en-attente';
     }
@@ -801,6 +806,13 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           'icon': Icons.hourglass_empty,
           'textColor': const Color(0xFFD97706),
           'label': 'En attente',
+        };
+      case 'rejetee':
+        return {
+          'bgColor': const Color(0xFFFEE2E2),
+          'icon': Icons.cancel,
+          'textColor': const Color(0xFFDC2626),
+          'label': 'Rejeté',
         };
       default:
         return {

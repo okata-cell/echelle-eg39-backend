@@ -1,9 +1,10 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
-import 'package:intl/intl.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'login.page.dart';
+import 'widgets/image_zoom_viewer.dart';
 
 class Equipment {
   final int id;
@@ -35,8 +36,12 @@ class _LocationScreenState extends State<LocationScreen> {
 
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
+  String _currentUserId = '';
 
-  final List<String> _categories = ['Tous', 'GPS', 'Station totale', 'Niveau', 'Mire', 'Trepied' , 'Drone', 'Laser', 'Réflecteur'];
+  final List<String> _categories = [
+    'Tous', 'GPS', 'Station totale', 'Niveau', 'Mire',
+    'Trepied', 'Drone', 'Laser', 'Réflecteur'
+  ];
 
   List<Equipment> get _equipments => _dataManager.appareils.map((a) => Equipment(
     id: int.parse(a.id.substring(4)),
@@ -50,8 +55,17 @@ class _LocationScreenState extends State<LocationScreen> {
   @override
   void initState() {
     super.initState();
+    _loadCurrentUser();
     _dataManager.initialize();
     _dataManager.addListener(() => setState(() {}));
+  }
+
+  Future<void> _loadCurrentUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    final email = prefs.getString('userEmail') ?? '';
+    if (mounted) {
+      setState(() => _currentUserId = email);
+    }
   }
 
   @override
@@ -149,7 +163,15 @@ class _LocationScreenState extends State<LocationScreen> {
               itemCount: _filteredEquipments.length,
               itemBuilder: (context, index) {
                 final equipment = _filteredEquipments[index];
-                return _buildEquipmentCard(equipment);
+                return _EquipmentCard(
+                  key: ValueKey('card_${equipment.id}'),
+                  equipment: equipment,
+                  userId: _currentUserId,
+                  onRefresh: () {
+                    _loadCurrentUser();
+                    _dataManager.initialize();
+                  },
+                );
               },
             ),
           ),
@@ -157,129 +179,115 @@ class _LocationScreenState extends State<LocationScreen> {
       ),
     );
   }
+}
 
-  Widget _buildEquipmentCard(Equipment equipment) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          Container(
-            width: 128,
-            height: 128,
-            decoration: const BoxDecoration(
-              borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(12),
-                bottomLeft: Radius.circular(12),
-              ),
-            ),
-            child: ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                bottomLeft: Radius.circular(12),
-              ),
-              child: Image.network(
-                equipment.imageUrl,
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    color: Colors.grey[300],
-                    child: const Icon(Icons.image, size: 40, color: Colors.grey),
-                  );
-                },
-              ),
-            ),
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    equipment.name,
-                    style: const TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF111827),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  Text(
-                    equipment.category,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF6B7280),
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '${equipment.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ')} FCFA/jour',
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Color(0xFF2563EB),
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                        decoration: BoxDecoration(
-                          color: equipment.available
-                            ? const Color(0xFFD1FAE5)
-                            : const Color(0xFFFEE2E2),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Text(
-                          equipment.available ? 'Disponible' : 'Indisponible',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: equipment.available
-                              ? const Color(0xFF059669)
-                              : const Color(0xFFDC2626),
-                          ),
-                        ),
-                      ),
-                      const Spacer(),
-                      ElevatedButton.icon(
-                        onPressed: equipment.available ? () => _showReservationDialog(equipment) : null,
-                        icon: const Icon(Icons.calendar_today, size: 16),
-                        label: const Text('Réserver', style: TextStyle(fontSize: 12)),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: const Color.fromARGB(255, 209, 216, 231),
-                          disabledBackgroundColor: const Color(0xFFD1D5DB),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
+// ─────────────────────────────────────────────────────────────────────────────
+// _EquipmentCard – StatefulWidget with 24h cooldown per equipment per user
+// ─────────────────────────────────────────────────────────────────────────────
+
+class _EquipmentCard extends StatefulWidget {
+  final Equipment equipment;
+  final String userId;
+  final VoidCallback onRefresh;
+
+  const _EquipmentCard({
+    super.key,
+    required this.equipment,
+    required this.userId,
+    required this.onRefresh,
+  });
+
+  @override
+  State<_EquipmentCard> createState() => _EquipmentCardState();
+}
+
+class _EquipmentCardState extends State<_EquipmentCard> {
+  DateTime? _cooldownUntil;
+  Timer? _timer;
+  bool _isSubmitting = false;
+
+  String get _cooldownKey =>
+      'cooldown_${widget.userId}_${widget.equipment.id}';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCooldown();
+    // Refresh countdown display every 30 seconds
+    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
+      _loadCooldown();
+    });
   }
 
-  void _showReservationDialog(Equipment equipment) async {
-    // Check if user is authenticated
+  @override
+  void didUpdateWidget(_EquipmentCard oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.userId != widget.userId ||
+        oldWidget.equipment.id != widget.equipment.id) {
+      _loadCooldown();
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadCooldown() async {
+    if (widget.userId.isEmpty) {
+      if (mounted) setState(() => _cooldownUntil = null);
+      return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final stored = prefs.getString(_cooldownKey);
+    if (stored != null) {
+      final until = DateTime.parse(stored);
+      if (until.isAfter(DateTime.now())) {
+        if (mounted) setState(() => _cooldownUntil = until);
+      } else {
+        // Cooldown expired – clean up
+        await prefs.remove(_cooldownKey);
+        if (mounted) setState(() => _cooldownUntil = null);
+      }
+    } else {
+      if (mounted) setState(() => _cooldownUntil = null);
+    }
+  }
+
+  Future<void> _saveCooldown() async {
+    if (widget.userId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    final until = DateTime.now().add(const Duration(hours: 24));
+    await prefs.setString(_cooldownKey, until.toIso8601String());
+    if (mounted) setState(() => _cooldownUntil = until);
+  }
+
+  bool get _isInCooldown =>
+      _cooldownUntil != null && _cooldownUntil!.isAfter(DateTime.now());
+
+  Duration get _remaining {
+    if (_cooldownUntil == null) return Duration.zero;
+    final r = _cooldownUntil!.difference(DateTime.now());
+    return r.isNegative ? Duration.zero : r;
+  }
+
+  String _formatCountdown(Duration d) {
+    final h = d.inHours;
+    final m = d.inMinutes % 60;
+    if (h > 0) return '${h}h ${m}min';
+    return '${m}min';
+  }
+
+  // ───────────────────────── Reservation dialog ─────────────────────────────
+
+  void _handleReservePressed() async {
+    // Check authentication first
     final token = await ApiService.getToken();
+    if (!mounted) return;
+
     if (token == null) {
-      // Show dialog to login
-      if (!mounted) return;
+      // Not logged in → prompt login
       showDialog(
         context: context,
         builder: (ctx) => AlertDialog(
@@ -306,72 +314,96 @@ class _LocationScreenState extends State<LocationScreen> {
       return;
     }
 
-    // Get user info
+    // Re-check cooldown (in case state is stale)
+    await _loadCooldown();
+    if (!mounted) return;
+
+    if (_isInCooldown) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Vous avez déjà réservé cet appareil. Prochaine réservation dans ${_formatCountdown(_remaining)}.',
+          ),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
+
+    _showReservationDialog();
+  }
+
+  void _showReservationDialog() async {
     final prefs = await SharedPreferences.getInstance();
-    final userName = prefs.getString('userName') ?? 'Client connecté';
+    final userName  = prefs.getString('userName')  ?? 'Client connecté';
     final userEmail = prefs.getString('userEmail') ?? 'client@exemple.com';
     final userPhone = prefs.getString('userPhone') ?? '+228 00 00 00 00';
+
+    if (!mounted) return;
 
     DateTime? selectedStartDate;
     DateTime? selectedEndDate;
 
     await showDialog(
       context: context,
-      builder: (BuildContext context) {
+      barrierDismissible: false,
+      builder: (BuildContext ctx) {
         return StatefulBuilder(
-          builder: (context, setState) {
+          builder: (ctx, setDialogState) {
             return AlertDialog(
-              title: Text('Réserver ${equipment.name}'),
+              title: Text('Réserver ${widget.equipment.name}'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
+                  // Date de début
                   ListTile(
                     title: Text(selectedStartDate == null
                         ? 'Sélectionner date de début'
-                        : 'Date de début: ${selectedStartDate!.toLocal().toString().split(' ')[0]}'),
+                        : 'Début : ${selectedStartDate!.toLocal().toString().split(' ')[0]}'),
                     trailing: const Icon(Icons.calendar_today),
                     onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
+                      final picked = await showDatePicker(
+                        context: ctx,
                         initialDate: DateTime.now(),
                         firstDate: DateTime.now(),
                         lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (picked != null) {
-                        setState(() {
+                        setDialogState(() {
                           selectedStartDate = picked;
-                          if (selectedEndDate != null && selectedEndDate!.isBefore(picked)) {
+                          if (selectedEndDate != null &&
+                              selectedEndDate!.isBefore(picked)) {
                             selectedEndDate = picked.add(const Duration(days: 1));
                           }
                         });
                       }
                     },
                   ),
+                  // Date de fin
                   ListTile(
                     title: Text(selectedEndDate == null
                         ? 'Sélectionner date de fin'
-                        : 'Date de fin: ${selectedEndDate!.toLocal().toString().split(' ')[0]}'),
+                        : 'Fin : ${selectedEndDate!.toLocal().toString().split(' ')[0]}'),
                     trailing: const Icon(Icons.calendar_today),
                     onTap: () async {
-                      final DateTime? picked = await showDatePicker(
-                        context: context,
+                      final picked = await showDatePicker(
+                        context: ctx,
                         initialDate: selectedStartDate ?? DateTime.now(),
                         firstDate: selectedStartDate ?? DateTime.now(),
                         lastDate: DateTime.now().add(const Duration(days: 365)),
                       );
                       if (picked != null) {
-                        setState(() {
-                          selectedEndDate = picked;
-                        });
+                        setDialogState(() => selectedEndDate = picked);
                       }
                     },
                   ),
+                  // Résumé durée / total
                   if (selectedStartDate != null && selectedEndDate != null)
                     Padding(
                       padding: const EdgeInsets.only(top: 16),
                       child: Text(
-                        'Durée: ${(selectedEndDate!.difference(selectedStartDate!).inDays + 1)} jour(s)\n'
-                        'Total: ${((selectedEndDate!.difference(selectedStartDate!).inDays + 1) * equipment.price).toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (Match m) => '${m[1]} ')} FCFA',
+                        'Durée : ${selectedEndDate!.difference(selectedStartDate!).inDays + 1} jour(s)\n'
+                        'Total : ${((selectedEndDate!.difference(selectedStartDate!).inDays + 1) * widget.equipment.price).toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ')} FCFA',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -379,64 +411,245 @@ class _LocationScreenState extends State<LocationScreen> {
               ),
               actions: [
                 TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
+                  onPressed: _isSubmitting ? null : () => Navigator.of(ctx).pop(),
                   child: const Text('Annuler'),
                 ),
                 ElevatedButton(
-                  onPressed: selectedStartDate != null && selectedEndDate != null
+                  onPressed: (selectedStartDate != null &&
+                          selectedEndDate != null &&
+                          !_isSubmitting)
                       ? () async {
+                          setDialogState(() => _isSubmitting = true);
                           try {
-                            final days = selectedEndDate!.difference(selectedStartDate!).inDays + 1;
-                            final total = days * equipment.price;
-                            
-                            // Try API first, fallback to local storage
+                            final days =
+                                selectedEndDate!.difference(selectedStartDate!).inDays + 1;
+                            final total = days * widget.equipment.price;
+
                             try {
                               await ApiService.createLocationRequest(
-                                equipment.id,
+                                widget.equipment.id,
                                 selectedStartDate!.toIso8601String(),
                                 selectedEndDate!.toIso8601String(),
                                 days,
                                 total,
                               );
                             } catch (apiError) {
-                              // If API fails (no backend), save locally
-                              print('API non disponible, sauvegarde locale: $apiError');
-                              // Store location request locally in SharedPreferences
-                              final locationRequests = prefs.getStringList('local_locations') ?? [];
+                              // Backend unavailable → save locally
+                              debugPrint('API non disponible, sauvegarde locale: $apiError');
+                              final locationRequests =
+                                  prefs.getStringList('local_locations') ?? [];
                               locationRequests.add(
-                                '${equipment.id}|${equipment.name}|${selectedStartDate!.toIso8601String()}|${selectedEndDate!.toIso8601String()}|${days}|${total}|${userName}|${userEmail}|${userPhone}'
+                                '${widget.equipment.id}|${widget.equipment.name}'
+                                '|${selectedStartDate!.toIso8601String()}'
+                                '|${selectedEndDate!.toIso8601String()}'
+                                '|$days|$total'
+                                '|$userName|$userEmail|$userPhone',
                               );
                               await prefs.setStringList('local_locations', locationRequests);
                             }
-                            
+
+                            // ✅ Save 24h cooldown for this user + equipment
+                            await _saveCooldown();
+
                             if (!mounted) return;
-                            Navigator.of(context).pop();
+                            Navigator.of(ctx).pop();
+
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('${equipment.name} réservé avec succès!'),
+                                content: Text(
+                                  '${widget.equipment.name} réservé avec succès ! '
+                                  'Prochaine réservation possible dans 24h.',
+                                ),
                                 backgroundColor: const Color(0xFF059669),
+                                duration: const Duration(seconds: 4),
                               ),
                             );
-                            // Refresh the data
-                            _dataManager.initialize();
+
+                            widget.onRefresh();
                           } catch (e) {
+                            setDialogState(() => _isSubmitting = false);
                             if (!mounted) return;
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Erreur: $e'),
+                                content: Text('Erreur : $e'),
                                 backgroundColor: Colors.red,
                               ),
                             );
                           }
                         }
                       : null,
-                  child: const Text('Confirmer'),
+                  child: _isSubmitting
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                        )
+                      : const Text('Confirmer'),
                 ),
               ],
             );
           },
         );
       },
+    );
+
+    // Reset submit flag when dialog closes
+    if (mounted) setState(() => _isSubmitting = false);
+  }
+
+  // ─────────────────────────────── UI ────────────────────────────────────────
+
+  @override
+  Widget build(BuildContext context) {
+    final equipment = widget.equipment;
+    final inCooldown = _isInCooldown;
+    final canReserve = equipment.available && !inCooldown;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          // Image (tappable → zoom plein écran)
+          SizedBox(
+            width: 128,
+            height: 128,
+            child: ZoomableImage(
+              imageUrl: equipment.imageUrl,
+              title: equipment.name,
+              width: 128,
+              height: 128,
+              borderRadius: const BorderRadius.only(
+                topLeft: Radius.circular(12),
+                bottomLeft: Radius.circular(12),
+              ),
+            ),
+          ),
+
+          // Details
+          Expanded(
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    equipment.name,
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF111827),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    equipment.category,
+                    style: const TextStyle(fontSize: 14, color: Color(0xFF6B7280)),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '${equipment.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ')} FCFA/jour',
+                    style: const TextStyle(
+                      fontSize: 14,
+                      color: Color(0xFF2563EB),
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      // Availability badge
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                        decoration: BoxDecoration(
+                          color: equipment.available
+                              ? const Color(0xFFD1FAE5)
+                              : const Color(0xFFFEE2E2),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Text(
+                          equipment.available ? 'Disponible' : 'Indisponible',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: equipment.available
+                                ? const Color(0xFF059669)
+                                : const Color(0xFFDC2626),
+                          ),
+                        ),
+                      ),
+                      const Spacer(),
+
+                      // Reserve button (with cooldown label)
+                      _buildReserveButton(canReserve, inCooldown),
+                    ],
+                  ),
+
+                  // Cooldown hint below button row
+                  if (inCooldown)
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          const Icon(Icons.access_time,
+                              size: 12, color: Color(0xFFD97706)),
+                          const SizedBox(width: 4),
+                          Text(
+                            'Dispo dans ${_formatCountdown(_remaining)}',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              color: Color(0xFFD97706),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildReserveButton(bool canReserve, bool inCooldown) {
+    if (inCooldown) {
+      return ElevatedButton.icon(
+        onPressed: null, // disabled
+        icon: const Icon(Icons.lock_clock, size: 16),
+        label: Text(
+          _formatCountdown(_remaining),
+          style: const TextStyle(fontSize: 11),
+        ),
+        style: ElevatedButton.styleFrom(
+          disabledBackgroundColor: const Color(0xFFFEF3C7),
+          disabledForegroundColor: const Color(0xFFD97706),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        ),
+      );
+    }
+
+    return ElevatedButton.icon(
+      onPressed: canReserve ? _handleReservePressed : null,
+      icon: const Icon(Icons.calendar_today, size: 16),
+      label: const Text('Réserver', style: TextStyle(fontSize: 12)),
+      style: ElevatedButton.styleFrom(
+        backgroundColor: const Color.fromARGB(255, 209, 216, 231),
+        disabledBackgroundColor: const Color(0xFFD1D5DB),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      ),
     );
   }
 }

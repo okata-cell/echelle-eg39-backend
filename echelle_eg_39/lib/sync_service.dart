@@ -4,15 +4,15 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// Service de synchronisation pour gérer la connexion entre le stockage local et l'API
 class SyncService {
-  static const String baseUrl = 'https://echelle-eg39-backend.onrender.com/api';
+  static const String baseUrl = 'https://echelle-eg39-backend-1.onrender.com/api';
   
-  /// Vérifie si l'API est disponible
+  /// Vérifie si l'API est disponible (avec timeout court pour éviter le blocage)
   static Future<bool> isApiAvailable() async {
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/auth/me'),
         headers: {'Content-Type': 'application/json'},
-      ).timeout(const Duration(seconds: 5));
+      ).timeout(const Duration(seconds: 3)); // Timeout réduit à 3 secondes
       
       // Si on reçoit une réponse (même 401), l'API est disponible
       return response.statusCode != 0;

@@ -45,6 +45,7 @@ router.get('/', authMiddleware, async (req, res) => {
         prixJournalier: l.prix_journalier,
         montantTotal: l.montant_total,
         statut: l.statut,
+        commentaireAdmin: l.commentaire_admin,
         createdAt: l.created_at
       }))
     });
@@ -91,19 +92,19 @@ router.post('/', authMiddleware, [
     const code = `LOC-${Date.now()}`;
 
     const result = await pool.query(
-      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
        RETURNING *`,
       [code, targetUserId, appareilId, appareil.nom, dateDebut, dateFin, appareil.prix_location, montantTotal]
     );
 
-    // Marquer l'appareil comme indisponible
-    await pool.query('UPDATE appareils SET disponible = false WHERE id = $1', [appareilId]);
+    // NE PAS marquer l'appareil comme indisponible automatiquement
+    // L'appareil ne sera marqué indisponible que quand l'admin approuve
 
     const location = result.rows[0];
 
     res.status(201).json({
-      message: 'Location créée',
+      message: 'Location créée en attente de validation',
       location: {
         id: location.id,
         code: location.code,
@@ -146,6 +147,62 @@ router.patch('/:id/terminer', authMiddleware, adminMiddleware, async (req, res) 
     res.json({ message: 'Location terminée' });
   } catch (error) {
     console.error('Erreur terminer location:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Approuver une location (admin)
+router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const result = await pool.query(
+      `UPDATE locations
+       SET statut = 'en_cours', updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1
+       RETURNING *`,
+      [id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Location non trouvée' });
+    }
+
+    const location = result.rows[0];
+
+    // Marquer l'appareil comme indisponible
+    if (location.appareil_id) {
+      await pool.query('UPDATE appareils SET disponible = false WHERE id = $1', [location.appareil_id]);
+    }
+
+    res.json({ message: 'Location approuvée', location });
+  } catch (error) {
+    console.error('Erreur approuver location:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Rejeter une location (admin)
+router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { raison } = req.body;
+
+    const result = await pool.query(
+      `UPDATE locations
+       SET statut = 'rejetee', commentaire_admin = $1, updated_at = CURRENT_TIMESTAMP
+       WHERE id = $2
+       RETURNING *`,
+      [raison || 'Demande rejetée', id]
+    );
+
+    if (result.rows.length === 0) {
+      return res.status(404).json({ error: 'Location non trouvée' });
+    }
+
+    res.json({ message: 'Location rejetée', location: result.rows[0] });
+  } catch (error) {
+    console.error('Erreur rejeter location:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
