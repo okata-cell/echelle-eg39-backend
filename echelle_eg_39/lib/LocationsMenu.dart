@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
+import 'dart:async';
 import 'data_manager.dart';
 import 'api_service.dart';
 
@@ -9,11 +11,13 @@ class LocationPage extends StatefulWidget {
 
 class _LocationPageState extends State<LocationPage> {
   final DataManager _dataManager = DataManager();
+  Timer? _refreshTimer;
   
   // Données chargées depuis l'API
   List<Map<String, dynamic>> _locationsFromAPI = [];
   bool _isLoadingLocations = true;
   String? _errorLoadingLocations;
+  int _previousLocationCount = 0;
   
   String? clientChoisi;
   String? appareilChoisi;
@@ -41,6 +45,20 @@ class _LocationPageState extends State<LocationPage> {
     super.initState();
     _dataManager.initialize();
     _loadLocationsFromAPI();
+    // Auto-refresh toutes les 10 secondes
+    _startAutoRefresh();
+  }
+
+  void _startAutoRefresh() {
+    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
+      _loadLocationsFromAPI();
+    });
+  }
+
+  @override
+  void dispose() {
+    _refreshTimer?.cancel();
+    super.dispose();
   }
 
   // Charger les locations depuis l'API
@@ -52,17 +70,40 @@ class _LocationPageState extends State<LocationPage> {
     
     try {
       final locations = await ApiService.getLocations();
+      final enAttente = locations.where((l) => l['statut'] == 'en_attente').toList();
+      
+      // Détecter les nouvelles locations en attente
+      final newCount = enAttente.length;
+      final hasNewLocations = newCount > _previousLocationCount && _previousLocationCount > 0;
+      
       setState(() {
-        _locationsFromAPI = locations;
+        _locationsFromAPI = enAttente;
         _isLoadingLocations = false;
+        _previousLocationCount = newCount;
       });
-      print('📡 Locations chargées pour admin: ${locations.length}');
+      
+      // Afficher notification si nouvelle location
+      if (hasNewLocations) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('🔔 Nouvelle demande de location! ($newCount en attente)'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      
+      if (kDebugMode) {
+        print('📡 Locations en attente chargées: ${locations.length}');
+      }
     } catch (e) {
       setState(() {
         _errorLoadingLocations = e.toString();
         _isLoadingLocations = false;
       });
-      print('❌ Erreur chargement locations: $e');
+      if (kDebugMode) {
+        print('❌ Erreur chargement locations: $e');
+      }
     }
   }
 
@@ -309,9 +350,10 @@ class _LocationPageState extends State<LocationPage> {
                       onPressed: () => _showLocationDialog(appareil),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF6366F1),
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 6, horizontal: 4),
+                        minimumSize: const Size(0, 32),
                       ),
-                      child: const Text('Louer', style: TextStyle(fontSize: 12)),
+                      child: const Text('Louer', style: TextStyle(fontSize: 11)),
                     ),
                   ),
                 ],
@@ -423,6 +465,74 @@ class _LocationPageState extends State<LocationPage> {
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Valider'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              Navigator.pop(context);
+              _showRejectDialog(location);
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showRejectDialog(Map<String, dynamic> location) {
+    final raisonController = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Rejeter la location'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Veuillez préciser la raison du rejet :'),
+            const SizedBox(height: 12),
+            TextField(
+              controller: raisonController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                labelText: 'Raison du rejet',
+                border: OutlineInputBorder(),
+                hintText: 'Ex: Appareil non disponible, problème de paiement...',
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final raison = raisonController.text.trim();
+              if (raison.isEmpty) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('Veuillez saisir une raison de rejet')),
+                );
+                return;
+              }
+              Navigator.pop(context);
+              // Appeler l'API pour rejeter
+              try {
+                final response = await ApiService.rejectLocation(location['id'], raison);
+                if (response != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Location rejetée avec succès!')),
+                  );
+                  _loadLocationsFromAPI();
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(content: Text('Erreur: $e')),
+                );
+              }
+            },
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Confirmer le rejet'),
           ),
         ],
       ),
