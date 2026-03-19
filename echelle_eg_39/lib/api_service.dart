@@ -371,6 +371,32 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
     }
   }
 
+  /// Approuver une location (admin)
+  static Future<Map<String, dynamic>?> approveLocation(int locationId) async {
+    final token = await ensureAuthenticated();
+    if (token == null) throw Exception('Not authenticated');
+
+    final url = '$baseUrl/locations/$locationId/approuver';
+    print('📡 API approveLocation: $url');
+
+    final response = await http.patch(
+      Uri.parse(url),
+      headers: {
+        'Authorization': 'Bearer $token',
+        'Content-Type': 'application/json',
+      },
+    );
+
+    print('📡 approveLocation status: ${response.statusCode}');
+    print('📡 approveLocation body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de l\'approbation de la location');
+    }
+  }
+
   /// Récupérer toutes les demandes d'achat de l'utilisateur connecté
   static Future<List<Map<String, dynamic>>> getDemandesAchat({String? statut}) async {
     final token = await ensureAuthenticated();

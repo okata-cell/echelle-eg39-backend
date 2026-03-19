@@ -415,12 +415,29 @@ class _LocationPageState extends State<LocationPage> {
             child: const Text('Fermer'),
           ),
           ElevatedButton(
-            onPressed: () {
-              // Valider la location
+            onPressed: () async {
+              // Valider la location via API
               Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('Location validée!')),
-              );
+              try {
+                final response = await ApiService.approveLocation(location['id']);
+                if (response != null) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Location validée avec succès!'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  // Rafraîchir la liste des locations
+                  _loadLocationsFromAPI();
+                }
+              } catch (e) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text('Erreur: $e'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
             child: const Text('Valider'),
