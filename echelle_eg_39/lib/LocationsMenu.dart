@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
-import 'dart:async';
 import 'data_manager.dart';
 import 'api_service.dart';
 
@@ -11,13 +9,11 @@ class LocationPage extends StatefulWidget {
 
 class _LocationPageState extends State<LocationPage> {
   final DataManager _dataManager = DataManager();
-  Timer? _refreshTimer;
   
   // Données chargées depuis l'API
   List<Map<String, dynamic>> _locationsFromAPI = [];
   bool _isLoadingLocations = true;
   String? _errorLoadingLocations;
-  int _previousLocationCount = 0;
   
   String? clientChoisi;
   String? appareilChoisi;
@@ -45,20 +41,6 @@ class _LocationPageState extends State<LocationPage> {
     super.initState();
     _dataManager.initialize();
     _loadLocationsFromAPI();
-    // Auto-refresh toutes les 10 secondes
-    _startAutoRefresh();
-  }
-
-  void _startAutoRefresh() {
-    _refreshTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _loadLocationsFromAPI();
-    });
-  }
-
-  @override
-  void dispose() {
-    _refreshTimer?.cancel();
-    super.dispose();
   }
 
   // Charger les locations depuis l'API
@@ -70,40 +52,17 @@ class _LocationPageState extends State<LocationPage> {
     
     try {
       final locations = await ApiService.getLocations();
-      final enAttente = locations.where((l) => l['statut'] == 'en_attente').toList();
-      
-      // Détecter les nouvelles locations en attente
-      final newCount = enAttente.length;
-      final hasNewLocations = newCount > _previousLocationCount && _previousLocationCount > 0;
-      
       setState(() {
-        _locationsFromAPI = enAttente;
+        _locationsFromAPI = locations;
         _isLoadingLocations = false;
-        _previousLocationCount = newCount;
       });
-      
-      // Afficher notification si nouvelle location
-      if (hasNewLocations) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('🔔 Nouvelle demande de location! ($newCount en attente)'),
-            backgroundColor: Colors.orange,
-            duration: const Duration(seconds: 3),
-          ),
-        );
-      }
-      
-      if (kDebugMode) {
-        print('📡 Locations en attente chargées: ${locations.length}');
-      }
+      print('📡 Locations chargées pour admin: ${locations.length}');
     } catch (e) {
       setState(() {
         _errorLoadingLocations = e.toString();
         _isLoadingLocations = false;
       });
-      if (kDebugMode) {
-        print('❌ Erreur chargement locations: $e');
-      }
+      print('❌ Erreur chargement locations: $e');
     }
   }
 
