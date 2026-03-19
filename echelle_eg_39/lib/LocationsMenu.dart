@@ -417,11 +417,12 @@ class _LocationPageState extends State<LocationPage> {
           ElevatedButton(
             onPressed: () async {
               // Valider la location via API
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               try {
                 final response = await ApiService.approveLocation(location['id']);
-                if (response != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                if (response != null && mounted) {
+                  scaffoldMessenger.showSnackBar(
                     const SnackBar(
                       content: Text('Location validée avec succès!'),
                       backgroundColor: Colors.green,
@@ -431,12 +432,14 @@ class _LocationPageState extends State<LocationPage> {
                   _loadLocationsFromAPI();
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Erreur: $e'),
-                    backgroundColor: Colors.red,
-                  ),
-                );
+                if (mounted) {
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.green),
@@ -491,20 +494,23 @@ class _LocationPageState extends State<LocationPage> {
                 );
                 return;
               }
+              final scaffoldMessenger = ScaffoldMessenger.of(context);
               Navigator.pop(context);
               // Appeler l'API pour rejeter
               try {
                 final response = await ApiService.rejectLocation(location['id'], raison);
-                if (response != null) {
-                  ScaffoldMessenger.of(context).showSnackBar(
+                if (response != null && mounted) {
+                  scaffoldMessenger.showSnackBar(
                     const SnackBar(content: Text('Location rejetée avec succès!')),
                   );
                   _loadLocationsFromAPI();
                 }
               } catch (e) {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(content: Text('Erreur: $e')),
-                );
+                if (mounted) {
+                  scaffoldMessenger.showSnackBar(
+                    SnackBar(content: Text('Erreur: $e')),
+                  );
+                }
               }
             },
             style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
