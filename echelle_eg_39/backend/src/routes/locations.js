@@ -74,15 +74,18 @@ router.post('/', authMiddleware, [
 
     // Récupérer les infos de l'appareil
     const appareilResult = await pool.query(
-      'SELECT * FROM appareils WHERE id = $1 AND disponible = true',
+      'SELECT * FROM appareils WHERE id = $1',
       [appareilId]
     );
 
     if (appareilResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Appareil non disponible' });
+      return res.status(404).json({ error: 'Appareil ID invalide' });
     }
 
     const appareil = appareilResult.rows[0];
+    if (!appareil.disponible) {
+      console.warn(`⚠️ Location créée pour appareil INDISPONIBLE: ${appareilId} - ${appareil.nom}`);
+    }
     
     // Calculer le nombre de jours
     const debut = new Date(dateDebut);
