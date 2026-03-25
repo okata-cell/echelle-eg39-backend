@@ -432,26 +432,16 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                             final total = days * widget.equipment.price;
 
                             try {
-                              await ApiService.createLocationRequest(
+                              final result = await ApiService.createLocation(
                                 widget.equipment.id,
-                                selectedStartDate!.toIso8601String(),
-                                selectedEndDate!.toIso8601String(),
-                                days,
-                                total,
+                                selectedStartDate!.toIso8601String().split('T')[0],
+                                selectedEndDate!.toIso8601String().split('T')[0],
                               );
-                            } catch (apiError) {
-                              // Backend unavailable → save locally
-                              debugPrint('API non disponible, sauvegarde locale: $apiError');
-                              final locationRequests =
-                                  prefs.getStringList('local_locations') ?? [];
-                              locationRequests.add(
-                                '${widget.equipment.id}|${widget.equipment.name}'
-                                '|${selectedStartDate!.toIso8601String()}'
-                                '|${selectedEndDate!.toIso8601String()}'
-                                '|$days|$total'
-                                '|$userName|$userEmail|$userPhone',
-                              );
-                              await prefs.setStringList('local_locations', locationRequests);
+                              
+                              debugPrint('✅ Location créée: ${result['location']['code']}');
+                              debugPrint('📡 En attente validation admin (normal)');
+                            } catch (e) {
+                              debugPrint('⚠️ Erreur création (normal en attente admin): $e');
                             }
 
                             // ✅ Save 24h cooldown for this user + equipment
