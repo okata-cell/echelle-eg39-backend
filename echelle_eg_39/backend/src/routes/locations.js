@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { sendLocationApprovedEmail, sendLocationRejectedEmail } = require('../services/email_sms_service');
 
 // Liste des locations
 router.get('/', authMiddleware, async (req, res) => {
@@ -55,7 +56,7 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Créer une location (admin ou client)
+// Créer une location (admin ou client) - FIXED pour debug admin
 router.post('/', authMiddleware, [
   body('appareilId').isInt().withMessage('ID appareil requis'),
   body('dateDebut').isISO8601().toDate().withMessage('Date début invalide'),
@@ -64,13 +65,16 @@ router.post('/', authMiddleware, [
   try {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
+      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { appareilId, dateDebut, dateFin, userId } = req.body;
+    const { appareilId, dateDebut, dateFin, userId, nombreJours, total } = req.body;
+    console.log('📦 POST /locations body:', req.body);
+    console.log('👤 User:', req.user.role, req.user.userId);
 
     // Admin peut créer pour un autre user, client seulement pour lui-même
-    const targetUserId = req.user.role === 'admin' && userId ? userId : req.user.userId;
+    const targetUserId = req.user.role === 'admin' && userId ? parseInt(userId) : req.user.userId;
 
     // Récupérer les infos de l'appareil
     const appareilResult = await pool.query(
@@ -79,10 +83,13 @@ router.post('/', authMiddleware, [
     );
 
     if (appareilResult.rows.length === 0) {
+      console.log('❌ Appareil non trouvé:', appareilId);
       return res.status(404).json({ error: 'Appareil ID invalide' });
     }
 
     const appareil = appareilResult.rows[0];
+    console.log('🔍 Appareil:', appareil.nom, 'disponible:', appareil.disponible ? 'OUI' : 'NON');
+    
     if (!appareil.disponible) {
       console.warn(`⚠️ Location créée pour appareil INDISPONIBLE: ${appareilId} - ${appareil.nom}`);
     }
@@ -91,8 +98,12 @@ router.post('/', authMiddleware, [
     const debut = new Date(dateDebut);
     const fin = new Date(dateFin);
     const jours = Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1;
-    const montantTotal = appareil.prix_location * jours;
+    
+    // Utiliser total du client si fourni, sinon calcul automatique
+    const montantTotal = total ? parseInt(total) : appareil.prix_location * jours;
+    
     const code = `LOC-${Date.now()}`;
+    console.log('💰 Total calculé:', montantTotal, 'jours:', jours, 'prix/jour:', appareil.prix_location);
 
     const result = await pool.query(
       `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
@@ -101,10 +112,12 @@ router.post('/', authMiddleware, [
       [code, targetUserId, appareilId, appareil.nom, dateDebut, dateFin, appareil.prix_location, montantTotal]
     );
 
-    // NE PAS marquer l'appareil comme indisponible automatiquement
-    // L'appareil ne sera marqué indisponible que quand l'admin approuve
+    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut=en_attente');
 
     const location = result.rows[0];
+
+    // NE PAS marquer l'appareil comme indisponible automatiquement
+    // L'appareil ne sera marqué indisponible que quand l'admin approuve
 
     res.status(201).json({
       message: 'Location créée en attente de validation',
@@ -119,7 +132,7 @@ router.post('/', authMiddleware, [
       }
     });
   } catch (error) {
-    console.error('Erreur création location:', error);
+    console.error('💥 Erreur création location:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
@@ -159,6 +172,22 @@ router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res)
   try {
     const { id } = req.params;
 
+    // First get the location with user info
+    const locResult = await pool.query(
+      `SELECT l.*, u.first_name, u.last_name, u.email 
+       FROM locations l 
+       JOIN users u ON l.user_id = u.id 
+       WHERE l.id = $1`,
+      [id]
+    );
+
+    if (locResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Location non trouvée' });
+    }
+
+    const location = locResult.rows[0];
+
+    // Update the location status
     const result = await pool.query(
       `UPDATE locations
        SET statut = 'en_cours', updated_at = CURRENT_TIMESTAMP
@@ -167,18 +196,29 @@ router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res)
       [id]
     );
 
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Location non trouvée' });
-    }
-
-    const location = result.rows[0];
+    const updatedLocation = result.rows[0];
 
     // Marquer l'appareil comme indisponible
-    if (location.appareil_id) {
-      await pool.query('UPDATE appareils SET disponible = false WHERE id = $1', [location.appareil_id]);
+    if (updatedLocation.appareil_id) {
+      await pool.query('UPDATE appareils SET disponible = false WHERE id = $1', [updatedLocation.appareil_id]);
     }
 
-    res.json({ message: 'Location approuvée', location });
+    // Envoyer un email de notification
+    const userName = `${location.first_name} ${location.last_name}`;
+    const userEmail = location.email;
+    
+    // Envoyer l'email de manière asynchrone (ne pas bloquer la réponse)
+    sendLocationApprovedEmail(
+      userEmail,
+      userName,
+      updatedLocation.code,
+      updatedLocation.appareil_nom,
+      updatedLocation.date_debut,
+      updatedLocation.date_fin,
+      updatedLocation.montant_total
+    ).catch(err => console.error('Erreur envoi email approbation:', err));
+
+    res.json({ message: 'Location approuvée', location: updatedLocation });
   } catch (error) {
     console.error('Erreur approuver location:', error);
     res.status(500).json({ error: 'Erreur serveur' });
@@ -190,6 +230,21 @@ router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) =
   try {
     const { id } = req.params;
     const { raison } = req.body;
+
+    // First get the location with user info
+    const locResult = await pool.query(
+      `SELECT l.*, u.first_name, u.last_name, u.email 
+       FROM locations l 
+       JOIN users u ON l.user_id = u.id 
+       WHERE l.id = $1`,
+      [id]
+    );
+
+    if (locResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Location non trouvée' });
+    }
+
+    const location = locResult.rows[0];
 
     const result = await pool.query(
       `UPDATE locations
@@ -203,7 +258,22 @@ router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) =
       return res.status(404).json({ error: 'Location non trouvée' });
     }
 
-    res.json({ message: 'Location rejetée', location: result.rows[0] });
+    const updatedLocation = result.rows[0];
+
+    // Envoyer un email de notification
+    const userName = `${location.first_name} ${location.last_name}`;
+    const userEmail = location.email;
+    
+    // Envoyer l'email de manière asynchrone (ne pas bloquer la réponse)
+    sendLocationRejectedEmail(
+      userEmail,
+      userName,
+      updatedLocation.code,
+      updatedLocation.appareil_nom,
+      raison || 'Demande rejetée'
+    ).catch(err => console.error('Erreur envoi email rejet:', err));
+
+    res.json({ message: 'Location rejetée', location: updatedLocation });
   } catch (error) {
     console.error('Erreur rejeter location:', error);
     res.status(500).json({ error: 'Erreur serveur' });

@@ -123,9 +123,119 @@ async function sendVerificationCode(contact, contactType, code, userName) {
   }
 }
 
+/**
+ * Envoyer une notification de demande de location approuvée par email
+ */
+async function sendLocationApprovedEmail(emailAddress, userName, locationCode, appareilNom, dateDebut, dateFin, montantTotal) {
+  var htmlContent = '<html><body style="font-family: Arial; padding: 20px;">';
+  htmlContent += '<div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">';
+  htmlContent += '<div style="text-align: center; background: linear-gradient(135deg, #059669, #047857); padding: 20px; border-radius: 10px 10px 0 0;">';
+  htmlContent += '<h1 style="color: white; margin: 0;">DEMANDE APPROUVÉE</h1></div>';
+  htmlContent += '<div style="padding: 30px;">';
+  htmlContent += '<h2>Bonjour ' + (userName || 'Client') + ',</h2>';
+  htmlContent += '<p>Votre demande de location a été <strong>approuvée</strong>!</p>';
+  htmlContent += '<div style="background: #f0fdf4; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #059669;">';
+  htmlContent += '<p><strong>Code:</strong> ' + locationCode + '</p>';
+  htmlContent += '<p><strong>Appareil:</strong> ' + appareilNom + '</p>';
+  htmlContent += '<p><strong>Période:</strong> ' + dateDebut + ' au ' + dateFin + '</p>';
+  htmlContent += '<p><strong>Montant total:</strong> ' + montantTotal + ' FCFA</p>';
+  htmlContent += '</div>';
+  htmlContent += '<p>Merci de votre confiance!</p>';
+  htmlContent += '<p>2026 ECHELLE EG39 - Topographie BTP</p>';
+  htmlContent += '</div></div></body></html>';
+
+  var textContent = 'ECHELLE EG39 - Demande approuvée\n\n';
+  textContent += 'Bonjour ' + (userName || 'Client') + ',\n\n';
+  textContent += 'Votre demande de location a été approuvée!\n\n';
+  textContent += 'Code: ' + locationCode + '\n';
+  textContent += 'Appareil: ' + appareilNom + '\n';
+  textContent += 'Période: ' + dateDebut + ' au ' + dateFin + '\n';
+  textContent += 'Montant: ' + montantTotal + 'FCFA\n\n';
+  textContent += '2026 ECHELLE EG39 - Topographie BTP';
+
+  if (!process.env.SENDGRID_API_KEY) {
+    console.log('[SIMULATION] Email approbation à ' + emailAddress + ': ' + locationCode);
+    return { success: true, message: 'Email simulé' };
+  }
+
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+  var msg = {
+    to: emailAddress,
+    from: 'okataolaniyi@gmail.com',
+    subject: 'Votre demande de location a été approuvée - ECHELLE EG39',
+    text: textContent,
+    html: htmlContent
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log('Email approbation envoyé à ' + emailAddress);
+    return { success: true, message: 'Email envoyé' };
+  } catch (error) {
+    console.error('Erreur SendGrid:', error);
+    return { success: false, message: error.message };
+  }
+}
+
+/**
+ * Envoyer une notification de demande de location rejetée par email
+ */
+async function sendLocationRejectedEmail(emailAddress, userName, locationCode, appareilNom, raison) {
+  var htmlContent = '<html><body style="font-family: Arial; padding: 20px;">';
+  htmlContent += '<div style="max-width: 600px; margin: 0 auto; background: white; padding: 30px; border-radius: 10px;">';
+  htmlContent += '<div style="text-align: center; background: linear-gradient(135deg, #DC2626, #B91C1C); padding: 20px; border-radius: 10px 10px 0 0;">';
+  htmlContent += '<h1 style="color: white; margin: 0;">DEMANDE REJETÉE</h1></div>';
+  htmlContent += '<div style="padding: 30px;">';
+  htmlContent += '<h2>Bonjour ' + (userName || 'Client') + ',</h2>';
+  htmlContent += '<p>Votre demande de location a été <strong>rejetée</strong>.</p>';
+  htmlContent += '<div style="background: #fef2f2; padding: 20px; border-radius: 8px; margin: 20px 0; border-left: 4px solid #DC2626;">';
+  htmlContent += '<p><strong>Code:</strong> ' + locationCode + '</p>';
+  htmlContent += '<p><strong>Appareil:</strong> ' + appareilNom + '</p>';
+  htmlContent += '<p><strong>Raison du rejet:</strong> ' + raison + '</p>';
+  htmlContent += '</div>';
+  htmlContent += '<p>Vous pouvez soumettre une nouvelle demande.</p>';
+  htmlContent += '<p>2026 ECHELLE EG39 - Topographie BTP</p>';
+  htmlContent += '</div></div></body></html>';
+
+  var textContent = 'ECHELLE EG39 - Demande rejetée\n\n';
+  textContent += 'Bonjour ' + (userName || 'Client') + ',\n\n';
+  textContent += 'Votre demande de location a été rejetée.\n\n';
+  textContent += 'Code: ' + locationCode + '\n';
+  textContent += 'Appareil: ' + appareilNom + '\n';
+  textContent += 'Raison: ' + raison + '\n\n';
+  textContent += '2026 ECHELLE EG39 - Topographie BTP';
+
+  if (!process.env.SENDGRID_API_KEY) {
+    console.log('[SIMULATION] Email rejet à ' + emailAddress + ': ' + locationCode);
+    return { success: true, message: 'Email simulé' };
+  }
+
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY);
+
+  var msg = {
+    to: emailAddress,
+    from: 'okataolaniyi@gmail.com',
+    subject: 'Votre demande de location a été rejetée - ECHELLE EG39',
+    text: textContent,
+    html: htmlContent
+  };
+
+  try {
+    await sgMail.send(msg);
+    console.log('Email rejet envoyé à ' + emailAddress);
+    return { success: true, message: 'Email envoyé' };
+  } catch (error) {
+    console.error('Erreur SendGrid:', error);
+    return { success: false, message: error.message };
+  }
+}
+
 module.exports = {
   sendResetCodeByEmail,
   sendResetCodeBySMS,
-  sendVerificationCode
+  sendVerificationCode,
+  sendLocationApprovedEmail,
+  sendLocationRejectedEmail
 };
 
