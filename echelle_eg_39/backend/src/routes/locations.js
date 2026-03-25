@@ -56,11 +56,11 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Créer une location (admin ou client) - FIXED pour debug admin
+// Créer une location (admin ou client)
 router.post('/', authMiddleware, [
   body('appareilId').isInt().withMessage('ID appareil requis'),
-  body('dateDebut').isISO8601().toDate().withMessage('Date début invalide'),
-  body('dateFin').isISO8601().toDate().withMessage('Date fin invalide'),
+  body('dateDebut').isISO8601().withMessage('Date début invalide'),
+  body('dateFin').isISO8601().withMessage('Date fin invalide'),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
