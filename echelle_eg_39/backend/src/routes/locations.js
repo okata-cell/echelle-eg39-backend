@@ -84,27 +84,39 @@ router.post('/', authMiddleware, [
     const targetUserId = req.user.role === 'admin' && userId ? parseInt(userId) : req.user.userId;
 
     // Extract numeric ID from format like 'APP-001' → 1
+    // Or use the code directly to find the appareil
     let targetAppareilId = appareilId;
-    if (typeof appareilId === 'string' && appareilId.includes('APP-')) {
-      targetAppareilId = parseInt(appareilId.replace('APP-', ''));
-      console.log('🔧 Converted appareilId from', appareilId, 'to', targetAppareilId);
-    } else if (typeof appareilId === 'string') {
-      // Try parsing as plain number string
-      targetAppareilId = parseInt(appareilId);
+    let searchByCode = false;
+    
+    if (typeof appareilId === 'string') {
+      if (appareilId.includes('APP-')) {
+        // It's like 'APP-001', try to find by code in DB
+        searchByCode = true;
+        console.log('🔧 Looking for appareil with code:', appareilId);
+      } else {
+        // Try parsing as plain number string
+        targetAppareilId = parseInt(appareilId);
+        console.log('🔧 Parsed appareilId as int:', targetAppareilId);
+      }
     }
     
-    // Validate the parsed ID
-    if (isNaN(targetAppareilId) || targetAppareilId <= 0) {
+    // Validate the parsed ID (if not searching by code)
+    if (!searchByCode && (isNaN(targetAppareilId) || targetAppareilId <= 0)) {
       console.log('❌ Invalid appareilId after parsing:', targetAppareilId);
       return res.status(400).json({ error: 'ID appareil invalide' });
     }
 
-    console.log('🔍 Looking for appareil with id:', targetAppareilId);
+    // Query to find appareil
+    let appareilQuery = searchByCode 
+      ? 'SELECT * FROM appareils WHERE code = $1'
+      : 'SELECT * FROM appareils WHERE id = $1';
+    
+    console.log('🔍 Looking for appareil with:', searchByCode ? 'code' : 'id', ':', searchByCode ? appareilId : targetAppareilId);
 
     // Récupérer les infos de l'appareil
     const appareilResult = await pool.query(
-      'SELECT * FROM appareils WHERE id = $1',
-      [targetAppareilId]
+      appareilQuery,
+      [searchByCode ? appareilId : targetAppareilId]
     );
 
     if (appareilResult.rows.length === 0) {
