@@ -142,9 +142,11 @@ router.post('/', authMiddleware, [
     const code = `LOC-${Date.now()}`;
     console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
 
+    // Use 'attente' instead of 'en_attente' to match existing DB constraint
+    // The constraint may only accept certain values
     const result = await pool.query(
       `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'attente')
        RETURNING *`,
       [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
