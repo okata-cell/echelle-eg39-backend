@@ -159,29 +159,9 @@ class ApiService {
   }
 
 static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String dateDebut, String dateFin, int nombreJours, int total) async {
-    final token = await ensureAuthenticated();
-    if (token == null) throw Exception('Not authenticated');
-
-    final response = await http.post(
-      Uri.parse('$baseUrl/locations'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token'
-      },
-      body: jsonEncode({
-        'appareilId': appareilId,
-        'dateDebut': dateDebut,
-        'dateFin': dateFin,
-        'nombreJours': nombreJours,
-        'total': total,
-      }),
-    );
-
-    if (response.statusCode == 201) {
-      return jsonDecode(response.body);
-    } else {
-      throw Exception(jsonDecode(response.body)['error']);
-    }
+    // DEPRECATED: redirige vers createLocation standard
+    print('⚠️ createLocationRequest deprecated → createLocation');
+    return await createLocation(appareilId, dateDebut.split('T')[0], dateFin.split('T')[0]);
   }
 
   // ============================================
@@ -331,7 +311,7 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
     final response = await http.get(
       Uri.parse(url),
       headers: {'Authorization': 'Bearer $token'},
-    );
+    ).timeout(const Duration(seconds: 15));
 
     print('📡 getLocations status: ${response.statusCode}');
     print('📡 getLocations body: ${response.body}');
@@ -451,4 +431,61 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la création de la demande');
     }
   }
+
+  /// Récupérer les appareils disponibles
+  static Future<List<Map<String, dynamic>>> getAppareils({bool? disponible}) async {
+    final token = await ensureAuthenticated();
+    if (token == null) throw Exception('Not authenticated');
+
+    String url = '$baseUrl/appareils';
+    if (disponible != null) {
+      url += disponible ? '?disponible=true' : '?disponible=false';
+    }
+
+    print('📡 API getAppareils: $url');
+    
+    final response = await http.get(
+      Uri.parse(url),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+
+    print('📡 getAppareils status: ${response.statusCode}');
+    print('📡 getAppareils body: ${response.body}');
+
+    if (response.statusCode == 200) {
+      final data = jsonDecode(response.body);
+      return List<Map<String, dynamic>>.from(data['appareils']);
+    } else {
+      throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la récupération des appareils');
+    }
+  }
+
+  /// Créer une location
+  static Future<Map<String, dynamic>> createLocation(int appareilId, String dateDebut, String dateFin) async {
+    final token = await ensureAuthenticated();
+    if (token == null) throw Exception('Not authenticated');
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/locations'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token'
+      },
+      body: jsonEncode({
+        'appareilId': appareilId,
+        'dateDebut': dateDebut,
+        'dateFin': dateFin,
+      }),
+    );
+
+    print('📡 createLocation status: ${response.statusCode}');
+    print('📡 createLocation body: ${response.body}');
+
+    if (response.statusCode == 201) {
+      return jsonDecode(response.body);
+    } else {
+      throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la création de la location');
+    }
+  }
 }
+

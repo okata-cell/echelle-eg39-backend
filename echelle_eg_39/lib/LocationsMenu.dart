@@ -23,7 +23,7 @@ class _LocationPageState extends State<LocationPage> {
     super.initState();
     _dataManager.initialize();
     _loadLocationsFromAPI();
-    _autoRefreshTimer = Timer.periodic(Duration(seconds: 30), (_) => _loadLocationsFromAPI());
+    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) => _loadLocationsFromAPI());
   }
 
   @override
@@ -45,6 +45,7 @@ class _LocationPageState extends State<LocationPage> {
         _isLoadingLocations = false;
       });
       debugPrint('📡 Locations admin: ${locations.length} ( ${_getPendingLocations().length} en attente)');
+      debugPrint('📡 Détails locations: ${locations.map((l) => 'ID: ${l['id']}, Statut: ${l['statut']}, Client: ${l['clientNom']}').join(', ')}');
     } catch (e) {
       setState(() {
         _errorLoadingLocations = e.toString();

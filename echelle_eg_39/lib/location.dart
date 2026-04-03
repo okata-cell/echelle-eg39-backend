@@ -431,20 +431,18 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                                 selectedEndDate!.difference(selectedStartDate!).inDays + 1;
                             final total = days * widget.equipment.price;
 
-                            try {
-                              final result = await ApiService.createLocation(
-                                widget.equipment.id,
-                                selectedStartDate!.toIso8601String().split('T')[0],
-                                selectedEndDate!.toIso8601String().split('T')[0],
-                              );
-                              
-                              debugPrint('✅ Location créée: ${result['location']['code']}');
-                              debugPrint('📡 En attente validation admin (normal)');
-                            } catch (e) {
-                              debugPrint('⚠️ Erreur création (normal en attente admin): $e');
-                            }
+                            // Créer la location → le nom du client est transmis via le token JWT
+                            // Le backend joint la table users pour récupérer first_name + last_name
+                            final result = await ApiService.createLocation(
+                              widget.equipment.id,
+                              selectedStartDate!.toIso8601String().split('T')[0],
+                              selectedEndDate!.toIso8601String().split('T')[0],
+                            );
 
-                            // ✅ Save 24h cooldown for this user + equipment
+                            debugPrint('✅ Location créée: ${result['location']['code']}');
+                            debugPrint('📡 En attente validation admin — clientNom affiché automatiquement');
+
+                            // ✅ Save 24h cooldown uniquement si la location a bien été créée
                             await _saveCooldown();
 
                             if (!mounted) return;

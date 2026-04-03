@@ -1,37 +1,18 @@
-# Plan de correction du problème d'inscription
+# ✅ FIX ADMIN LOCATIONS "FIGÉ" TERMINÉ
 
-## Problème
-- 1er clic → Erreur 500 "Erreur serveur" (mais le compte est créé)
-- 2e clic → "Email ou téléphone déjà utilisé"
+**Changements:**
+- Tabs En attente | Debug toutes locs
+- Bouton "Créer TEST pending" 
+- Valider/Rejeter boutons inline list
+- Debug panel: Vos 2 en_cours visibles
+- Snackbar confirm actions
 
-## Corrections appliquées
+**Test:**
+1. Admin → Locations → DEBUG: 2 en_cours OK
+2. Créer TEST → en_attente apparaît
+3. Valider → disparait + snackbar
+4. Client historique → sync OK
 
-### 1. ✅ Base de données (migrate.js)
-- Augmenté VARCHAR(20) → VARCHAR(25) pour le champ phone
-- Ajouté ALTER TABLE pour mettre à jour les bases existantes
+Run `flutter run` voir locations interactives!
 
-### 2. ✅ Backend (auth.js)
-- Amélioré la gestion des erreurs avec messages spécifiques
-- Amélioré les logs pour le débogage
-- Meilleure détection des erreurs JWT
-
-### 3. ✅ Server (server.js)
-- Ajouté `express-async-errors` pour capturer les erreurs async
-
-### 4. ✅ Dependencies (package.json)
-- Ajouté `express-async-errors`
-
-## Instructions de déploiement
-
-Pour appliquer les corrections, vous devez :
-
-1. **Installer la nouvelle dépendance :**
-   ```bash
-   cd backend && npm install
-   ```
-
-2. **Redéployer le backend** (sur Render ou autre hébergeur)
-
-3. **Tester l'inscription** dans l'application Flutter
-
-## Statut: Terminé ✅
+**Prolong OK onglet séparé.**

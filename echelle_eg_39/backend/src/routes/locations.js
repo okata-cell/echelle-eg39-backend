@@ -26,12 +26,18 @@ router.get('/', authMiddleware, async (req, res) => {
     if (statut) {
       const whereClause = params.length > 0 ? 'AND' : 'WHERE';
       params.push(statut);
-      query += ` ${whereClause} l.statut = $${params.length}`;
+      query += ` ${whereClause} l.statut = ${params.length}`;
     }
 
     query += ' ORDER BY l.created_at DESC';
 
+    console.log('📡 GET /locations - User role:', req.user.role, 'User ID:', req.user.userId);
+    console.log('📡 Query:', query);
+    console.log('📡 Params:', params);
+
     const result = await pool.query(query, params);
+
+    console.log('📡 Locations trouvées:', result.rows.length);
 
     res.json({
       locations: result.rows.map(l => ({
@@ -72,6 +78,7 @@ router.post('/', authMiddleware, [
     const { appareilId, dateDebut, dateFin, userId, nombreJours, total } = req.body;
     console.log('📦 POST /locations body:', req.body);
     console.log('👤 User:', req.user.role, req.user.userId);
+    console.log('👤 User ID from token:', req.user.userId);
 
     // Admin peut créer pour un autre user, client seulement pour lui-même
     const targetUserId = req.user.role === 'admin' && userId ? parseInt(userId) : req.user.userId;
