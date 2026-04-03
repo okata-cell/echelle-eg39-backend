@@ -26,7 +26,7 @@ router.get('/', authMiddleware, async (req, res) => {
     if (statut) {
       const whereClause = params.length > 0 ? 'AND' : 'WHERE';
       params.push(statut);
-      query += ` ${whereClause} l.statut = ${params.length}`;
+      query += ` ${whereClause} l.statut = $${params.length}`;
     }
 
     query += ' ORDER BY l.created_at DESC';
@@ -83,40 +83,70 @@ router.post('/', authMiddleware, [
     // Admin peut créer pour un autre user, client seulement pour lui-même
     const targetUserId = req.user.role === 'admin' && userId ? parseInt(userId) : req.user.userId;
 
+    // Extract numeric ID from format like 'APP-001' → 1
+    let targetAppareilId = appareilId;
+    if (typeof appareilId === 'string' && appareilId.includes('APP-')) {
+      targetAppareilId = parseInt(appareilId.replace('APP-', ''));
+      console.log('🔧 Converted appareilId from', appareilId, 'to', targetAppareilId);
+    } else if (typeof appareilId === 'string') {
+      // Try parsing as plain number string
+      targetAppareilId = parseInt(appareilId);
+    }
+    
+    // Validate the parsed ID
+    if (isNaN(targetAppareilId) || targetAppareilId <= 0) {
+      console.log('❌ Invalid appareilId after parsing:', targetAppareilId);
+      return res.status(400).json({ error: 'ID appareil invalide' });
+    }
+
+    console.log('🔍 Looking for appareil with id:', targetAppareilId);
+
     // Récupérer les infos de l'appareil
     const appareilResult = await pool.query(
       'SELECT * FROM appareils WHERE id = $1',
-      [appareilId]
+      [targetAppareilId]
     );
 
     if (appareilResult.rows.length === 0) {
-      console.log('❌ Appareil non trouvé:', appareilId);
-      return res.status(404).json({ error: 'Appareil ID invalide' });
+      console.log('❌ Appareil non trouvé avec ID:', targetAppareilId, '(original:', appareilId, ')');
+      return res.status(404).json({ error: 'Appareil introuvable. Veuillez sélectionner un autre appareil.' });
     }
 
     const appareil = appareilResult.rows[0];
     console.log('🔍 Appareil:', appareil.nom, 'disponible:', appareil.disponible ? 'OUI' : 'NON');
     
-    if (!appareil.disponible) {
-      console.warn(`⚠️ Location créée pour appareil INDISPONIBLE: ${appareilId} - ${appareil.nom}`);
+    // Nettoyage et validation des dates
+    const dateDebutClean = dateDebut.split('T')[0];
+    const dateFinClean = dateFin.split('T')[0];
+    const debut = new Date(dateDebutClean);
+    const fin = new Date(dateFinClean);
+
+    if (isNaN(debut.getTime()) || isNaN(fin.getTime())) {
+      return res.status(400).json({ error: 'Format de date invalide (attendu: YYYY-MM-DD)' });
     }
-    
-    // Calculer le nombre de jours
-    const debut = new Date(dateDebut);
-    const fin = new Date(dateFin);
-    const jours = Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1;
+
+    let jours = Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1;
+    if (jours <= 0) jours = 1;
+
+    // Vérifier si le prix existe (gestion camelCase ou snake_case du DB)
+    const prixJournalier = appareil.prix_location || appareil.prix_journalier || 0;
     
     // Utiliser total du client si fourni, sinon calcul automatique
-    const montantTotal = total ? parseInt(total) : appareil.prix_location * jours;
+    const montantTotal = (total && !isNaN(total)) ? parseInt(total) : (prixJournalier * jours);
+
+    if (isNaN(montantTotal) || montantTotal <= 0) {
+      console.error('❌ Erreur calcul montantTotal:', { prixJournalier, jours, total });
+      return res.status(400).json({ error: 'Le montant total calculé est invalide' });
+    }
     
     const code = `LOC-${Date.now()}`;
-    console.log('💰 Total calculé:', montantTotal, 'jours:', jours, 'prix/jour:', appareil.prix_location);
+    console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
 
     const result = await pool.query(
       `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
        RETURNING *`,
-      [code, targetUserId, appareilId, appareil.nom, dateDebut, dateFin, appareil.prix_location, montantTotal]
+      [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
 
     console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut=en_attente');
@@ -140,7 +170,32 @@ router.post('/', authMiddleware, [
     });
   } catch (error) {
     console.error('💥 Erreur création location:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    
+    // Provide more specific error messages based on the error type
+    let errorMessage = 'Erreur serveur';
+    let hint = 'Veuillez réessayer plus tard';
+    
+    if (error.code === '23502') {
+      // NOT NULL constraint violation
+      errorMessage = 'Données manquantes';
+      hint = 'Vérifiez que tous les champs obligatoires sont remplis';
+    } else if (error.code === '23503') {
+      // Foreign key violation
+      errorMessage = 'Appareil ou utilisateur introuvable';
+      hint = 'L\'appareil ou l\'utilisateur sélectionné n\'existe plus';
+    } else if (error.code === '22P02') {
+      // Invalid input syntax
+      errorMessage = 'Format de données invalide';
+      hint = 'Les dates doivent être au format YYYY-MM-DD';
+    } else if (error.message) {
+      errorMessage = error.message;
+    }
+    
+    res.status(500).json({ 
+      error: errorMessage, 
+      details: error.message,
+      hint: hint
+    });
   }
 });
 

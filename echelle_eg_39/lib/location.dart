@@ -463,9 +463,32 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                           } catch (e) {
                             setDialogState(() => _isSubmitting = false);
                             if (!mounted) return;
+                            
+                            // Améliorer les messages d'erreur pour l'utilisateur
+                            String errorMessage = 'Erreur lors de la réservation';
+                            String errorStr = e.toString().toLowerCase();
+                            
+                            if (errorStr.contains('not authenticated') || errorStr.contains('token')) {
+                              errorMessage = 'Session expirée. Veuillez vous reconnecter.';
+                            } else if (errorStr.contains('appareil') && errorStr.contains('invalide')) {
+                              errorMessage = 'Appareil introuvable. Veuillez sélectionner un autre appareil.';
+                            } else if (errorStr.contains('500') || errorStr.contains('serveur')) {
+                              errorMessage = 'Serveur temporairement indisponible. Réessayez plus tard.';
+                            } else if (errorStr.contains('400') || errorStr.contains('invalid')) {
+                              errorMessage = 'Dates invalides. Veuillez sélectionner des dates valides.';
+                            } else if (errorStr.contains('disponible')) {
+                              errorMessage = 'Cet appareil n\'est plus disponible.';
+                            } else {
+                              // Afficher le message d'erreur du serveur s'il existe
+                              final match = RegExp(r"'([^']+)'").firstMatch(e.toString());
+                              if (match != null) {
+                                errorMessage = match.group(1) ?? e.toString();
+                              }
+                            }
+                            
                             ScaffoldMessenger.of(context).showSnackBar(
                               SnackBar(
-                                content: Text('Erreur : $e'),
+                                content: Text(errorMessage),
                                 backgroundColor: Colors.red,
                               ),
                             );

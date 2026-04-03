@@ -463,7 +463,12 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
   /// Créer une location
   static Future<Map<String, dynamic>> createLocation(int appareilId, String dateDebut, String dateFin) async {
     final token = await ensureAuthenticated();
-    if (token == null) throw Exception('Not authenticated');
+    if (token == null) throw Exception('Not authenticated - Veuillez vous reconnecter');
+
+    print('📡 API createLocation called with:');
+    print('   - appareilId: $appareilId (type: ${appareilId.runtimeType})');
+    print('   - dateDebut: $dateDebut');
+    print('   - dateFin: $dateFin');
 
     final response = await http.post(
       Uri.parse('$baseUrl/locations'),
@@ -482,9 +487,14 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
     print('📡 createLocation body: ${response.body}');
 
     if (response.statusCode == 201) {
-      return jsonDecode(response.body);
+      final result = jsonDecode(response.body);
+      print('✅ Location created successfully: ${result['location']?['code']}');
+      return result;
     } else {
-      throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la création de la location');
+      final errorBody = jsonDecode(response.body);
+      final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+      print('❌ createLocation failed: $errorMsg');
+      throw Exception(errorMsg);
     }
   }
 }
