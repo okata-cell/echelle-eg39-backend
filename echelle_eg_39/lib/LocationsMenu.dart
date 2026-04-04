@@ -56,11 +56,15 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   List<Map<String, dynamic>> _getPendingLocations() {
-    return _locationsFromAPI.where((loc) => loc['statut'] == 'en_attente').toList();
+    return _locationsFromAPI.where((loc) => 
+      loc['statut'] == 'en_attente' || loc['statut'] == 'attente'
+    ).toList();
   }
 
   List<Map<String, dynamic>> _getActiveLocations() {
-    return _locationsFromAPI.where((loc) => loc['statut'] == 'en_cours').toList();
+    return _locationsFromAPI.where((loc) => 
+      loc['statut'] == 'en_cours' || loc['statut'] == 'approuve'
+    ).toList();
   }
 
   @override
