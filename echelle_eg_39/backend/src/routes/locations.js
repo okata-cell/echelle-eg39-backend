@@ -169,12 +169,12 @@ router.post('/', authMiddleware, [
     // This avoids constraint issues with the database
     const result = await pool.query(
       `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'approuve')
        RETURNING *`,
       [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
 
-    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut=en_attente');
+    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut=approuve');
 
     const location = result.rows[0];
 
