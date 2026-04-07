@@ -165,16 +165,15 @@ router.post('/', authMiddleware, [
     const code = `LOC-${Date.now()}`;
     console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
 
-    // Don't specify statut - let the DEFAULT handle it
-    // This avoids constraint issues with the database
+    // Don't specify statut - let the DEFAULT 'en_attente' handle it
     const result = await pool.query(
-      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'approuve')
+      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
 
-    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut=approuve');
+    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut from DB default');
 
     const location = result.rows[0];
 
