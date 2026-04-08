@@ -131,7 +131,10 @@ router.post('/', authMiddleware, [
     }
 
     if (appareilResult.rows.length === 0) {
-      console.log('❌ Appareil non trouvé avec ID:', targetAppareilId, '(original:', appareilId, ')');
+      console.log('❌ Appareil non trouvé: ID=', targetAppareilId, ', original=', appareilId);
+      console.log('🔍 Debug: tous les appareils dans la DB:');
+      const allAppareils = await pool.query('SELECT id, code, nom FROM appareils LIMIT 20');
+      console.log('→', allAppareils.rows);
       return res.status(404).json({ error: 'Appareil introuvable. Veuillez sélectionner un autre appareil.' });
     }
 
