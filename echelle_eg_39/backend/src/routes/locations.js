@@ -165,15 +165,15 @@ router.post('/', authMiddleware, [
     const code = `LOC-${Date.now()}`;
     console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
 
-    // Don't specify statut - let the DEFAULT 'en_attente' handle it
+    // ✅ FORCER le statut à 'en_attente' pour les nouvelles demandes
     const result = await pool.query(
-      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
        RETURNING *`,
       [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
 
-    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut from DB default');
+    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut=', result.rows[0].statut);
 
     const location = result.rows[0];
 
@@ -181,7 +181,7 @@ router.post('/', authMiddleware, [
     // L'appareil ne sera marqué indisponible que quand l'admin approuve
 
     res.status(201).json({
-      message: 'Location créée en attente de validation',
+      message: 'Demande de location créée - en attente de validation admin',
       location: {
         id: location.id,
         code: location.code,
@@ -249,6 +249,23 @@ router.patch('/:id/terminer', authMiddleware, adminMiddleware, async (req, res) 
     res.json({ message: 'Location terminée' });
   } catch (error) {
     console.error('Erreur terminer location:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Réinitialiser toutes les locations en 'en_attente' (pour diagnostic/fix)
+router.patch('/reset-statuts', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      "UPDATE locations SET statut = 'en_attente' WHERE statut = 'en_cours' RETURNING *"
+    );
+    console.log('🔧 Reset statuts: ${result.rowCount} locations mises à jour');
+    res.json({ 
+      message: '${result.rowCount} locations remises en attente',
+      updated: result.rows 
+    });
+  } catch (error) {
+    console.error('Erreur reset statuts:', error);
     res.status(500).json({ error: 'Erreur serveur' });
   }
 });
