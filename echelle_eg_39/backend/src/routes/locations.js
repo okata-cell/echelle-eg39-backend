@@ -165,41 +165,44 @@ router.post('/', authMiddleware, [
     const code = `LOC-${Date.now()}`;
     console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
 
-    // ✅ Insérer SANS spécifier le statut, puis le mettre à jour explicitement
-    const result = await pool.query(
-      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
-    );
+    // ✅ Utiliser une transaction pour contourner le CHECK constraint
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      
+      // Insert avec un statut temporaire valide
+      const result = await client.query(
+        `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
+         RETURNING *`,
+        [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
+      );
+      
+      const location = result.rows[0];
+      await client.query('COMMIT');
+      console.log('✅ Location INSERTED id=', location.id, 'code=', code, 'statut=', location.statut);
 
-    // ✅ Mettre à jour le statut explicitement après l'insertion
-    await pool.query(
-      "UPDATE locations SET statut = 'en_attente' WHERE id = $1",
-      [result.rows[0].id]
-    );
+      // NE PAS marquer l'appareil comme indisponible automatiquement
+      // L'appareil ne sera marqué indisponible que quand l'admin approuve
 
-    // Récupérer la location avec le bon statut
-    const finalResult = await pool.query('SELECT * FROM locations WHERE id = $1', [result.rows[0].id]);
-    const location = finalResult.rows[0];
-
-    console.log('✅ Location INSERTED id=', location.id, 'code=', code, 'statut=', location.statut);
-
-    // NE PAS marquer l'appareil comme indisponible automatiquement
-    // L'appareil ne sera marqué indisponible que quand l'admin approuve
-
-    res.status(201).json({
-      message: 'Demande de location créée - en attente de validation admin',
-      location: {
-        id: location.id,
-        code: location.code,
-        appareilNom: location.appareil_nom,
-        dateDebut: location.date_debut,
-        dateFin: location.date_fin,
-        montantTotal: location.montant_total,
-        statut: location.statut
-      }
-    });
+      res.status(201).json({
+        message: 'Demande de location créée - en attente de validation admin',
+        location: {
+          id: location.id,
+          code: location.code,
+          appareilNom: location.appareil_nom,
+          dateDebut: location.date_debut,
+          dateFin: location.date_fin,
+          montantTotal: location.montant_total,
+          statut: location.statut
+        }
+      });
+    } catch (txError) {
+      await client.query('ROLLBACK');
+      throw txError;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     console.error('💥 Erreur création location:', error);
     
