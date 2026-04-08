@@ -168,19 +168,19 @@ router.post('/', authMiddleware, [
     const code = `LOC-${Date.now()}`;
     console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
 
-    // ✅ Insert DANS une fonction SQL avec le bon statut
-    // Utiliser set_config pour bypass temporairement le CHECK
+    // Insertion simple - la contrainte sera corrigée par /fix-constraint
     const result = await pool.query(
-      `WITH new_loc AS (
-        INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
-        RETURNING *
-      )
-      SELECT * FROM new_loc`,
+      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+       RETURNING *`,
       [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
 
-    const location = result.rows[0];
+    // Mettre à jour le statut après insertion
+    await pool.query("UPDATE locations SET statut = 'en_attente' WHERE id = $1", [result.rows[0].id]);
+    const finalResult = await pool.query('SELECT * FROM locations WHERE id = $1', [result.rows[0].id]);
+    const location = finalResult.rows[0];
+
     console.log('✅ Location INSERTED id=', location.id, 'code=', code, 'statut=', location.statut);
 
       // NE PAS marquer l'appareil comme indisponible automatiquement
@@ -226,6 +226,23 @@ router.post('/', authMiddleware, [
       details: error.message,
       hint: hint
     });
+  }
+});
+
+// Supprimer et recréer la CHECK constraint sans 'en_attente' (la vraie solution)
+router.get('/fix-constraint', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    // Supprimer la constraint
+    await pool.query('ALTER TABLE locations DROP CONSTRAINT IF EXISTS locations_statut_check');
+    // Recréer avec 'en_attente' inclus
+    await pool.query(
+      "ALTER TABLE locations ADD CONSTRAINT locations_statut_check CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard'))"
+    );
+    console.log('✅ CHECK constraint recréée avec en_attente');
+    res.json({ message: 'Constraint corrigée' });
+  } catch (e) {
+    console.error('❌ Erreur:', e);
+    res.status(500).json({ error: e.message });
   }
 });
 
