@@ -165,17 +165,25 @@ router.post('/', authMiddleware, [
     const code = `LOC-${Date.now()}`;
     console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
 
-    // ✅ FORCER le statut à 'en_attente' pour les nouvelles demandes
+    // ✅ Insérer SANS spécifier le statut, puis le mettre à jour explicitement
     const result = await pool.query(
-      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total, statut)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
+      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
       [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
 
-    console.log('✅ Location INSERTED id=', result.rows[0].id, 'code=', code, 'statut=', result.rows[0].statut);
+    // ✅ Mettre à jour le statut explicitement après l'insertion
+    await pool.query(
+      "UPDATE locations SET statut = 'en_attente' WHERE id = $1",
+      [result.rows[0].id]
+    );
 
-    const location = result.rows[0];
+    // Récupérer la location avec le bon statut
+    const finalResult = await pool.query('SELECT * FROM locations WHERE id = $1', [result.rows[0].id]);
+    const location = finalResult.rows[0];
+
+    console.log('✅ Location INSERTED id=', location.id, 'code=', code, 'statut=', location.statut);
 
     // NE PAS marquer l'appareil comme indisponible automatiquement
     // L'appareil ne sera marqué indisponible que quand l'admin approuve
