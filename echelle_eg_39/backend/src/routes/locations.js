@@ -293,6 +293,78 @@ router.patch('/reset-statuts', authMiddleware, adminMiddleware, async (req, res)
   }
 });
 
+// Vérifier et expirer les locations automatiquement
+router.get('/check-expired', authMiddleware, async (req, res) => {
+  try {
+    const today = new Date().toISOString().split('T')[0];
+    
+    const expiredResult = await pool.query(
+      "SELECT l.id, l.code, l.appareil_id, l.date_fin FROM locations l WHERE statut = 'en_cours' AND date_fin < $1",
+      [today]
+    );
+    
+    const expiredLocations = [];
+    
+    for (const loc of expiredResult.rows) {
+      // Marquer comme terminée
+      await pool.query(
+        "UPDATE locations SET statut = 'termine', updated_at = NOW() WHERE id = $1",
+        [loc.id]
+      );
+      
+      // Rendre l'appareil disponible
+      if (loc.appareil_id) {
+        await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
+      }
+      
+      expiredLocations.push({ id: loc.id, code: loc.code, dateFin: loc.date_fin });
+    }
+    
+    if (expiredLocations.length > 0) {
+      console.log(`⏰ ${expiredLocations.length} location(s) expirée(s)`);
+    }
+    
+    res.json({ 
+      message: '${expiredLocations.length} location(s) expirée(s) et terminée(s)',
+      expired: expiredLocations
+    });
+  } catch (error) {
+    console.error('Erreur vérification:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
+// Supprimer toutes les locations actives (en_cours) - pour recommencer à zéro
+router.delete('/clear-active', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    // D'abord récupérer les appareil_id pour les rendre disponibles
+    const locsToDelete = await pool.query(
+      "SELECT appareil_id FROM locations WHERE statut = 'en_cours'"
+    );
+    
+    // Rendre les appareils disponibles
+    for (const loc of locsToDelete.rows) {
+      if (loc.appareil_id) {
+        await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
+      }
+    }
+    
+    // Supprimer les locations actives
+    const result = await pool.query(
+      "DELETE FROM locations WHERE statut = 'en_cours' RETURNING id, code"
+    );
+    
+    console.log('🗑️ Supprimé ${result.rowCount} locations actives');
+    res.json({ 
+      message: '${result.rowCount} locations actives supprimées',
+      deleted: result.rows 
+    });
+  } catch (error) {
+    console.error('Erreur suppression:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // Approuver une location (admin)
 router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res) => {
   try {
