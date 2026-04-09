@@ -2126,7 +2126,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                       Row(
                         children: [
                           Text(
-                            '${_formatNumber(transaction.amount)} FCFA',
+                            '${_formatNumber(transaction.amount)} F CFA',
                             style: const TextStyle(
                                 fontSize: 14,
                                 color: Color(0xFF111827),
