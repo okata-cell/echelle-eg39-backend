@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:async';
+import 'dart:convert';
+import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
 
@@ -21,6 +24,7 @@ class _LocationPageState extends State<LocationPage> {
   @override
   void initState() {
     super.initState();
+    debugPrint('🚀 LocationPage ADMIN - initState()');
     _dataManager.initialize();
     _loadLocationsFromAPI();
     _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) => _loadLocationsFromAPI());
@@ -40,6 +44,8 @@ class _LocationPageState extends State<LocationPage> {
     
     try {
       final locations = await ApiService.getLocations();
+      // DEBUG: voir exactement ce qui vient du backend
+      debugPrint('🔍 RAW API response: ${locations.map((l) => 'ID=${l['id']} statut=${l['statut']}').toList()}');
       setState(() {
         _locationsFromAPI = locations;
         _isLoadingLocations = false;
@@ -55,22 +61,87 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
+  // Fonction pour reset les statuts via API backend
+  Future<void> _resetStatutsEnAttente() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.patch(
+        Uri.parse('${ApiService.baseUrl}/locations/reset-statuts'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('✅ ${data["message"]}'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadLocationsFromAPI();
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur reset: $e');
+    }
+  }
+
+  // Fonction pour corriger la contrainte DB
+  Future<void> _fixDatabaseConstraint() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/locations/fix-constraint'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(response.statusCode == 200 ? '✅ Contrainte corrigée!' : '❌ Erreur: ${response.body}'),
+            backgroundColor: response.statusCode == 200 ? Colors.green : Colors.red,
+          ),
+        );
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur fix constraint: $e');
+    }
+  }
+
   List<Map<String, dynamic>> _getPendingLocations() {
-    return _locationsFromAPI.where((loc) => 
-      loc['statut'] == 'en_attente' || loc['statut'] == 'approuve'
-    ).toList();
+    debugPrint('🔍 DEBUG: statuts = ${_locationsFromAPI.map((l) => l['statut']).toSet()}');
+    return _locationsFromAPI.where((loc) {
+      final statut = loc['statut']?.toString().toLowerCase().trim();
+      return statut == 'en_attente' || statut == 'pending';
+    }).toList();
   }
 
   List<Map<String, dynamic>> _getActiveLocations() {
-    return _locationsFromAPI.where((loc) => 
-      loc['statut'] == 'en_cours' || loc['statut'] == 'termine'
-    ).toList();
+    return _locationsFromAPI.where((loc) {
+      final statut = loc['statut']?.toString().toLowerCase().trim();
+      return statut == 'en_cours' || statut == 'active';
+    }).toList();
   }
 
-  @override
+  List<Map<String, dynamic>> _getTerminatedLocations() {
+    return _locationsFromAPI.where((loc) {
+      final statut = loc['statut']?.toString().toLowerCase().trim();
+      return statut == 'termine';
+    }).toList();
+  }
+
+@override
   Widget build(BuildContext context) {
     final pendingCount = _getPendingLocations().length;
     final activeCount = _getActiveLocations().length;
+    debugPrint('📊 ADMIN Locations - Pending: $pendingCount | Active: $activeCount');
     
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
@@ -84,10 +155,7 @@ class _LocationPageState extends State<LocationPage> {
             elevation: 0,
             backgroundColor: const Color(0xFF6366F1),
             flexibleSpace: FlexibleSpaceBar(
-              title: const Text(
-                "Demandes de Location",
-                style: TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 18),
-              ),
+
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -125,6 +193,8 @@ class _LocationPageState extends State<LocationPage> {
                 icon: const Icon(Icons.refresh, color: Colors.white),
                 onPressed: () => _loadLocationsFromAPI(retry: true),
               ),
+              // Bouton pour corriger la contrainte DB
+              
             ],
           ),
           
@@ -432,13 +502,39 @@ class _LocationPageState extends State<LocationPage> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  loc['appareilNom'] ?? 'Appareil',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                  ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        loc['appareilNom'] ?? 'Appareil',
+                        style: const TextStyle(
+                          fontWeight: FontWeight.w600,
+                          fontSize: 15,
+                        ),
+                      ),
+                    ),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: (loc['statut'] ?? '') == 'termine' 
+                          ? Colors.grey 
+                          : Colors.green.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                      child: Text(
+                        (loc['statut'] ?? '') == 'termine' ? 'Terminé' : 'En cours',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                          color: (loc['statut'] ?? '') == 'termine' 
+                            ? Colors.white 
+                            : Colors.green,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
+                const SizedBox(height: 4),
                 Text(
                   '${loc['clientNom']} • ${_formatDate(loc['dateDebut'])} - ${_formatDate(loc['dateFin'])}',
                   style: const TextStyle(
@@ -668,8 +764,8 @@ class _LocationPageState extends State<LocationPage> {
                         if (mounted) {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(
-                              content: Text('❌ Demande rejetée'),
-                              backgroundColor: Colors.red,
+                              content: Text('✅ Demande rejetée avec succès'),
+                              backgroundColor: Colors.green,
                             ),
                           );
                           _loadLocationsFromAPI();

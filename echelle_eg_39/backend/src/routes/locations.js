@@ -473,8 +473,14 @@ router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) =
 
     res.json({ message: 'Location rejetée', location: updatedLocation });
   } catch (error) {
-    console.error('Erreur rejeter location:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    console.error('💥 Erreur rejeter location:', error);
+    console.error('💥 Code:', error.code);
+    console.error('💥 Detail:', error.detail);
+    res.status(500).json({ 
+      error: 'Erreur serveur', 
+      details: error.message,
+      code: error.code
+    });
   }
 });
 
