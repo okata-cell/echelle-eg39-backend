@@ -831,6 +831,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           'icon': Icons.cancel,
           'textColor': const Color(0xFFDC2626),
           'label': 'Rejeté',
+          'showDetails': true,
         };
       default:
         return {
@@ -862,6 +863,30 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   String _formatDate(String dateString) {
     final date = DateTime.parse(dateString);
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+  }
+
+  void _showRejectionReason(Transaction transaction) {
+    showModalBottomSheet(
+      context: context,
+      builder: (context) => Container(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Motif du rejet:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const SizedBox(height: 8),
+            Text(transaction.adminComment ?? 'Aucun motif',
+                style: const TextStyle(fontSize: 14)),
+            const SizedBox(height: 20),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Fermer'),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget _buildActionButton(
@@ -2083,9 +2108,19 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                                       fontWeight:
                                           FontWeight.bold),
                                 ),
+                                if (statusConfig['showDetails'] == true) ...[
+                                  const SizedBox(width: 4),
+                                  GestureDetector(
+                                    onTap: () => _showRejectionReason(transaction),
+                                    child: Icon(
+                                      Icons.info_outline,
+                                      size: 14,
+                                      color: statusConfig['textColor'],
+                                    ),
+                                  ),
+                                ],
                               ],
                             ),
-                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
