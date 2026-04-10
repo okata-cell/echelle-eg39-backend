@@ -482,9 +482,10 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                             debugPrint('✅ Location créée: ${result['location']['code']}');
                             debugPrint('📡 Statut: ${result['location']['statut']} - En attente validation admin');
 
-                            // ✅ Save cooldown pour la période de location
-                            // Utilise dateDebut pour que dispo avant le début
-                            await _saveCooldown(dateDebut: selectedStartDate, dateFin: selectedEndDate);
+                            // ✅ NE PAS bloquer immédiatement - la location est en attente d'approbation admin
+                            // Le blocage ne devrait occurir que quand l'admin approuve la location
+                            // Pour l'instant, juste afficher un message
+                            // (Le backend gère les conflits quand l'admin approuve)
 
                             if (!mounted) return;
                             Navigator.of(ctx).pop();
