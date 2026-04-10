@@ -4,7 +4,7 @@ import 'ClientMenuPage.dart';
 import 'appareils.page.dart';
 import 'LocationsMenu.dart';
 import 'admin_ventes_page.dart';
-import 'admin_prolongations_page.dart';
+
 import 'login.page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -20,13 +20,18 @@ class AdminDashBoard extends StatefulWidget {
 class _AdminDashBoardState extends State<AdminDashBoard> {
   int currentIndex = 0;
 
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    debugPrint('🔧 AdminDashboard loaded - currentIndex: $currentIndex');
+  }
 
-  final List<Widget> pages = [
+
+final List<Widget> pages = [
     ClientsMenuPage(),
     AdminAppareilsPage(),
-    LocationPage(),
+    const LocationPage(), // ADMIN LOCATIONS ✅
     const AdminVentesPageFixed(),
-    const AdminProlongationsPage(),
   ];
 
   /// Afficher le dialogue de confirmation de déconnexion
@@ -78,9 +83,22 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text(
-          "ESPACE DIRECTEUR GENERAL - EG39",
-          style: TextStyle(fontSize: 16),
+title: const Row(
+          children: [
+            Text(
+              "ADMIN",
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.bold,
+                color: Colors.red,
+              ),
+            ),
+            SizedBox(width: 8),
+            Text(
+              "EG39 Locations",
+              style: TextStyle(fontSize: 16),
+            ),
+          ],
         ),
         flexibleSpace: const SizedBox.shrink(),
         actions: [
@@ -117,10 +135,7 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
             icon: Icon(Icons.shopping_cart),
             label: "Ventes",
           ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.update),
-            label: "Prolongations",
-          ),
+
         ],
       ),
     );

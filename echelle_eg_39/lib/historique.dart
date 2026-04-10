@@ -4,9 +4,9 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'extensions_manager.dart';
+import 'extensions_manager.dart'; // Stub classes - prolongation supprimée
 import 'demo_flags.dart';
-import 'admin_prolongations_page.dart';
+// import 'admin_prolongations_page.dart'; // Supprimé - page supprimée
 import 'client_mes_demandes.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
@@ -399,19 +399,20 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 ),
             ],
           ),
-          if (kDemoPaymentsEnabled)
-            IconButton(
-              icon: const Icon(Icons.admin_panel_settings,
-                  color: Color(0xFF2563EB)),
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                      builder: (context) => const AdminProlongationsPage()),
-                );
-              },
-              tooltip: 'Admin Prolongations',
-            ),
+          // Bouton Admin Prolongations supprimé - page supprimée
+          // if (kDemoPaymentsEnabled)
+          //   IconButton(
+          //     icon: const Icon(Icons.admin_panel_settings,
+          //         color: Color(0xFF2563EB)),
+          //     onPressed: () {
+          //       Navigator.push(
+          //         context,
+          //         MaterialPageRoute(
+          //             builder: (context) => const AdminProlongationsPage()),
+          //       );
+          //     },
+          //     tooltip: 'Admin Prolongations',
+          //   ),
           IconButton(
             icon: const Icon(Icons.download, color: Color(0xFF2563EB)),
             onPressed: _exportHistorique,
