@@ -601,22 +601,24 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                   const SizedBox(height: 8),
                   Row(
                     children: [
-                      // Availability badge
+                      // Availability badge - prend en compte le cooldown
+                      // Si en cooldown (réservation en cours), afficher Indisponible
+                      // Sinon afficher le statut du backend
                       Container(
                         padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                         decoration: BoxDecoration(
-                          color: equipment.available
-                              ? const Color(0xFFD1FAE5)
-                              : const Color(0xFFFEE2E2),
+                          color: inCooldown || !equipment.available
+                              ? const Color(0xFFFEE2E2)  // Rouge si indisponible ou en cooldown
+                              : const Color(0xFFD1FAE5),  // Vert si disponible
                           borderRadius: BorderRadius.circular(12),
                         ),
                         child: Text(
-                          equipment.available ? 'Disponible' : 'Indisponible',
+                          inCooldown ? 'Réservé' : (equipment.available ? 'Disponible' : 'Indisponible'),
                           style: TextStyle(
                             fontSize: 12,
-                            color: equipment.available
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFDC2626),
+                            color: inCooldown || !equipment.available
+                                ? const Color(0xFFDC2626)  // Rouge
+                                : const Color(0xFF059669),  // Vert
                           ),
                         ),
                       ),
