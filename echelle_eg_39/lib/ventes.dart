@@ -35,6 +35,7 @@ class VenteScreen extends StatefulWidget {
 
 class _VenteScreenState extends State<VenteScreen> {
   final _dataManager = DataManager();
+  List<Product> _apiProducts = [];  // Products from API
 
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
@@ -47,22 +48,49 @@ class _VenteScreenState extends State<VenteScreen> {
     'Drone', 'Laser', 'Réflecteur'
   ];
 
-  List<Product> get _products => _dataManager.appareils.map((a) => Product(
-    id: int.parse(a.id.substring(4)),
-    name: a.nom,
-    category: a.type,
-    price: a.prixVente,
-    inStock: a.disponible,
-    imageUrl: a.imageUrl,
-  )).toList();
+  List<Product> get _products {
+    // Use API products if available, otherwise fallback to local
+    if (_apiProducts.isNotEmpty) {
+      return _apiProducts;
+    }
+    return _dataManager.appareils.map((a) => Product(
+      id: int.parse(a.id.substring(4)),
+      name: a.nom,
+      category: a.type,
+      price: a.prixVente,
+      inStock: a.disponible,
+      imageUrl: a.imageUrl,
+    )).toList();
+  }
 
   @override
   void initState() {
     super.initState();
     _loadCurrentUser();
+    _loadProductsFromAPI();
     _dataManager.initialize();
     // Quand le DG valide/refuse → notifyListeners → setState → bouton se débloque
     _dataManager.addListener(_onDataChanged);
+  }
+
+  Future<void> _loadProductsFromAPI() async {
+    try {
+      final appareils = await ApiService.getAppareils();
+      if (mounted && appareils.isNotEmpty) {
+        setState(() {
+          _apiProducts = appareils.map((a) => Product(
+            id: a['id'] as int,
+            name: a['nom'] as String,
+            category: a['type'] as String,
+            price: a['prixVente'] as int,
+            inStock: a['disponible'] as bool? ?? true,
+            imageUrl: a['imageUrl'] as String? ?? '',
+          )).toList();
+        });
+      }
+    } catch (e) {
+      print('⚠️ Failed to load products from API: $e');
+    }
   }
 
   void _onDataChanged() {

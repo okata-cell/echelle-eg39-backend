@@ -33,6 +33,7 @@ class LocationScreen extends StatefulWidget {
 
 class _LocationScreenState extends State<LocationScreen> {
   final _dataManager = DataManager();
+  List<Equipment> _apiAppareils = [];  // Appareils from API
 
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
@@ -56,8 +57,29 @@ class _LocationScreenState extends State<LocationScreen> {
   void initState() {
     super.initState();
     _loadCurrentUser();
+    _loadAppareilsFromAPI();
     _dataManager.initialize();
     _dataManager.addListener(_onDataManagerChanged);
+  }
+
+  Future<void> _loadAppareilsFromAPI() async {
+    try {
+      final appareils = await ApiService.getAppareils();
+      if (mounted && appareils.isNotEmpty) {
+        setState(() {
+          _apiAppareils = appareils.map((a) => Equipment(
+            id: a['id'] as int,
+            name: a['nom'] as String,
+            category: a['type'] as String,
+            price: a['prixLocation'] as int,
+            available: a['disponible'] as bool? ?? true,
+            imageUrl: a['imageUrl'] as String? ?? '',
+          )).toList();
+        });
+      }
+    } catch (e) {
+      print('⚠️ Failed to load appareils from API: $e');
+    }
   }
 
   void _onDataManagerChanged() {
@@ -81,7 +103,9 @@ class _LocationScreenState extends State<LocationScreen> {
   }
 
   List<Equipment> get _filteredEquipments {
-    return _equipments.where((eq) {
+    // Use API appareils if available, otherwise fallback to local
+    final source = _apiAppareils.isNotEmpty ? _apiAppareils : _equipments;
+    return source.where((eq) {
       final matchesSearch = eq.name.toLowerCase().contains(_searchQuery.toLowerCase());
       final matchesCategory = _selectedCategory == 'Tous' || eq.category == _selectedCategory;
       return matchesSearch && matchesCategory;
