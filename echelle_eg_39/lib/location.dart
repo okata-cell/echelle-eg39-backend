@@ -262,21 +262,44 @@ class _EquipmentCardState extends State<_EquipmentCard> {
     }
   }
 
-  /// Save cooldown until the end of rental period + 1 day
-  /// If dateFin is provided, use it + 1 day as the cooldown end
-  /// If dateFin is not provided, fallback to 24 hours (for backward compatibility)
-  Future<void> _saveCooldown({DateTime? dateFin}) async {
+  /// Save cooldown for the rental period
+  /// If dateDebut is provided, equipment becomes "reserved" starting from dateDebut
+  /// If dateFin is provided, equipment becomes available again the day after dateFin
+  /// If neither provided, fallback to 24 hours (for backward compatibility)
+  Future<void> _saveCooldown({DateTime? dateDebut, DateTime? dateFin}) async {
     if (widget.userId.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
     
-    // Si dateFin est fournie, l'appareil devient disponible le lendemain
-    // Ex: location du 10 au 18 avril → dispo à partir du 19 avril
     DateTime until;
-    if (dateFin != null) {
-      // Ajouter 1 jour après la date de fin
-      until = DateTime(dateFin.year, dateFin.month, dateFin.day + 1);
+    if (dateDebut != null && dateFin != null) {
+      // Location du 18 au 22 avril:
+      // - Avant le 18 avril: DISPONIBLE
+      // - 18-22 avril: RÉSERVÉ
+      // - 23 avril+: DISPONIBLE
+      // We set the cooldown end to dateFin + 1 (when it becomes available again)
+      // The "reserved" period is from now until dateDebut, then again from dateDebut to dateFin+1
+      // Actually simpler: set until = dateFin+1, but also need to handle pre-start period
+      
+      // Pour gérer le cas où on reserve AVANT la date de début:
+      // L'appareil devient "réservé" seulement à partir de dateDebut
+      final now = DateTime.now();
+      
+      // Si aujourd'hui est avant dateDebut, on utilise dateDebut comme début de période réservés
+      // Le période réservés = dateDebut à dateFin+1
+      if (now.isBefore(dateDebut)) {
+        // L'appareil reste disponible jusqu'à dateDebut
+        until = dateFin.add(const Duration(days: 1));
+        // Stocker la date de debut pour calculer le statut correctement
+        await prefs.setString('${_cooldownKey}_start', dateDebut.toIso8601String());
+      } else {
+        // Deja dans la période de location
+        until = dateFin.add(const Duration(days: 1));
+      }
+    } else if (dateFin != null) {
+      // Fallback: utiliser dateFin+1
+      until = dateFin.add(const Duration(days: 1));
     } else {
-      // Fallback: 24 heures pour compatibilité
+      // Fallback: 24 heures
       until = DateTime.now().add(const Duration(hours: 24));
     }
     
@@ -284,8 +307,10 @@ class _EquipmentCardState extends State<_EquipmentCard> {
     if (mounted) setState(() => _cooldownUntil = until);
   }
 
-  bool get _isInCooldown =>
-      _cooldownUntil != null && _cooldownUntil!.isAfter(DateTime.now());
+  bool get _isInCooldown {
+    if (_cooldownUntil == null) return false;
+    return _cooldownUntil!.isAfter(DateTime.now());
+  }
 
   Duration get _remaining {
     if (_cooldownUntil == null) return Duration.zero;
@@ -457,9 +482,9 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                             debugPrint('✅ Location créée: ${result['location']['code']}');
                             debugPrint('📡 Statut: ${result['location']['statut']} - En attente validation admin');
 
-                            // ✅ Save cooldown jusqu'à la fin de la location + 1 jour
-                            // Ex: location 10-18 avril → dispo à partir du 19 avril
-                            await _saveCooldown(dateFin: selectedEndDate);
+                            // ✅ Save cooldown pour la période de location
+                            // Utilise dateDebut pour que dispo avant le début
+                            await _saveCooldown(dateDebut: selectedStartDate, dateFin: selectedEndDate);
 
                             if (!mounted) return;
                             Navigator.of(ctx).pop();
