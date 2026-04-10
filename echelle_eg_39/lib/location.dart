@@ -188,7 +188,8 @@ class _LocationScreenState extends State<LocationScreen> {
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// _EquipmentCard – StatefulWidget with 24h cooldown per equipment per user
+// _EquipmentCard – StatefulWidget with rental end date-based cooldown
+// Equipment becomes available the day after the rental period ends
 // ─────────────────────────────────────────────────────────────────────────────
 
 class _EquipmentCard extends StatefulWidget {
@@ -261,10 +262,24 @@ class _EquipmentCardState extends State<_EquipmentCard> {
     }
   }
 
-  Future<void> _saveCooldown() async {
+  /// Save cooldown until the end of rental period + 1 day
+  /// If dateFin is provided, use it + 1 day as the cooldown end
+  /// If dateFin is not provided, fallback to 24 hours (for backward compatibility)
+  Future<void> _saveCooldown({DateTime? dateFin}) async {
     if (widget.userId.isEmpty) return;
     final prefs = await SharedPreferences.getInstance();
-    final until = DateTime.now().add(const Duration(hours: 24));
+    
+    // Si dateFin est fournie, l'appareil devient disponible le lendemain
+    // Ex: location du 10 au 18 avril → dispo à partir du 19 avril
+    DateTime until;
+    if (dateFin != null) {
+      // Ajouter 1 jour après la date de fin
+      until = DateTime(dateFin.year, dateFin.month, dateFin.day + 1);
+    } else {
+      // Fallback: 24 heures pour compatibilité
+      until = DateTime.now().add(const Duration(hours: 24));
+    }
+    
     await prefs.setString(_cooldownKey, until.toIso8601String());
     if (mounted) setState(() => _cooldownUntil = until);
   }
@@ -328,7 +343,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Vous avez déjà réservé cet appareil. Prochaine réservation dans ${_formatCountdown(_remaining)}.',
+            'Vous avez déjà réservé cet appareil.\nDisponible à partir du ${_cooldownUntil != null ? "${_cooldownUntil!.day}/${_cooldownUntil!.month}/${_cooldownUntil!.year}" : _formatCountdown(_remaining)}.',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -440,10 +455,11 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                             );
 
                             debugPrint('✅ Location créée: ${result['location']['code']}');
-                            debugPrint('📡 En attente validation admin — clientNom affiché automatiquement');
+                            debugPrint('📡 Statut: ${result['location']['statut']} - En attente validation admin');
 
-                            // ✅ Save 24h cooldown uniquement si la location a bien été créée
-                            await _saveCooldown();
+                            // ✅ Save cooldown jusqu'à la fin de la location + 1 jour
+                            // Ex: location 10-18 avril → dispo à partir du 19 avril
+                            await _saveCooldown(dateFin: selectedEndDate);
 
                             if (!mounted) return;
                             Navigator.of(ctx).pop();
@@ -452,7 +468,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                               SnackBar(
                                 content: Text(
                                   '${widget.equipment.name} réservé avec succès ! '
-                                  'Prochaine réservation possible dans 24h.',
+                                  'En attente de validation par l\'administrateur.',
                                 ),
                                 backgroundColor: const Color(0xFF059669),
                                 duration: const Duration(seconds: 4),
@@ -622,7 +638,9 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                               size: 12, color: Color(0xFFD97706)),
                           const SizedBox(width: 4),
                           Text(
-                            'Dispo dans ${_formatCountdown(_remaining)}',
+                            _cooldownUntil != null 
+                                ? 'Dispo le ${_cooldownUntil!.day}/${_cooldownUntil!.month}/${_cooldownUntil!.year}'
+                                : 'Dispo dans ${_formatCountdown(_remaining)}',
                             style: const TextStyle(
                               fontSize: 11,
                               color: Color(0xFFD97706),
@@ -643,11 +661,15 @@ class _EquipmentCardState extends State<_EquipmentCard> {
 
   Widget _buildReserveButton(bool canReserve, bool inCooldown) {
     if (inCooldown) {
+      // Show the available date instead of countdown
+      final availableDate = _cooldownUntil != null 
+          ? '${_cooldownUntil!.day}/${_cooldownUntil!.month}' 
+          : _formatCountdown(_remaining);
       return ElevatedButton.icon(
         onPressed: null, // disabled
         icon: const Icon(Icons.lock_clock, size: 16),
         label: Text(
-          _formatCountdown(_remaining),
+          availableDate,
           style: const TextStyle(fontSize: 11),
         ),
         style: ElevatedButton.styleFrom(
