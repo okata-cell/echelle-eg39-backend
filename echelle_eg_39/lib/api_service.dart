@@ -497,5 +497,28 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       throw Exception(errorMsg);
     }
   }
+
+  /// Supprimer une location terminée ou rejétée
+  static Future<void> deleteLocation(int locationId) async {
+    final token = await ensureAuthenticated();
+    final response = await http.delete(
+      Uri.parse('$baseUrl/locations/$locationId'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+    );
+    
+    print('📡 deleteLocation status: ${response.statusCode}');
+    
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      return;
+    } else {
+      final errorBody = jsonDecode(response.body);
+      final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+      print('❌ deleteLocation failed: $errorMsg');
+      throw Exception(errorMsg);
+    }
+  }
 }
 

@@ -484,4 +484,47 @@ router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) =
   }
 });
 
+// Supprimer une location terminée ou rejétée (client ou admin)
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+    const isAdmin = req.user.role === 'admin';
+    
+    // Vérifier que la location existe et est terminée ou rejétée
+    const checkResult = await pool.query(
+      'SELECT * FROM locations WHERE id = $1',
+      [id]
+    );
+    
+    if (checkResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Location non trouvée' });
+    }
+    
+    const location = checkResult.rows[0];
+    
+    // Vérifier le statut - seulement terminé ou rejété peut être supprimé
+    if (location.statut !== 'termine' && location.statut !== 'rejetee') {
+      return res.status(400).json({ 
+        error: 'Seules les locations terminées ou rejétées peuvent être supprimées' 
+      });
+    }
+    
+    // Vérifier les permissions: soit admin, soit le propriétaire
+    if (!isAdmin && location.user_id !== userId) {
+      return res.status(403).json({ error: 'Non autorisé' });
+    }
+    
+    // Supprimer la location
+    await pool.query('DELETE FROM locations WHERE id = $1', [id]);
+    
+    console.log('🗑️ Location supprimée: id=', id, 'par user=', userId);
+    
+    res.json({ message: 'Location supprimée' });
+  } catch (error) {
+    console.error('💥 Erreur supprimer location:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 module.exports = router;

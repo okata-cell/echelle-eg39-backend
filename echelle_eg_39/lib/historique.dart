@@ -1830,6 +1830,56 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     );
   }
 
+  // Supprimer une location terminée ou rejétée
+  void _supprimerLocation(Transaction transaction) {
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Supprimer cette location?'),
+        content: Text(
+          'Voulez-vous vraiment supprimer cette location "${transaction.title}"?\n\nCette action est irréversible.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+            ),
+            onPressed: () async {
+              Navigator.pop(ctx);
+              try {
+                await ApiService.deleteLocation(transaction.id);
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Location supprimée'),
+                      backgroundColor: Colors.green,
+                    ),
+                  );
+                  // Recharger la liste
+                  await _loadTransactionsFromBackend();
+                }
+              } catch (e) {
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text('Erreur: $e'),
+                      backgroundColor: Colors.red,
+                    ),
+                  );
+                }
+              }
+            },
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _relouer(Transaction transaction) {
     showDialog(
       context: context,
@@ -2121,6 +2171,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                                 ],
                               ],
                             ),
+                          ),
                         ],
                       ),
                       const SizedBox(height: 8),
@@ -2428,6 +2479,12 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   _buildActionButton('Payer prolong.',
                       Icons.payment, Colors.orange,
                       () => _payerExtension(transaction)),
+                // Supprimer pour terminée ou rejétée
+                if (transaction.status == 'termine' || 
+                    transaction.status == 'rejetee')
+                  _buildActionButton('Supprimer', Icons.delete_outline,
+                      const Color(0xFFDC2626),
+                      () => _supprimerLocation(transaction)),
               ],
             ),
           ),
