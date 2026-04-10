@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'data_manager.dart';
+import 'api_service.dart';
 
 class AdminAppareilsPage extends StatefulWidget {
   const AdminAppareilsPage({super.key});
@@ -348,23 +349,66 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
   }
 
 
-  void _ajouterAppareil({
+  Future<void> _ajouterAppareil({
     required String nom,
     required String type,
     required int prixLoc,
     required int prixVente,
-  }) {
-    _dataManager.addAppareil(
-      Appareil(
-        id: "APP-${DateTime.now().millisecondsSinceEpoch}",
+  }) async {
+    try {
+      // Envoyer à la base de données backend
+      final result = await ApiService.createAppareil(
         nom: nom,
         type: type,
-        imageUrl: _getImageUrlForType(type),
         prixLocation: prixLoc,
         prixVente: prixVente,
-        disponible: true,
-      ),
-    );
+        imageUrl: _getImageUrlForType(type),
+      );
+      
+      // Ajouter aussi localement pour l'affichage immédiat
+      _dataManager.addAppareil(
+        Appareil(
+          id: result['appareil']?['code'] ?? "APP-${DateTime.now().millisecondsSinceEpoch}",
+          nom: nom,
+          type: type,
+          imageUrl: _getImageUrlForType(type),
+          prixLocation: prixLoc,
+          prixVente: prixVente,
+          disponible: true,
+        ),
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Appareil ajouté avec succès!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Si l'API échoue, ajouter seulement localement
+      _dataManager.addAppareil(
+        Appareil(
+          id: "APP-${DateTime.now().millisecondsSinceEpoch}",
+          nom: nom,
+          type: type,
+          imageUrl: _getImageUrlForType(type),
+          prixLocation: prixLoc,
+          prixVente: prixVente,
+          disponible: true,
+        ),
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Appareil ajouté (local): $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
   }
 
   void changerStatut(int index) {

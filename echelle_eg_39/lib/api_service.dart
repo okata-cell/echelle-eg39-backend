@@ -520,5 +520,52 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       throw Exception(errorMsg);
     }
   }
+
+  /// Créer un nouvel appareil (admin only)
+  static Future<Map<String, dynamic>> createAppareil({
+    required String nom,
+    required String type,
+    required int prixLocation,
+    required int prixVente,
+    String? imageUrl,
+  }) async {
+    final token = await ensureAuthenticated();
+    if (token == null) throw Exception('Not authenticated - Veuillez vous reconnecter');
+
+    print('📡 API createAppareil called with:');
+    print('   - nom: $nom');
+    print('   - type: $type');
+    print('   - prixLocation: $prixLocation');
+    print('   - prixVente: $prixVente');
+
+    final response = await http.post(
+      Uri.parse('$baseUrl/appareils'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'nom': nom,
+        'type': type,
+        'prixLocation': prixLocation,
+        'prixVente': prixVente,
+        'imageUrl': imageUrl,
+      }),
+    );
+
+    print('📡 createAppareil status: ${response.statusCode}');
+    print('📡 createAppareil body: ${response.body}');
+
+    if (response.statusCode == 201) {
+      final data = jsonDecode(response.body);
+      print('✅ Appareil créé: ${data['appareil']?['code']}');
+      return data;
+    } else {
+      final errorBody = jsonDecode(response.body);
+      final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+      print('❌ createAppareil failed: $errorMsg');
+      throw Exception(errorMsg);
+    }
+  }
 }
 
