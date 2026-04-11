@@ -112,7 +112,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
     try {
       final token = await ApiService.ensureAuthenticated();
       final response = await http.patch(
-        Uri.parse('${ApiService.baseUrl}/demandes/$id'),
+        Uri.parse('${ApiService.baseUrl}/demandes/$id/statut'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
@@ -160,7 +160,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
     try {
       final token = await ApiService.ensureAuthenticated();
       final response = await http.patch(
-        Uri.parse('${ApiService.baseUrl}/demandes/$id'),
+        Uri.parse('${ApiService.baseUrl}/demandes/$id/statut'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
