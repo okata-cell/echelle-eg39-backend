@@ -219,34 +219,36 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
+          isScrollable: true,
+          labelPadding: const EdgeInsets.symmetric(horizontal: 8),
           tabs: [
             Tab(
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.pending_actions, size: 18),
-                  const SizedBox(width: 6),
-                  Text('En attente ($pendingCount)'),
+                  const Icon(Icons.pending_actions, size: 16),
+                  const SizedBox(width: 4),
+                  Text('En att. ($pendingCount)', style: const TextStyle(fontSize: 12)),
                 ],
               ),
             ),
             Tab(
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.play_circle_outline, size: 18),
-                  const SizedBox(width: 6),
-                  Text('Approuvées ($activeCount)'),
+                  const Icon(Icons.play_circle_outline, size: 16),
+                  const SizedBox(width: 4),
+                  Text('Approuv. ($activeCount)', style: const TextStyle(fontSize: 12)),
                 ],
               ),
             ),
             Tab(
               child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  const Icon(Icons.check_circle_outline, size: 18),
-                  const SizedBox(width: 6),
-                  Text('Terminées ($completedCount)'),
+                  const Icon(Icons.check_circle_outline, size: 16),
+                  const SizedBox(width: 4),
+                  Text('Termin. ($completedCount)', style: const TextStyle(fontSize: 12)),
                 ],
               ),
             ),
@@ -414,16 +416,20 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
                             '$appareilNom (x$quantite)',
                             style: const TextStyle(
                               fontWeight: FontWeight.w600,
-                              fontSize: 15,
+                              fontSize: 14,
                             ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                           const SizedBox(height: 2),
                           Text(
                             clientNom,
                             style: TextStyle(
-                              fontSize: 13,
+                              fontSize: 12,
                               color: Colors.grey[600],
                             ),
+                            overflow: TextOverflow.ellipsis,
+                            maxLines: 1,
                           ),
                         ],
                       ),
