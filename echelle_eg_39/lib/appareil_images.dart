@@ -1,17 +1,18 @@
 // Configuration des URLs d'images par type d'appareil
 class AppareilImages {
-  // Map des URLs d'images par type d'appareil
+  // Map des URLs d'images par type d'appareil (utilise les mêmes URLs que data_manager)
   static final Map<String, String> imageUrlsByType = {
-    'gps': 'https://images.unsplash.com/photo-1579567761406-4684ee0c75b6?w=400',
-    'niveau': 'https://images.unsplash.com/photo-1590650153855-d9e808231d41?w=400',
-    'station totale': 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?w=400',
-    'theodolite': 'https://images.unsplash.com/photo-1581092162384-8987c1d64718?w=400',
-    'trepied': 'https://images.unsplash.com/photo-1590650046871-92c887180603?w=400',
-    'mire': 'https://images.unsplash.com/photo-1590650153855-d9e808231d41?w=400',
-    'drone': 'https://images.unsplash.com/photo-1508614589041-895b8c9d755c?w=400',
+    'gps': 'https://gms.gumtree.co.za/v2/images/za_ads_134213409_260118_696cd9fe200cfa000a9b8d85?size=l',
+    'niveau': 'https://m.media-amazon.com/images/I/61RMLIoYh6L._AC_UF894,1000_QL80_.jpg',
+    'station totale': 'https://lh3.googleusercontent.com/proxy/QENf36FM_QOdPL6EZH4wI_mdJVA-cOVzGoCq9YObvGEWYvpGcaRmBsVgTWI3GLlrkGR7jzkRbtBr7cEDfyyur-jmBzWb6cVX2D7mz65KR8Zxj7Ga5zjz-y-ZC0xjf68PoItOFpCRZW6PjvtgIBQ4tX6Jyg',
+    'theodolite': 'https://e-prisme.fr/wp-content/uploads//2024/06/IMG_20240530_163035785-scaled.jpg',
+    'trepied': 'https://www.lepont.fr/30189-large_default/trepied-leica-cpt103-cpt104-mi-lourd.jpg',
+    'mire': 'https://www.scors.fr/medias/photos-catalogue/6/G/G2/MIT.jpg',
+    'drone': 'https://m.media-amazon.com/images/I/41B4Q7zJuhL._AC_UF894,1000_QL80_.jpg',
     'embase': 'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400',
-    'reflecteur': 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400',
-    'canne': 'https://images.unsplash.com/photo-1579567761406-4684ee0c75b6?w=400',
+    'reflecteur': 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTwpQLIsIgCIxYZJ7erX8al95F12_iasdiQ6g&s',
+    'canne': 'https://m.media-amazon.com/images/I/61D+67Fr13L.jpg',
+    'antenne': 'https://m.media-amazon.com/images/I/41B4Q7zJuhL._AC_UF894,1000_QL80_.jpg',
     'accessoire': 'https://images.unsplash.com/photo-1581092334494-8b6a8c3a52f3?w=400',
   };
 
@@ -59,6 +60,7 @@ class AppareilImages {
     'embase': '🔴',
     'reflecteur': '⚙️',
     'canne': '📍',
+    'antenne': '📡',
     'accessoire': '📦',
   };
 
