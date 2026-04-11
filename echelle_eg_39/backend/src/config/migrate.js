@@ -157,7 +157,7 @@ async function runMigrations({ closePool = false } = {}) {
       ON CONFLICT (email) DO NOTHING
     `, ['Admin', 'ÉCHELLE EG39', adminEmail, adminPhone, hashedPassword, 'admin']);
 
-    // Insérer des appareils par défaut
+// Insérer des appareils par défaut
     const defaultAppareils = [
       ['APP-001', 'GPS e-survey E600', 'GPS', 'https://images.unsplash.com/photo-1581092334494-8b6a8c3a52f3', 25000, 2500000],
       ['APP-002', 'GPS e-survey E800', 'GPS', 'https://images.unsplash.com/photo-1590650153855-d9e808231d41', 15000, 1200000],
@@ -167,14 +167,25 @@ async function runMigrations({ closePool = false } = {}) {
       ['APP-006', 'Station Totale Sokkia', 'Theodolite', 'https://images.unsplash.com/photo-1506744038136-46273834b3fb', 30000, 3500000],
       ['APP-007', 'GPS e-survey 3600', 'GPS', 'https://images.unsplash.com/photo-1581092334494-8b6a8c3a52f3', 25000, 2500000],
       ['APP-008', 'Trepied Leica', 'Trepied', 'https://images.unsplash.com/photo-1590650153855-d9e808231d41', 15000, 1200000],
-      ['APP-009', 'Mire Stadimetrique', 'Mire', 'https://images.unsplash.com/photo-1590650153855-d9e808231d41', 15000, 1200000]
+      ['APP-009', 'Mire Stadimetrique', 'Mire', 'https://images.unsplash.com/photo-1590650153855-d9e808231d41', 15000, 1200000],
+      ['APP-010', 'Antenne GPS RTK', 'Antenne', 'https://m.media-amazon.com/images/I/41B4Q7zJuhL._AC_UF894,1000_QL80_.jpg', 50000, 5000000],
+      ['APP-011', 'Canne GPS', 'Canne', 'https://m.media-amazon.com/images/I/61D+67Fr13L.jpg', 12000, 1200000],
+      ['APP-012', 'Réflecteur Leica', 'Réflecteur', 'https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTwpQLIsIgCIxYZJ7erX8al95F12_iasdiQ6g&s', 8000, 800000],
+      ['APP-013', 'Drone topographique', 'Drone', 'https://images.unsplash.com/photo-1506947411487-a56738267384', 100000, 10000000],
     ];
 
+    // INSERT with ON CONFLICT - use UPDATE to ensure we have all appareils
     for (const appareil of defaultAppareils) {
       await client.query(`
-        INSERT INTO appareils (code, nom, type, image_url, prix_location, prix_vente)
-        VALUES ($1, $2, $3, $4, $5, $6)
-        ON CONFLICT (code) DO NOTHING
+        INSERT INTO appareils (code, nom, type, image_url, prix_location, prix_vente, disponible)
+        VALUES ($1, $2, $3, $4, $5, $6, true)
+        ON CONFLICT (code) DO UPDATE SET 
+          nom = EXCLUDED.nom,
+          type = EXCLUDED.type,
+          image_url = EXCLUDED.image_url,
+          prix_location = EXCLUDED.prix_location,
+          prix_vente = EXCLUDED.prix_vente,
+          disponible = true
       `, appareil);
     }
 

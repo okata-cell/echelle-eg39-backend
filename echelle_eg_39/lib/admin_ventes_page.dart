@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
-import 'data_manager.dart';
-import 'admin_demandes_achat.dart';
+import 'package:http/http.dart' as http;
+import 'dart:convert';
+import 'api_service.dart';
 
+/// Page admin pour gérer les demandes d'achat (copie de LocationsMenu)
 class AdminVentesPageFixed extends StatefulWidget {
   const AdminVentesPageFixed({Key? key}) : super(key: key);
 
@@ -9,93 +11,16 @@ class AdminVentesPageFixed extends StatefulWidget {
   State<AdminVentesPageFixed> createState() => _AdminVentesPageFixedState();
 }
 
-class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> 
-    with SingleTickerProviderStateMixin {
-  
+class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with SingleTickerProviderStateMixin {
   late TabController _tabController;
-  
-  // Variables pour le formulaire de nouvelle vente
-  final _formKey = GlobalKey<FormState>();
-  final _dataManager = DataManager();
-  
-  String? _selectedClientId;  // Utiliser l'ID au lieu de l'objet Client
-  Map<String, dynamic>? _selectedProduit;
-  DateTime _dateCommande = DateTime.now();
-  String _statut = 'Confirmée';
-  
-  // Controllers pour les champs de saisie
-  final _dateController = TextEditingController();
-  
-  // Données simplifiées et sécurisées
-  final List<Map<String, dynamic>> _ventes = [
-    {
-      'id': 'V-001',
-      'client': 'Client A',
-      'produit': 'GPS e-survey E600',
-      'prix': 2500000.0,
-      'date': '2024-01-15',
-      'statut': 'Complétée',
-    },
-    {
-      'id': 'V-002',
-      'client': 'Client B', 
-      'produit': 'Station totale Leica TS09',
-      'prix': 4200000.0,
-      'date': '2024-01-16',
-      'statut': 'En cours',
-    },
-    {
-      'id': 'V-003',
-      'client': 'Client C',
-      'produit': 'Niveau automatique Leica',
-      'prix': 1200000.0,
-      'date': '2024-01-17',
-      'statut': 'Confirmée',
-    },
-  ];
-
-  final List<Map<String, dynamic>> _produits = [
-    {
-      'id': 1,
-      'nom': 'GPS e-survey E600',
-      'categorie': 'GPS',
-      'prix': 2500000.0,
-      'stock': 5,
-      'seuil': 2,
-    },
-    {
-      'id': 2,
-      'nom': 'GPS e-survey E800',
-      'categorie': 'GPS', 
-      'prix': 3500000.0,
-      'stock': 1,
-      'seuil': 2,
-    },
-    {
-      'id': 3,
-      'nom': 'Station totale Leica TS09',
-      'categorie': 'Station totale',
-      'prix': 4200000.0,
-      'stock': 0,
-      'seuil': 1,
-    },
-  ];
+  List<Map<String, dynamic>> _demandesFromAPI = [];
+  bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    try {
-      _tabController = TabController(length: 5, vsync: this);
-    } catch (e) {
-      // En cas d'erreur, utiliser un TabController basique
-      _tabController = TabController(length: 5, vsync: this);
-    }
-    
-    // Initialiser le gestionnaire de données
-    _dataManager.initialize();
-    
-    // Initialiser le contrôleur de date
-    _dateController.text = '${_dateCommande.day}/${_dateCommande.month}/${_dateCommande.year}';
+    _tabController = TabController(length: 3, vsync: this);
+    _loadDemandesFromAPI();
   }
 
   @override
@@ -104,839 +29,503 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed>
     super.dispose();
   }
 
-  // Calculs sécurisés
-  double get chiffreAffairesTotal => 
-      _ventes.fold(0.0, (sum, vente) => sum + (vente['prix'] ?? 0.0));
-  
-  int get ventesAujourdhui => 
-      _ventes.where((v) => v['date'] == '2024-01-17').length;
-  
-  int get commandesEnAttente => 
-      _ventes.where((v) => v['statut'] == 'En cours').length;
+  /// Charger les demandes d'achat depuis l'API
+  Future<void> _loadDemandesFromAPI() async {
+    setState(() => _isLoading = true);
+    try {
+      final token = await ApiService.ensureAuthenticated();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/demandes'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        setState(() {
+          _demandesFromAPI = List<Map<String, dynamic>>.from(data['demandes'] ?? []);
+          _isLoading = false;
+        });
+        print('📡 Admin Demandes Achat: ${_demandesFromAPI.length} demandes chargées');
+      } else {
+        setState(() => _isLoading = false);
+        print('❌ Erreur chargement demandes: ${response.statusCode}');
+      }
+    } catch (e) {
+      setState(() => _isLoading = false);
+      print('❌ Exception chargement demandes: $e');
+    }
+  }
+
+  /// Demandes en attente
+  List<Map<String, dynamic>> _getPendingDemandes() {
+    return _demandesFromAPI.where((d) {
+      final statut = d['statut']?.toString().toLowerCase().trim();
+      return statut == 'en_attente' || statut == 'pending';
+    }).toList();
+  }
+
+  /// Demandes actives/approuvées
+  List<Map<String, dynamic>> _getActiveDemandes() {
+    return _demandesFromAPI.where((d) {
+      final statut = d['statut']?.toString().toLowerCase().trim();
+      return statut == 'approuvee' || statut == 'approuvé' || statut == 'approved';
+    }).toList();
+  }
+
+  /// Demandes terminées/rejetées
+  List<Map<String, dynamic>> _getCompletedDemandes() {
+    return _demandesFromAPI.where((d) {
+      final statut = d['statut']?.toString().toLowerCase().trim();
+      return statut == 'termine' || statut == 'rejetee' || statut == 'rejetée' || statut == 'livree';
+    }).toList();
+  }
+
+  /// Formater une date
+  String _formatDate(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  /// Formater date en français
+  String _formatDateFr(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
+                      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+      return '${date.day} ${months[date.month - 1]} ${date.year}';
+    } catch (e) {
+      return dateStr;
+    }
+  }
+
+  /// Approuver une demande
+  Future<void> _approveDemande(int id) async {
+    try {
+      final token = await ApiService.ensureAuthenticated();
+      final response = await http.patch(
+        Uri.parse('${ApiService.baseUrl}/demandes/$id'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'statut': 'approuvee',
+          'commentaire_admin': 'Demande approuvée par l\'admin',
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Demande approuvée avec succès!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadDemandesFromAPI();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Erreur: ${response.body}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  /// Rejeter une demande
+  Future<void> _rejectDemande(int id, String motif) async {
+    try {
+      final token = await ApiService.ensureAuthenticated();
+      final response = await http.patch(
+        Uri.parse('${ApiService.baseUrl}/demandes/$id'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: json.encode({
+          'statut': 'rejetee',
+          'commentaire_admin': motif,
+        }),
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Demande rejetée'),
+              backgroundColor: Colors.orange,
+            ),
+          );
+          _loadDemandesFromAPI();
+        }
+      } else {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Erreur: ${response.body}'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    final nombreDemandesEnAttente = _dataManager.nombreDemandesEnAttente;
-    
+    final pendingCount = _getPendingDemandes().length;
+    final activeCount = _getActiveDemandes().length;
+    final completedCount = _getCompletedDemandes().length;
+
     return Scaffold(
+      backgroundColor: const Color(0xFFF5F6F8),
       appBar: AppBar(
-        title: const Text(
-          'Gestion des Ventes ',
-          style: TextStyle(fontWeight: FontWeight.bold),
-        ),
-        backgroundColor: Colors.indigo.shade600,
+        backgroundColor: const Color(0xFF059669),
         foregroundColor: Colors.white,
-        elevation: 8,
-        actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_bag),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                      builder: (context) => const AdminDemandesAchatPage(),
-                    ),
-                  );
-                },
-                tooltip: 'Demandes d\'achat clients',
-              ),
-              if (nombreDemandesEnAttente > 0)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Colors.red,
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                      minWidth: 16,
-                      minHeight: 16,
-                    ),
-                    child: Text(
-                      '$nombreDemandesEnAttente',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 10,
-                        fontWeight: FontWeight.bold,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
-        ],
+        title: const Text('Demandes d\'Achat'),
+        elevation: 0,
         bottom: TabBar(
           controller: _tabController,
           indicatorColor: Colors.white,
-          labelColor: Colors.white,
-          unselectedLabelColor: Colors.white70,
-          tabs: const [
-            Tab(icon: Icon(Icons.dashboard), text: 'Tableau de bord'),
-            Tab(icon: Icon(Icons.list_alt), text: 'Commandes'),
-            Tab(icon: Icon(Icons.inventory), text: 'Stock'),
-            Tab(icon: Icon(Icons.analytics), text: 'Rapports'),
-            Tab(icon: Icon(Icons.add_shopping_cart), text: 'Nouvelle vente'),
-          ],
-        ),
-      ),
-      body: SafeArea(
-        child: TabBarView(
-          controller: _tabController,
-          children: [
-            _buildTableauDeBord(),
-            _buildCommandes(),
-            _buildGestionStock(),
-            _buildRapports(),
-            _buildNouvelleVente(),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildTableauDeBord() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Cartes de statistiques
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  'Chiffre d\'Affaires',
-                  '${_formatNumber(chiffreAffairesTotal)} FCFA',
-                  Icons.monetization_on,
-                  Colors.green,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  'Ventes Aujourd\'hui',
-                  '$ventesAujourdhui',
-                  Icons.shopping_cart,
-                  Colors.blue,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Row(
-            children: [
-              Expanded(
-                child: _buildStatCard(
-                  'Commandes en Attente',
-                  '$commandesEnAttente',
-                  Icons.pending_actions,
-                  Colors.orange,
-                ),
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: _buildStatCard(
-                  'Total Ventes',
-                  '${_ventes.length}',
-                  Icons.assessment,
-                  Colors.purple,
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 24),
-          // Ventes récentes
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+          tabs: [
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
                 children: [
-                  Row(
-                    children: [
-                      Icon(Icons.recent_actors, color: Colors.indigo.shade600),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Ventes Récentes',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: Colors.indigo.shade600,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 16),
-                  ..._ventes.take(3).map((vente) => _buildVenteItem(vente)),
+                  const Icon(Icons.pending_actions, size: 18),
+                  const SizedBox(width: 6),
+                  Text('En attente ($pendingCount)'),
                 ],
               ),
             ),
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.play_circle_outline, size: 18),
+                  const SizedBox(width: 6),
+                  Text('Approuvées ($activeCount)'),
+                ],
+              ),
+            ),
+            Tab(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.check_circle_outline, size: 18),
+                  const SizedBox(width: 6),
+                  Text('Terminées ($completedCount)'),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh),
+            onPressed: _loadDemandesFromAPI,
+            tooltip: 'Actualiser',
           ),
         ],
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : TabBarView(
+              controller: _tabController,
+              children: [
+                // En attente
+                _buildDemandesList(_getPendingDemandes(), 'en_attente'),
+                // Approuvées
+                _buildDemandesList(_getActiveDemandes(), 'approuvee'),
+                // Terminées
+                _buildDemandesList(_getCompletedDemandes(), 'termine'),
+              ],
+            ),
+    );
+  }
+
+  Widget _buildDemandesList(List<Map<String, dynamic>> demandes, String type) {
+    if (demandes.isEmpty) {
+      return Center(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              type == 'en_attente' ? Icons.pending_actions :
+              type == 'approuvee' ? Icons.check_circle : Icons.done_all,
+              size: 64,
+              color: Colors.grey[400],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              type == 'en_attente' ? 'Aucune demande en attente' :
+              type == 'approuvee' ? 'Aucune demande approuvée' : 'Aucune demande terminée',
+              style: TextStyle(
+                fontSize: 16,
+                color: Colors.grey[600],
+              ),
+            ),
+          ],
+        ),
+      );
+    }
+
+    return RefreshIndicator(
+      onRefresh: _loadDemandesFromAPI,
+      child: ListView.builder(
+        padding: const EdgeInsets.all(16),
+        itemCount: demandes.length,
+        itemBuilder: (context, index) => _buildDemandeCard(demandes[index], type),
       ),
     );
   }
 
-  Widget _buildCommandes() {
-    debugPrint('_buildCommandes called, _ventes length: ${_ventes.length}');
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _ventes.length,
-      itemBuilder: (context, index) {
-        debugPrint('Building item at index $index');
-        final vente = _ventes[index];
-        debugPrint('vente: $vente, type: ${vente.runtimeType}');
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
+  Widget _buildDemandeCard(Map<String, dynamic> demande, String type) {
+    final appareilNom = demande['appareilNom'] ?? 'Produit';
+    final clientNom = demande['clientNom'] ?? 'Client';
+    final total = demande['total'] ?? 0;
+    final quantite = demande['quantite'] ?? 1;
+    final createdAt = demande['createdAt'] ?? '';
+    final code = demande['code'] ?? '';
+
+    Color borderColor;
+    Color statusColor;
+    IconData statusIcon;
+
+    switch (type) {
+      case 'en_attente':
+        borderColor = Colors.orange;
+        statusColor = Colors.orange;
+        statusIcon = Icons.pending_actions;
+        break;
+      case 'approuvee':
+        borderColor = Colors.green;
+        statusColor = Colors.green;
+        statusIcon = Icons.check_circle;
+        break;
+      default:
+        borderColor = Colors.grey;
+        statusColor = Colors.grey;
+        statusIcon = Icons.done_all;
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: borderColor.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 4,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          // En-tête avec code
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+              color: borderColor.withOpacity(0.1),
+              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+            ),
+            child: Row(
+              children: [
+                Icon(statusIcon, size: 16, color: statusColor),
+                const SizedBox(width: 8),
+                Text(
+                  code,
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: statusColor,
+                  ),
+                ),
+                const Spacer(),
+                Text(
+                  _formatDateFr(createdAt),
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: Colors.grey[600],
+                  ),
+                ),
+              ],
+            ),
+          ),
+          // Corps de la carte
+          Padding(
             padding: const EdgeInsets.all(16),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                // Appareil
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-                    Text(
-                      vente['id'] ?? '',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 16,
+                    Container(
+                      width: 48,
+                      height: 48,
+                      decoration: BoxDecoration(
+                        color: Colors.blue.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(10),
                       ),
+                      child: const Icon(Icons.shopping_cart, color: Colors.blue),
                     ),
-                    _buildStatutBadge(vente['statut'] ?? ''),
-                  ],
-                ),
-                const SizedBox(height: 8),
-                Text('Client: ${vente['client'] ?? ''}'),
-                Text('Produit: ${vente['produit'] ?? ''}'),
-                Text(
-                  'Prix: ${_formatNumber(vente['prix'] ?? 0.0)} FCFA',
-                  style: const TextStyle(fontWeight: FontWeight.bold),
-                ),
-                Text(
-                  'Date: ${vente['date'] ?? ''}',
-                  style: const TextStyle(color: Colors.grey),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildGestionStock() {
-    return ListView.builder(
-      padding: const EdgeInsets.all(16),
-      itemCount: _produits.length,
-      itemBuilder: (context, index) {
-        final produit = _produits[index];
-        final stockFaible = (produit['stock'] ?? 0) <= (produit['seuil'] ?? 0);
-        
-        return Card(
-          margin: const EdgeInsets.only(bottom: 12),
-          elevation: 4,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-          child: Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        produit['nom'] ?? '',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                        ),
-                      ),
-                      Text('Catégorie: ${produit['categorie'] ?? ''}'),
-                      Text(
-                        'Prix: ${_formatNumber(produit['prix'] ?? 0.0)} FCFA',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      const SizedBox(height: 8),
-                      Row(
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Icon(
-                            stockFaible ? Icons.warning : Icons.inventory,
-                            color: stockFaible ? Colors.orange : Colors.green,
-                            size: 16,
-                          ),
-                          const SizedBox(width: 4),
                           Text(
-                            'Stock: ${produit['stock'] ?? 0}',
+                            '$appareilNom (x$quantite)',
+                            style: const TextStyle(
+                              fontWeight: FontWeight.w600,
+                              fontSize: 15,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Text(
+                            clientNom,
                             style: TextStyle(
-                              color: stockFaible ? Colors.orange : Colors.green,
-                              fontWeight: FontWeight.bold,
+                              fontSize: 13,
+                              color: Colors.grey[600],
                             ),
                           ),
                         ],
+                      ),
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.end,
+                      children: [
+                        Text(
+                          '$total F',
+                          style: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                            fontSize: 16,
+                            color: Colors.blue,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                // Boutons d'action pour les demandes en attente
+                if (type == 'en_attente') ...[
+                  const SizedBox(height: 12),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton.icon(
+                          onPressed: () => _showRejectDialog(demande['id']),
+                          icon: const Icon(Icons.cancel, size: 18),
+                          label: const Text('Rejeter'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: ElevatedButton.icon(
+                          onPressed: () => _approveDemande(demande['id']),
+                          icon: const Icon(Icons.check, size: 18),
+                          label: const Text('Approuver'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.green,
+                            foregroundColor: Colors.white,
+                          ),
+                        ),
                       ),
                     ],
                   ),
-                ),
-              ],
-            ),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildRapports() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Card(
-            elevation: 4,
-            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Rapport de Ventes',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildRapportItem('Ventes ce mois', '${_ventes.length} commandes'),
-                  _buildRapportItem('Chiffre d\'affaires', '${_formatNumber(chiffreAffairesTotal)} FCFA'),
-                  _buildRapportItem('Produit le plus vendu', 'GPS e-survey E600'),
-                  _buildRapportItem('Moyenne par commande', '${_formatNumber(chiffreAffairesTotal / _ventes.length)} FCFA'),
                 ],
-              ),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard(String titre, String valeur, IconData icon, Color color) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 8),
-            Text(
-              valeur,
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: color,
-              ),
-            ),
-            Text(
-              titre,
-              style: const TextStyle(
-                fontSize: 12,
-                color: Colors.grey,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildVenteItem(Map<String, dynamic> vente) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                vente['client'] ?? '',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              Text(
-                vente['produit'] ?? '',
-                style: const TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          Column(
-            crossAxisAlignment: CrossAxisAlignment.end,
-            children: [
-              Text(
-                '${_formatNumber(vente['prix'] ?? 0.0)} FCFA',
-                style: const TextStyle(fontWeight: FontWeight.bold),
-              ),
-              _buildStatutBadge(vente['statut'] ?? ''),
-            ],
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatutBadge(String statut) {
-    Color color;
-    switch (statut) {
-      case 'Complétée':
-        color = Colors.green;
-        break;
-      case 'Confirmée':
-        color = Colors.blue;
-        break;
-      case 'En cours':
-        color = Colors.orange;
-        break;
-      case 'Annulée':
-        color = Colors.red;
-        break;
-      default:
-        color = Colors.grey;
-    }
-
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
-      ),
-      child: Text(
-        statut,
-        style: TextStyle(
-          color: color,
-          fontSize: 10,
-          fontWeight: FontWeight.bold,
-        ),
-      ),
-    );
-  }
-
-  Widget _buildRapportItem(String label, String valeur) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 14)),
-          Text(
-            valeur,
-            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildNouvelleVente() {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(16),
-      child: Form(
-        key: _formKey,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            // Titre de la section
-            Row(
-              children: [
-                Icon(Icons.add_shopping_cart, color: Colors.indigo.shade600, size: 28),
-                const SizedBox(width: 12),
-                Text(
-                  'Nouvelle Vente',
-                  style: TextStyle(
-                    fontSize: 24,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.indigo.shade600,
-                  ),
-                ),
               ],
             ),
-            const SizedBox(height: 24),
-            
-            // Sélection du client
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.person, color: Colors.indigo.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Sélection du Client',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.indigo.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<String>(
-                      value: _selectedClientId,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Client',
-                        hintText: 'Sélectionnez un client',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.person),
-                      ),
-                      items: _dataManager.clients.map((Client client) {
-                        return DropdownMenuItem<String>(
-                          value: client.id,
-                          child: Text(
-                            client.email != null && client.email!.isNotEmpty
-                                ? "${client.name} (${client.email})"
-                                : client.name,
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (String? newValue) {
-                        setState(() {
-                          _selectedClientId = newValue;
-                        });
-                      },
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Veuillez sélectionner un client';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // Sélection du produit
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.inventory, color: Colors.indigo.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Sélection du Produit',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.indigo.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    DropdownButtonFormField<Map<String, dynamic>>(
-                      value: _selectedProduit,
-                      isExpanded: true,
-                      decoration: const InputDecoration(
-                        labelText: 'Produit',
-                        hintText: 'Sélectionnez un produit',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.inventory),
-                      ),
-                      selectedItemBuilder: (BuildContext context) {
-                        return _produits.map((Map<String, dynamic> produit) {
-                          return Text(
-                            produit['nom'] ?? '',
-                            overflow: TextOverflow.ellipsis,
-                          );
-                        }).toList();
-                      },
-                      items: _produits.map((Map<String, dynamic> produit) {
-                        return DropdownMenuItem<Map<String, dynamic>>(
-                          value: produit,
-                          child: Text(
-                            "${produit['nom'] ?? ''} - ${_formatNumber(produit['prix'] ?? 0.0)} FCFA",
-                            overflow: TextOverflow.ellipsis,
-                          ),
-                        );
-                      }).toList(),
-                      onChanged: (Map<String, dynamic>? newValue) {
-                        setState(() {
-                          _selectedProduit = newValue;
-                        });
-                      },
-                      validator: (value) {
-                        if (value == null) {
-                          return 'Veuillez sélectionner un produit';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // Date de commande
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.calendar_today, color: Colors.indigo.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Date de Commande',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.indigo.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    TextFormField(
-                      controller: _dateController,
-                      decoration: const InputDecoration(
-                        labelText: 'Date de commande',
-                        hintText: 'Cliquez pour sélectionner une date',
-                        border: OutlineInputBorder(),
-                        prefixIcon: Icon(Icons.calendar_today),
-                      ),
-                      readOnly: true,
-                      onTap: () => _selectDate(context),
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Veuillez sélectionner une date';
-                        }
-                        return null;
-                      },
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 16),
-            
-            // Statut
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Icon(Icons.info, color: Colors.indigo.shade600),
-                        const SizedBox(width: 8),
-                        Text(
-                          'Statut',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.bold,
-                            color: Colors.indigo.shade600,
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-                    Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(8),
-                        border: Border.all(color: Colors.blue.withOpacity(0.3)),
-                      ),
-                      child: Row(
-                        children: [
-                          Icon(Icons.schedule, color: Colors.blue, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            'Statut initial: $_statut',
-                            style: const TextStyle(
-                              color: Colors.blue,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 14,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    const Text(
-                      'Le statut changera automatiquement de "Confirmée" vers "En cours" après l\'enregistrement.',
-                      style: TextStyle(fontSize: 12, color: Colors.grey),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 24),
-            
-            // Bouton d'enregistrement
-            SizedBox(
-              width: double.infinity,
-              height: 56,
-              child: ElevatedButton(
-                onPressed: _enregistrerVente,
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: Colors.indigo.shade600,
-                  foregroundColor: Colors.white,
-                  elevation: 4,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Icon(Icons.save, size: 24),
-                    const SizedBox(width: 8),
-                    const Text(
-                      'Enregistrer la vente',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Future<void> _selectDate(BuildContext context) async {
-    final DateTime? picked = await showDatePicker(
+  /// Dialogue de rejet
+  void _showRejectDialog(int id) {
+    final controller = TextEditingController();
+    showDialog(
       context: context,
-      initialDate: _dateCommande,
-      firstDate: DateTime(2020),
-      lastDate: DateTime(2030),
-    );
-    
-    if (picked != null && picked != _dateCommande) {
-      setState(() {
-        _dateCommande = picked;
-        _dateController.text = '${picked.day}/${picked.month}/${picked.year}';
-      });
-    }
-  }
-
-  void _enregistrerVente() {
-    if (_formKey.currentState!.validate()) {
-      // Générer un nouvel ID de vente
-      String newId = 'V-${(_ventes.length + 1).toString().padLeft(3, '0')}';
-
-      // Créer la nouvelle vente
-      Client client = _dataManager.clients.firstWhere(
-        (client) => client.id == _selectedClientId
-      );
-
-      // Sauvegarder les valeurs avant de les réinitialiser
-      final selectedProduit = _selectedProduit!;
-      final selectedClientId = _selectedClientId!;
-      final dateText = '${_dateCommande.day}/${_dateCommande.month}/${_dateCommande.year}';
-
-      Map<String, dynamic> nouvelleVente = {
-        'id': newId,
-        'client': client.name,
-        'produit': selectedProduit['nom'],
-        'prix': selectedProduit['prix'],
-        'date': dateText,
-        'statut': 'En cours', // Le statut change directement vers "En cours"
-      };
-
-      // Ajouter à la liste des ventes
-      setState(() {
-        _ventes.add(nouvelleVente);
-      });
-
-      // Réinitialiser le formulaire
-      setState(() {
-        _selectedClientId = null;
-        _selectedProduit = null;
-        _dateCommande = DateTime.now();
-        _dateController.text = '${DateTime.now().day}/${DateTime.now().month}/${DateTime.now().year}';
-      });
-
-      // Afficher un message de succès
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Vente enregistrée avec succès! ID: $newId'),
-          backgroundColor: Colors.green,
-          duration: Duration(seconds: 3),
+      builder: (ctx) => AlertDialog(
+        title: const Row(
+          children: [
+            Icon(Icons.cancel, color: Colors.red),
+            SizedBox(width: 12),
+            Text('Rejeter la demande'),
+          ],
         ),
-      );
-
-      // Afficher les détails de la vente créée
-      showDialog(
-        context: context,
-        builder: (BuildContext context) {
-          return AlertDialog(
-            title: Text('Vente Enregistrée'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('ID: $newId'),
-                Text('Client: ${client.name}'),
-                Text('Produit: ${selectedProduit['nom']}'),
-                Text('Prix: ${_formatNumber(selectedProduit['prix'])} FCFA'),
-                Text('Date: $dateText'),
-                Text('Statut: En cours'),
-              ],
+        content: TextField(
+          controller: controller,
+          decoration: const InputDecoration(
+            labelText: 'Motif du rejet',
+            hintText: 'Ex: Stock insuffisant, prix incorrect...',
+            border: OutlineInputBorder(),
+          ),
+          maxLines: 3,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (controller.text.isNotEmpty) {
+                _rejectDemande(id, controller.text);
+                Navigator.pop(ctx);
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red,
+              foregroundColor: Colors.white,
             ),
-            actions: [
-              TextButton(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                child: Text('OK'),
-              ),
-            ],
-          );
-        },
-      );
-    }
-  }
-
-  String _formatNumber(double number) {
-    return number.toStringAsFixed(0).replaceAllMapped(
-      RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-      (Match m) => '${m[1]} ',
+            child: const Text('Rejeter'),
+          ),
+        ],
+      ),
     );
   }
 }

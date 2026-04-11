@@ -343,10 +343,16 @@ class _EquipmentCardState extends State<_EquipmentCard> {
   }
 
   String _formatCountdown(Duration d) {
-    final h = d.inHours;
+    final days = d.inDays;
+    final h = d.inHours % 24;
     final m = d.inMinutes % 60;
-    if (h > 0) return '${h}h ${m}min';
-    return '${m}min';
+    
+    String result = '';
+    if (days > 0) result += '${days}j ';
+    if (h > 0 || days > 0) result += '${h}h ';
+    result += '${m}min';
+    
+    return result.trim();
   }
 
   // ───────────────────────── Reservation dialog ─────────────────────────────
@@ -392,7 +398,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            'Vous avez déjà réservé cet appareil.\nDisponible à partir du ${_cooldownUntil != null ? "${_cooldownUntil!.day}/${_cooldownUntil!.month}/${_cooldownUntil!.year}" : _formatCountdown(_remaining)}.',
+            'Vous avez déjà réservé cet appareil.\nDisponible dans ${_formatCountdown(_remaining)}.',
           ),
           backgroundColor: Colors.orange,
         ),
@@ -690,9 +696,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                               size: 12, color: Color(0xFFD97706)),
                           const SizedBox(width: 4),
                           Text(
-                            _cooldownUntil != null 
-                                ? 'Dispo le ${_cooldownUntil!.day}/${_cooldownUntil!.month}/${_cooldownUntil!.year}'
-                                : 'Dispo dans ${_formatCountdown(_remaining)}',
+                            'Dispo dans ${_formatCountdown(_remaining)}',
                             style: const TextStyle(
                               fontSize: 11,
                               color: Color(0xFFD97706),
@@ -713,10 +717,8 @@ class _EquipmentCardState extends State<_EquipmentCard> {
 
   Widget _buildReserveButton(bool canReserve, bool inCooldown) {
     if (inCooldown) {
-      // Show the available date instead of countdown
-      final availableDate = _cooldownUntil != null 
-          ? '${_cooldownUntil!.day}/${_cooldownUntil!.month}' 
-          : _formatCountdown(_remaining);
+      // Show countdown
+      final availableDate = _formatCountdown(_remaining);
       return ElevatedButton.icon(
         onPressed: null, // disabled
         icon: const Icon(Icons.lock_clock, size: 16),

@@ -866,6 +866,14 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
   }
 
+  /// Format date en format français (ex: 24 avril 2026)
+  String _formatDateFr(String dateString) {
+    final date = DateTime.parse(dateString);
+    final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
+                    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+    return '${date.day} ${months[date.month - 1]} ${date.year}';
+  }
+
   void _showRejectionReason(Transaction transaction) {
     showModalBottomSheet(
       context: context,
@@ -2183,29 +2191,16 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                               size: 14,
                               color: Colors.grey[600]),
                           const SizedBox(width: 4),
-                          Text(_formatDate(transaction.date),
-                              style: TextStyle(
-                                  fontSize: 12,
-                                  color: Colors.grey[600])),
-                          if (transaction.dateRetour != null) ...[
-                            const SizedBox(width: 8),
-                            Icon(Icons.arrow_forward,
-                                size: 12,
-                                color: Colors.grey[400]),
-                            const SizedBox(width: 4),
-                            Text(
-                              _formatDate(transaction.dateRetour!),
-                              style: TextStyle(
-                                fontSize: 12,
-                                color: isLate
-                                    ? Colors.red
-                                    : Colors.grey[600],
-                                fontWeight: isLate
-                                    ? FontWeight.bold
-                                    : FontWeight.normal,
-                              ),
+                          // Format: du 24 avril 2026 au 30 avril 2026
+                          Text(
+                            'du ${_formatDateFr(transaction.date)}' +
+                            (transaction.dateRetour != null ? ' au ${_formatDateFr(transaction.dateRetour!)}' : ''),
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: isLate ? Colors.red : Colors.grey[600],
+                              fontWeight: isLate ? FontWeight.bold : FontWeight.normal,
                             ),
-                          ],
+                          ),
                         ],
                       ),
                       const SizedBox(height: 4),

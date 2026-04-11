@@ -46,6 +46,7 @@ router.get('/', authMiddleware, async (req, res) => {
         clientNom: `${l.first_name} ${l.last_name}`,
         clientEmail: l.email,
         clientPhone: l.phone,
+        appareilId: l.appareil_id,
         appareilNom: l.appareil_nom,
         dateDebut: l.date_debut,
         dateFin: l.date_fin,
@@ -135,7 +136,33 @@ router.post('/', authMiddleware, [
       console.log('🔍 Debug: tous les appareils dans la DB:');
       const allAppareils = await pool.query('SELECT id, code, nom FROM appareils LIMIT 20');
       console.log('→', allAppareils.rows);
-      return res.status(404).json({ error: 'Appareil introuvable. Veuillez sélectionner un autre appareil.' });
+      
+      // Try to find by ID from the default appareils (APP-001 -> id=1, etc.)
+      // This handles the case where frontend sends numeric ID like 13
+      const frontendId = typeof appareilId === 'number' ? appareilId : parseInt(appareilId);
+      if (!isNaN(frontendId)) {
+        console.log('🔄 Trying alternative: search by ID =', frontendId);
+        const altResult = await pool.query('SELECT * FROM appareils WHERE id = $1', [frontendId]);
+        if (altResult.rows.length > 0) {
+          console.log('✅ Found by alternative ID search!');
+          appareilResult = altResult;
+        }
+      }
+      
+      // If still not found, check if there's an APP-00X format issue
+      if (appareilResult.rows.length === 0 && typeof appareilId === 'number') {
+        const codeFormat = `APP-${String(appareilId).padStart(3, '0')}`;
+        console.log('🔄 Trying code format:', codeFormat);
+        const codeResult = await pool.query('SELECT * FROM appareils WHERE code = $1', [codeFormat]);
+        if (codeResult.rows.length > 0) {
+          console.log('✅ Found by code format!');
+          appareilResult = codeResult;
+        }
+      }
+      
+      if (appareilResult.rows.length === 0) {
+        return res.status(404).json({ error: 'Appareil introuvable. Veuillez sélectionner un autre appareil.' });
+      }
     }
 
     const appareil = appareilResult.rows[0];
@@ -166,14 +193,14 @@ router.post('/', authMiddleware, [
     }
     
     const code = `LOC-${Date.now()}`;
-    console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareilId}, Total=${montantTotal}`);
+    console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareil.id}, Total=${montantTotal}`);
 
     // Insertion simple - la contrainte sera corrigée par /fix-constraint
     const result = await pool.query(
       `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
        RETURNING *`,
-      [code, parseInt(targetUserId), parseInt(appareilId), appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
+      [code, parseInt(targetUserId), appareil.id, appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
     );
 
     // Mettre à jour le statut après insertion

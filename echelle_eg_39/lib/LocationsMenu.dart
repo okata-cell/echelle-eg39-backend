@@ -398,7 +398,7 @@ class _LocationPageState extends State<LocationPage> {
                           const Icon(Icons.calendar_today, size: 14, color: Color(0xFF64748B)),
                           const SizedBox(width: 4),
                           Text(
-                            '${_formatDate(loc['dateDebut'])} - ${_formatDate(loc['dateFin'])}',
+                            _formatDateRange(loc['dateDebut'], loc['dateFin']),
                             style: const TextStyle(
                               fontSize: 12,
                               color: Color(0xFF64748B),
@@ -536,7 +536,7 @@ class _LocationPageState extends State<LocationPage> {
                 ),
                 const SizedBox(height: 4),
                 Text(
-                  '${loc['clientNom']} • ${_formatDate(loc['dateDebut'])} - ${_formatDate(loc['dateFin'])}',
+                  '${loc['clientNom']} • ${_formatDateRange(loc['dateDebut'], loc['dateFin'])}',
                   style: const TextStyle(
                     fontSize: 12,
                     color: Color(0xFF64748B),
@@ -545,12 +545,44 @@ class _LocationPageState extends State<LocationPage> {
               ],
             ),
           ),
-          Text(
-            '${loc['montantTotal']} F',
-            style: const TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Colors.green,
-            ),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.end,
+            children: [
+              Text(
+                '${loc['montantTotal']} F',
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  color: Colors.green,
+                ),
+              ),
+              const SizedBox(height: 4),
+              GestureDetector(
+                onTap: () => _showEquipmentStatusDialog(loc),
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.info_outline, size: 12, color: Colors.blue),
+                      SizedBox(width: 4),
+                      Text(
+                        'Statut',
+                        style: TextStyle(
+                          fontSize: 10,
+                          color: Colors.blue,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -664,6 +696,24 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
+  /// Format date en format français lisible (ex: 24 avril 2026)
+  String _formatDateLong(String? dateStr) {
+    if (dateStr == null) return '';
+    try {
+      final date = DateTime.parse(dateStr);
+      final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
+                      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+      return '${date.day} ${months[date.month - 1]} ${date.year}';
+    } catch (e) {
+      return dateStr ?? '';
+    }
+  }
+
+  /// Format range de dates (ex: du 24 avril 2026 au 30 avril 2026)
+  String _formatDateRange(String? dateDebut, String? dateFin) {
+    return 'du ${_formatDateLong(dateDebut)} au ${_formatDateLong(dateFin)}';
+  }
+
   Future<void> _performApprove(int id) async {
     try {
       await ApiService.approveLocation(id);
@@ -683,6 +733,108 @@ class _LocationPageState extends State<LocationPage> {
         );
       }
     }
+  }
+
+  /// Afficher le dialogue de statut de l'appareil
+  void _showEquipmentStatusDialog(Map<String, dynamic> loc) {
+    final appareilNom = loc['appareilNom'] ?? 'Appareil';
+    final clientNom = loc['clientNom'] ?? 'Client';
+    final clientTel = loc['clientTelephone'] ?? 'Non défini';
+    final dateDebut = loc['dateDebut'] ?? '';
+    final dateFin = loc['dateFin'] ?? '';
+    final montant = loc['montantTotal'] ?? 0;
+    final statut = loc['statut'] ?? 'en_cours';
+    
+    showDialog(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.blue.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.devices, color: Colors.blue),
+            ),
+            const SizedBox(width: 12),
+            const Text('Statut de l\'appareil'),
+          ],
+        ),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildStatusRow('Appareil', appareilNom, Icons.inventory_2),
+            const Divider(),
+            _buildStatusRow('Client', clientNom, Icons.person),
+            _buildStatusRow('Téléphone', clientTel, Icons.phone),
+            const Divider(),
+            _buildStatusRow('Date début', _formatDate(dateDebut), Icons.play_arrow),
+            _buildStatusRow('Date fin', _formatDate(dateFin), Icons.stop),
+            const Divider(),
+            _buildStatusRow('Montant', '$montant F', Icons.attach_money),
+            const Divider(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              decoration: BoxDecoration(
+                color: Colors.green.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
+                  const SizedBox(width: 6),
+                  Text(
+                    'En location (actif)',
+                    style: TextStyle(
+                      color: Colors.green[700],
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatusRow(String label, String value, IconData icon) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 6),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: Colors.grey[600]),
+          const SizedBox(width: 8),
+          Text(
+            '$label: ',
+            style: TextStyle(
+              color: Colors.grey[600],
+              fontSize: 13,
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   void _showRejectDialog(Map<String, dynamic> location) {
