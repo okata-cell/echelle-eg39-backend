@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'appareil_images.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -630,7 +631,9 @@ class _EquipmentCardState extends State<_EquipmentCard> {
             width: 128,
             height: 128,
             child: ZoomableImage(
-              imageUrl: equipment.imageUrl,
+              imageUrl: equipment.imageUrl.isNotEmpty
+                  ? equipment.imageUrl
+                  : AppareilImages.getImageUrlForType(equipment.name),
               title: equipment.name,
               width: 128,
               height: 128,
