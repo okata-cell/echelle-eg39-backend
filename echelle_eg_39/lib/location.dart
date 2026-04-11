@@ -236,17 +236,29 @@ class _EquipmentCardState extends State<_EquipmentCard> {
   DateTime? _cooldownUntil;
   Timer? _timer;
   bool _isSubmitting = false;
+  bool _hasPendingRequest = false; // Tracks if user has a pending request
 
   String get _cooldownKey =>
       'cooldown_${widget.userId}_${widget.equipment.id}';
+  String get _pendingKey =>
+      'pending_${widget.userId}_${widget.equipment.id}';
 
   @override
   void initState() {
     super.initState();
     _loadCooldown();
+    _loadPending(); // Load pending request state
     // Refresh countdown display every 30 seconds
     _timer = Timer.periodic(const Duration(seconds: 30), (_) {
       _loadCooldown();
+    });
+  }
+
+  Future<void> _loadPending() async {
+    if (widget.userId.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      _hasPendingRequest = prefs.getBool(_pendingKey) ?? false;
     });
   }
 
@@ -512,10 +524,14 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                             debugPrint('✅ Location créée: ${result['location']['code']}');
                             debugPrint('📡 Statut: ${result['location']['statut']} - En attente validation admin');
 
-                            // ✅ NE PAS bloquer immédiatement - la location est en attente d'approbation admin
-                            // Le blocage ne devrait occurir que quand l'admin approuve la location
-                            // Pour l'instant, juste afficher un message
-                            // (Le backend gère les conflits quand l'admin approuve)
+                            // Sauvegarder l'état "en attente" pour éviter les doubles clics
+                            final prefs = await SharedPreferences.getInstance();
+                            await prefs.setBool(_pendingKey, true);
+                            if (mounted) {
+                              setState(() {
+                                _hasPendingRequest = true;
+                              });
+                            }
 
                             if (!mounted) return;
                             Navigator.of(ctx).pop();
@@ -592,7 +608,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
   Widget build(BuildContext context) {
     final equipment = widget.equipment;
     final inCooldown = _isInCooldown;
-    final canReserve = equipment.available && !inCooldown;
+    final canReserve = equipment.available && !inCooldown && !_hasPendingRequest;
 
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
@@ -726,6 +742,20 @@ class _EquipmentCardState extends State<_EquipmentCard> {
           availableDate,
           style: const TextStyle(fontSize: 11),
         ),
+        style: ElevatedButton.styleFrom(
+          disabledBackgroundColor: const Color(0xFFFEF3C7),
+          disabledForegroundColor: const Color(0xFFD97706),
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        ),
+      );
+    }
+
+    // Show "En attente" if there's a pending request
+    if (_hasPendingRequest) {
+      return ElevatedButton.icon(
+        onPressed: null, // disabled - waiting for admin
+        icon: const Icon(Icons.hourglass_empty, size: 16),
+        label: const Text('En attente', style: TextStyle(fontSize: 11)),
         style: ElevatedButton.styleFrom(
           disabledBackgroundColor: const Color(0xFFFEF3C7),
           disabledForegroundColor: const Color(0xFFD97706),
