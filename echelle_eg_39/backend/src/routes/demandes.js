@@ -56,6 +56,47 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
+// Supprimer une demande d'achat terminée ou rejétée (client ou admin)
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const userId = req.user.userId;
+    const userRole = req.user.role;
+
+    // Vérifier si la demande existe
+    const demandeResult = await pool.query(
+      'SELECT * FROM demandes_achat WHERE id = $1',
+      [id]
+    );
+
+    if (demandeResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Demande non trouvée' });
+    }
+
+    const demande = demandeResult.rows[0];
+
+    // Vérifier les permissions: admin peut tout supprimer, client seulement ses propres demandes
+    if (userRole !== 'admin' && demande.user_id !== userId) {
+      return res.status(403).json({ error: 'Non autorisé' });
+    }
+
+    // Vérifier le status: ne peut supprimer que si terminé ou rejété
+    if (demande.statut !== 'termine' && demande.statut !== 'rejetee') {
+      return res.status(400).json({ 
+        error: 'Impossible de supprimer une demande en cours ou en attente' 
+      });
+    }
+
+    // Supprimer la demande
+    await pool.query('DELETE FROM demandes_achat WHERE id = $1', [id]);
+
+    res.json({ message: 'Demande supprimée' });
+  } catch (error) {
+    console.error('Erreur suppression demande:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // Créer une demande d'achat (client)
 router.post('/', authMiddleware, [
   body('appareilId').isInt().withMessage('ID appareil requis'),
