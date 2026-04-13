@@ -558,35 +558,53 @@ module.exports = router;
 
 // Supprimer toutes les locations terminées (corbeille)
 router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
   try {
     console.log('🗑️ Début suppression locations terminées...');
     
+    // Utiliser une transaction pour garantir l'intégrité
+    await client.query('BEGIN');
+    
     // D'abord récupérer les appareil_id pour les rendre disponibles
-    const locsToDelete = await pool.query(
-      "SELECT appareil_id FROM locations WHERE statut = 'termine'"
+    const locsToDelete = await client.query(
+      "SELECT id, appareil_id FROM locations WHERE statut = 'termine'"
     );
     console.log(`🗑️ Locations à supprimer: ${locsToDelete.rows.length}`);
     
     // Rendre les appareils disponibles
     for (const loc of locsToDelete.rows) {
       if (loc.appareil_id) {
-        await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
+        await client.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
       }
     }
     
+    // Supprimer les prolongations liées aux locations terminées d'abord
+    const locationIds = locsToDelete.rows.map(l => l.id);
+    if (locationIds.length > 0) {
+      await client.query(
+        `DELETE FROM prolongations WHERE location_id = ANY($1)`,
+        [locationIds]
+      );
+    }
+    
     // Supprimer les locations terminées
-    const result = await pool.query(
+    const result = await client.query(
       "DELETE FROM locations WHERE statut = 'termine' RETURNING id"
     );
     
     console.log(`🗑️ Supprimé: ${result.rowCount} locations`);
+    
+    await client.query('COMMIT');
     
     res.json({
       message: `${result.rowCount} location(s) terminée(s) supprimée(s)`,
       count: result.rowCount
     });
   } catch (error) {
+    await client.query('ROLLBACK');
     console.error('❌ Erreur suppression terminée:', error);
     res.status(500).json({ error: 'Erreur serveur', details: error.message });
+  } finally {
+    client.release();
   }
 });
