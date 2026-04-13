@@ -326,7 +326,7 @@ router.get('/check-expired', authMiddleware, async (req, res) => {
     const today = new Date().toISOString().split('T')[0];
     
     const expiredResult = await pool.query(
-      "SELECT l.id, l.code, l.appareil_id, l.date_fin FROM locations l WHERE statut = 'en_cours' AND date_fin < $1",
+      "SELECT l.id, l.code, l.appareil_id, l.date_fin FROM locations l WHERE statut = 'en_cours' AND date_fin <= $1",
       [today]
     );
     
@@ -555,3 +555,33 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
+
+// Supprimer toutes les locations terminées (corbeille)
+router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    // D'abord récupérer les appareil_id pour les rendre disponibles
+    const locsToDelete = await pool.query(
+      "SELECT appareil_id FROM locations WHERE statut = 'termine'"
+    );
+    
+    // Rendre les appareils disponibles
+    for (const loc of locsToDelete.rows) {
+      if (loc.appareil_id) {
+        await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
+      }
+    }
+    
+    // Supprimer les locations terminées
+    const result = await pool.query(
+      "DELETE FROM locations WHERE statut = 'termine' RETURNING id"
+    );
+    
+    res.json({
+      message: `${result.rowCount} location(s) terminée(s) supprimée(s)`,
+      count: result.rowCount
+    });
+  } catch (error) {
+    console.error('Erreur suppression terminée:', error);
+    res.status(500).json({ error: 'Erreur serveur' });
+  }
+});

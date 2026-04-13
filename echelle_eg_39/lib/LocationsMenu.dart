@@ -18,6 +18,7 @@ class _LocationPageState extends State<LocationPage> {
   List<Map<String, dynamic>> _locationsFromAPI = [];
   bool _isLoadingLocations = true;
   String? _errorLoadingLocations;
+  bool _showTrash = false; // New: track if showing trash bin
   
   Timer? _autoRefreshTimer;
 
@@ -43,6 +44,10 @@ class _LocationPageState extends State<LocationPage> {
     });
     
     try {
+      // D'abord vérifier et expirer les locations automatiques
+      await _checkAndExpireLocations();
+      
+      // Ensuite charger les locations
       final locations = await ApiService.getLocations();
       // DEBUG: voir exactement ce qui vient du backend
       debugPrint('🔍 RAW API response: ${locations.map((l) => 'ID=${l['id']} statut=${l['statut']}').toList()}');
@@ -58,6 +63,29 @@ class _LocationPageState extends State<LocationPage> {
         _isLoadingLocations = false;
       });
       debugPrint('❌ Erreur locations: $e');
+    }
+  }
+
+  // Vérifier et expirer les locations automatiquement
+  Future<void> _checkAndExpireLocations() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.get(
+        Uri.parse('${ApiService.baseUrl}/locations/check-expired'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+      
+      if (response.statusCode == 200) {
+        final data = json.decode(response.body);
+        if (data['expired'] != null && (data['expired'] as List).length > 0) {
+          debugPrint('✅ ${(data['expired'] as List).length} location(s) expirée(s) automatiquement');
+        }
+      }
+    } catch (e) {
+      debugPrint('⚠️ Erreur expiration automatique: $e');
     }
   }
 
@@ -131,10 +159,15 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   List<Map<String, dynamic>> _getTerminatedLocations() {
-    return _locationsFromAPI.where((loc) {
+    final terminated = _locationsFromAPI.where((loc) {
       final statut = loc['statut']?.toString().toLowerCase().trim();
       return statut == 'termine';
     }).toList();
+    debugPrint('📋 Locations terminées trouvées: ${terminated.length}');
+    for (var loc in terminated) {
+      debugPrint('  - ${loc['appareilNom']} - statut: ${loc['statut']}');
+    }
+    return terminated;
   }
 
 @override
@@ -154,6 +187,12 @@ class _LocationPageState extends State<LocationPage> {
             pinned: true,
             elevation: 0,
             backgroundColor: const Color(0xFF6366F1),
+            automaticallyImplyLeading: false,
+            leading: IconButton(
+              icon: const Icon(Icons.refresh, color: Colors.white),
+              onPressed: () => _loadLocationsFromAPI(retry: true),
+              tooltip: 'Rafraîchir',
+            ),
             flexibleSpace: FlexibleSpaceBar(
 
               background: Container(
@@ -190,11 +229,19 @@ class _LocationPageState extends State<LocationPage> {
             ),
             actions: [
               IconButton(
-                icon: const Icon(Icons.refresh, color: Colors.white),
-                onPressed: () => _loadLocationsFromAPI(retry: true),
+                icon: Icon(
+                  _showTrash ? Icons.close : Icons.delete_outline,
+                  color: Colors.white,
+                ),
+                onPressed: () {
+                  debugPrint('🗑️ Bouton corbeille appuyé, _showTrash: $_showTrash');
+                  setState(() {
+                    _showTrash = !_showTrash;
+                  });
+                  debugPrint('✅ Après setState, _showTrash: $_showTrash');
+                },
+                tooltip: _showTrash ? 'Fermer la corbeille' : 'Corbeille',
               ),
-              // Bouton pour corriger la contrainte DB
-              
             ],
           ),
           
@@ -238,9 +285,195 @@ class _LocationPageState extends State<LocationPage> {
                     _buildEmptyActiveCard()
                   else
                     ..._getActiveLocations().map((loc) => _buildActiveLocationCard(loc)),
+                  
+                  // New: Corbeille section - shows terminated locations
+                  if (_showTrash) ...[
+                    const SizedBox(height: 24),
+                    _buildSectionHeader(
+                      title: 'Corbeille (terminées)',
+                      icon: Icons.delete_outline,
+                      count: _getTerminatedLocations().length,
+                      color: Colors.red,
+                    ),
+                    const SizedBox(height: 12),
+                    if (_getTerminatedLocations().isEmpty)
+                      _buildEmptyTrashCard()
+                    else ...[
+                      ..._getTerminatedLocations().map((loc) => _buildTerminatedLocationCard(loc)),
+                      const SizedBox(height: 16),
+                      // Bouton pour supprimer toutes les demandes terminées
+                      SizedBox(
+                        width: double.infinity,
+                        child: ElevatedButton.icon(
+                          onPressed: () => _showDeleteAllConfirmation(),
+                          icon: const Icon(Icons.delete_sweep),
+                          label: const Text('Supprimer toutes les demandes terminées'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: Colors.red,
+                            foregroundColor: Colors.white,
+                            padding: const EdgeInsets.symmetric(vertical: 12),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ],
               ),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // New: Show confirmation dialog to delete all terminated locations
+  Future<void> _showDeleteAllConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Confirmer la suppression'),
+        content: const Text('Êtes-vous sûr de vouloir supprimer toutes les demandes terminées ? Cette action est irréversible.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteAllTerminatedLocations();
+    }
+  }
+
+  // New: Delete all terminated locations
+  Future<void> _deleteAllTerminatedLocations() async {
+    try {
+      final token = await ApiService.getToken();
+      final response = await http.delete(
+        Uri.parse('${ApiService.baseUrl}/locations/terminate-all'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      if (response.statusCode == 200) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('✅ Toutes les demandes terminées ont été supprimées'),
+              backgroundColor: Colors.green,
+            ),
+          );
+          _loadLocationsFromAPI();
+        }
+      }
+    } catch (e) {
+      debugPrint('❌ Erreur suppression: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('❌ Erreur: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  // New: Build card for terminated locations
+  Widget _buildTerminatedLocationCard(Map<String, dynamic> loc) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: Colors.red.withOpacity(0.3)),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Row(
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: const Icon(Icons.check_circle, color: Colors.red, size: 24),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    loc['appareilNom'] ?? 'Appareil',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  Text(
+                    loc['clientNom'] ?? 'Client',
+                    style: TextStyle(
+                      color: Colors.grey[600],
+                      fontSize: 12,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: Colors.red.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Text(
+                'Terminée',
+                style: TextStyle(
+                  color: Colors.red,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // New: Build empty trash card
+  Widget _buildEmptyTrashCard() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.grey[100],
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        children: [
+          Icon(Icons.delete_outline, size: 48, color: Colors.grey[400]),
+          const SizedBox(height: 8),
+          Text(
+            'Corbeille vide',
+            style: TextStyle(color: Colors.grey[600]),
           ),
         ],
       ),
