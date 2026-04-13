@@ -169,6 +169,7 @@ class _LocationPageState extends State<LocationPage> {
 
 @override
   Widget build(BuildContext context) {
+    debugPrint('🏗️ build() called, _showTrash: $_showTrash');
     final pendingCount = _getPendingLocations().length;
     final activeCount = _getActiveLocations().length;
     debugPrint('📊 ADMIN Locations - Pending: $pendingCount | Active: $activeCount');
@@ -231,11 +232,12 @@ class _LocationPageState extends State<LocationPage> {
                   color: Colors.white,
                 ),
                 onPressed: () {
-                  debugPrint('🗑️ Bouton corbeille appuyé, _showTrash: $_showTrash');
+                  debugPrint('🗑️ 1. Début onPressed');
+                  debugPrint('🗑️ 2. _showTrash AVANT: $_showTrash');
                   setState(() {
                     _showTrash = !_showTrash;
                   });
-                  debugPrint('✅ Après setState, _showTrash: $_showTrash');
+                  debugPrint('🗑️ 3. _showTrash APRÈS: $_showTrash');
                 },
                 tooltip: _showTrash ? 'Fermer la corbeille' : 'Corbeille',
               ),
@@ -255,6 +257,23 @@ class _LocationPageState extends State<LocationPage> {
                     icon: Icons.pending_actions,
                     count: pendingCount,
                     color: Colors.orange,
+                  ),
+                  const SizedBox(height: 12),
+                  
+                  // BOUTON POUR AFFICHER LA CORBEILLE
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      debugPrint('🗑️ Bouton corbeille appuyé');
+                      setState(() {
+                        _showTrash = !_showTrash;
+                      });
+                    },
+                    icon: Icon(_showTrash ? Icons.visibility_off : Icons.delete_outline),
+                    label: Text(_showTrash ? 'Masquer corbeille' : 'Voir corbeille (${_getTerminatedLocations().length})'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: Colors.red.shade100,
+                      foregroundColor: Colors.red,
+                    ),
                   ),
                   const SizedBox(height: 12),
                   
@@ -302,7 +321,10 @@ class _LocationPageState extends State<LocationPage> {
                       SizedBox(
                         width: double.infinity,
                         child: ElevatedButton.icon(
-                          onPressed: () => _showDeleteAllConfirmation(),
+                          onPressed: () {
+                            debugPrint('🗑️ Bouton supprimer appuyé');
+                            _showDeleteAllConfirmation();
+                          },
                           icon: const Icon(Icons.delete_sweep),
                           label: const Text('Supprimer toutes les demandes terminées'),
                           style: ElevatedButton.styleFrom(
@@ -351,16 +373,19 @@ class _LocationPageState extends State<LocationPage> {
 
   // New: Delete all terminated locations
   Future<void> _deleteAllTerminatedLocations() async {
+    debugPrint('🗑️ Début suppression...');
     try {
       final token = await ApiService.getToken();
+      debugPrint('🗑️ Token obtenu');
       final response = await http.delete(
         Uri.parse('${ApiService.baseUrl}/locations/terminate-all'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      );
+      ).timeout(const Duration(seconds: 10));
 
+      debugPrint('🗑️ Réponse: ${response.statusCode}');
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
@@ -369,7 +394,24 @@ class _LocationPageState extends State<LocationPage> {
               backgroundColor: Colors.green,
             ),
           );
-          _loadLocationsFromAPI();
+          // D'abord recharger les locations pour avoir la liste vide
+          await _loadLocationsFromAPI();
+          // Ensuite masquer la corbeille etForcer le rebuild
+          if (mounted) {
+            setState(() {
+              _showTrash = false;
+            });
+          }
+        }
+      } else {
+        debugPrint('❌ Erreur: ${response.statusCode}');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('❌ Erreur lors de la suppression: ${response.statusCode}'),
+              backgroundColor: Colors.red,
+            ),
+          );
         }
       }
     } catch (e) {
