@@ -558,56 +558,34 @@ module.exports = router;
 
 // Supprimer toutes les locations terminées (corbeille)
 router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
-  const client = await pool.connect();
   try {
     console.log('🗑️ Début suppression locations terminées...');
     
-    // Utiliser une transaction pour garantir l'intégrité
-    await client.query('BEGIN');
-    
-    // D'abord récupérer les locations terminées/rejetées (tous sauf actifs)
-    const locsToDelete = await client.query(
-      "SELECT id, apparatus_id FROM locations WHERE statut IN ('termine', 'rejetee')"
+    // Supprimer d'abord les prolongations liées
+    await pool.query(
+      `DELETE FROM prolongations WHERE location_id IN (SELECT id FROM locations WHERE statut = 'termine')`
     );
-    console.log(`🗑️ Locations à supprimer: ${locsToDelete.rows.length}`);
-    
-    if (locsToDelete.rows.length === 0) {
-      await client.query('COMMIT');
-      return res.json({ message: 'Aucune location à supprimer', count: 0 });
-    }
+    console.log('🗑️ Prolongations supprimées');
     
     // Rendre les appareils disponibles
-    for (const loc of locsToDelete.rows) {
-      if (loc.appareil_id) {
-        await client.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
-      }
-    }
-    
-    // Supprimer les prolongations liées aux locations
-    const locationIds = locsToDelete.rows.map(l => l.id);
-    await client.query(
-      `DELETE FROM prolongations WHERE location_id = ANY($1)`,
-      [locationIds]
+    await pool.query(
+      `UPDATE appareils SET disponible = true WHERE id IN (SELECT appareil_id FROM locations WHERE statut = 'termine')`
     );
+    console.log('🗑️ Appareils disponible = true');
     
-    // Supprimer toutes les locations non actives (termine + rejetee)
-    const result = await client.query(
-      "DELETE FROM locations WHERE statut IN ('termine', 'rejetee') RETURNING id"
+    // Supprimer les locations terminées
+    const result = await pool.query(
+      "DELETE FROM locations WHERE statut = 'termine' RETURNING id"
     );
     
     console.log(`🗑️ Supprimé: ${result.rowCount} locations`);
-    
-    await client.query('COMMIT');
     
     res.json({
       message: `${result.rowCount} location(s) supprimée(s)`,
       count: result.rowCount
     });
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('❌ Erreur suppression terminée:', error);
     res.status(500).json({ error: 'Erreur serveur', details: error.message });
-  } finally {
-    client.release();
   }
 });
