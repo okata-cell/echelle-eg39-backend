@@ -561,31 +561,36 @@ router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res
   try {
     console.log('🗑️ Début suppression locations terminées...');
     
-    // Supprimer d'abord les prolongations liées
+    // Desactiver temporairement les contraintes de cle etrangere
+    await pool.query('SET CONSTRAINTS ALL DEFERRED');
+    console.log('🗑️ Contraintes deferrees');
+    
+    // Supprimer les prolongations liees
     await pool.query(
       `DELETE FROM prolongations WHERE location_id IN (SELECT id FROM locations WHERE statut = 'termine')`
     );
-    console.log('🗑️ Prolongations supprimées');
+    console.log('🗑️ Prolongations supprimees');
     
-    // Rendre les appareils disponibles
-    await pool.query(
-      `UPDATE appareils SET disponible = true WHERE id IN (SELECT appareil_id FROM locations WHERE statut = 'termine')`
-    );
-    console.log('🗑️ Appareils disponible = true');
-    
-    // Supprimer les locations terminées
+    // Supprimer les locations terminees
     const result = await pool.query(
       "DELETE FROM locations WHERE statut = 'termine' RETURNING id"
     );
+    console.log(`🗑️ Supprime: ${result.rowCount} locations`);
     
-    console.log(`🗑️ Supprimé: ${result.rowCount} locations`);
+    // Rendre les appareils disponibles
+    if (result.rowCount > 0) {
+      await pool.query(
+        `UPDATE appareils SET disponible = true WHERE id IN (SELECT appareil_id FROM locations WHERE statut = 'termine')`
+      );
+    }
+    console.log('🗑️ Appareils disponible = true');
     
     res.json({
-      message: `${result.rowCount} location(s) supprimée(s)`,
+      message: `${result.rowCount} location(s) supprimee(s)`,
       count: result.rowCount
     });
   } catch (error) {
-    console.error('❌ Erreur suppression terminée:', error);
+    console.error('❌ Erreur suppression terminee:', error);
     res.status(500).json({ error: 'Erreur serveur', details: error.message });
   }
 });
