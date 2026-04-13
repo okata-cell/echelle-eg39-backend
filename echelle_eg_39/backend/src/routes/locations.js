@@ -565,11 +565,16 @@ router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res
     // Utiliser une transaction pour garantir l'intégrité
     await client.query('BEGIN');
     
-    // D'abord récupérer les appareil_id pour les rendre disponibles
+    // D'abord récupérer les locations terminées/rejetées (tous sauf actifs)
     const locsToDelete = await client.query(
-      "SELECT id, appareil_id FROM locations WHERE statut = 'termine'"
+      "SELECT id, apparatus_id FROM locations WHERE statut IN ('termine', 'rejetee')"
     );
     console.log(`🗑️ Locations à supprimer: ${locsToDelete.rows.length}`);
+    
+    if (locsToDelete.rows.length === 0) {
+      await client.query('COMMIT');
+      return res.json({ message: 'Aucune location à supprimer', count: 0 });
+    }
     
     // Rendre les appareils disponibles
     for (const loc of locsToDelete.rows) {
@@ -578,18 +583,16 @@ router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res
       }
     }
     
-    // Supprimer les prolongations liées aux locations terminées d'abord
+    // Supprimer les prolongations liées aux locations
     const locationIds = locsToDelete.rows.map(l => l.id);
-    if (locationIds.length > 0) {
-      await client.query(
-        `DELETE FROM prolongations WHERE location_id = ANY($1)`,
-        [locationIds]
-      );
-    }
+    await client.query(
+      `DELETE FROM prolongations WHERE location_id = ANY($1)`,
+      [locationIds]
+    );
     
-    // Supprimer les locations terminées
+    // Supprimer toutes les locations non actives (termine + rejetee)
     const result = await client.query(
-      "DELETE FROM locations WHERE statut = 'termine' RETURNING id"
+      "DELETE FROM locations WHERE statut IN ('termine', 'rejetee') RETURNING id"
     );
     
     console.log(`🗑️ Supprimé: ${result.rowCount} locations`);
@@ -597,7 +600,7 @@ router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res
     await client.query('COMMIT');
     
     res.json({
-      message: `${result.rowCount} location(s) terminée(s) supprimée(s)`,
+      message: `${result.rowCount} location(s) supprimée(s)`,
       count: result.rowCount
     });
   } catch (error) {
