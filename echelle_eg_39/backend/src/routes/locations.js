@@ -559,10 +559,13 @@ module.exports = router;
 // Supprimer toutes les locations terminées (corbeille)
 router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
   try {
+    console.log('🗑️ Début suppression locations terminées...');
+    
     // D'abord récupérer les appareil_id pour les rendre disponibles
     const locsToDelete = await pool.query(
       "SELECT appareil_id FROM locations WHERE statut = 'termine'"
     );
+    console.log(`🗑️ Locations à supprimer: ${locsToDelete.rows.length}`);
     
     // Rendre les appareils disponibles
     for (const loc of locsToDelete.rows) {
@@ -576,12 +579,14 @@ router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res
       "DELETE FROM locations WHERE statut = 'termine' RETURNING id"
     );
     
+    console.log(`🗑️ Supprimé: ${result.rowCount} locations`);
+    
     res.json({
       message: `${result.rowCount} location(s) terminée(s) supprimée(s)`,
       count: result.rowCount
     });
   } catch (error) {
-    console.error('Erreur suppression terminée:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    console.error('❌ Erreur suppression terminée:', error);
+    res.status(500).json({ error: 'Erreur serveur', details: error.message });
   }
 });
