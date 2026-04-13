@@ -556,41 +556,39 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 module.exports = router;
 
-// Supprimer toutes les locations terminées (corbeille)
+// Supprimer toutes les locations terminees (corbeille)
 router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
   try {
-    console.log('🗑️ Début suppression locations terminées...');
+    console.log('🗑️ [DEBUG] Debut suppression...');
+    await client.query('BEGIN');
     
-    // Desactiver temporairement les contraintes de cle etrangere
-    await pool.query('SET CONSTRAINTS ALL DEFERRED');
-    console.log('🗑️ Contraintes deferrees');
-    
-    // Supprimer les prolongations liees
-    await pool.query(
-      `DELETE FROM prolongations WHERE location_id IN (SELECT id FROM locations WHERE statut = 'termine')`
-    );
-    console.log('🗑️ Prolongations supprimees');
-    
-    // Supprimer les locations terminees
-    const result = await pool.query(
-      "DELETE FROM locations WHERE statut = 'termine' RETURNING id"
-    );
-    console.log(`🗑️ Supprime: ${result.rowCount} locations`);
-    
-    // Rendre les appareils disponibles
-    if (result.rowCount > 0) {
-      await pool.query(
-        `UPDATE appareils SET disponible = true WHERE id IN (SELECT appareil_id FROM locations WHERE statut = 'termine')`
-      );
+    // Verifier d'abord ce qui existe
+    const check = await client.query("SELECT id, statut FROM locations WHERE statut = 'termine'");
+    console.log(`🗑️ [DEBUG] Trouve ${check.rows.length} locations terminees`);
+    for (const r of check.rows) {
+      console.log(`🗑️ [DEBUG] - ID: ${r.id}, statut: ${r.statut}`);
     }
-    console.log('🗑️ Appareils disponible = true');
     
-    res.json({
-      message: `${result.rowCount} location(s) supprimee(s)`,
-      count: result.rowCount
-    });
+    // Supprimer prolongations
+    if (check.rows.length > 0) {
+      const ids = check.rows.map(r => r.id);
+      await client.query('DELETE FROM prolongations WHERE location_id = ANY($1)', [ids]);
+      console.log('🗑️ [DEBUG] Prolongations supprimees');
+    }
+    
+    // Supprimer locations
+    const result = await client.query("DELETE FROM locations WHERE statut = 'termine' RETURNING id");
+    console.log(`🗑️ [DEBUG] Supprime: ${result.rowCount}`);
+    
+    await client.query('COMMIT');
+    
+    res.json({ message: `${result.rowCount} supprimé(s)`, count: result.rowCount });
   } catch (error) {
-    console.error('❌ Erreur suppression terminee:', error);
-    res.status(500).json({ error: 'Erreur serveur', details: error.message });
+    await client.query('ROLLBACK');
+    console.error('🗑️ [DEBUG] ERREUR:', error.message);
+    res.status(500).json({ error: error.message });
+  } finally {
+    client.release();
   }
 });
