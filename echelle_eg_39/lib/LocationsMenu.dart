@@ -44,11 +44,14 @@ class _LocationPageState extends State<LocationPage> {
     });
     
     try {
-      // D'abord vérifier et expirer les locations automatiques
-      await _checkAndExpireLocations();
+      // Essayer de vérifier et expirer les locations (avec timeout court)
+      _checkAndExpireLocations().timeout(
+        const Duration(seconds: 3),
+        onTimeout: () => debugPrint('⏱️ Timeout check-expired, on continue...')
+      ).catchError((e) => debugPrint('⚠️ Erreur check-expired: $e'));
       
-      // Ensuite charger les locations
-      final locations = await ApiService.getLocations();
+      // Ensuite charger les locations avec timeout
+      final locations = await ApiService.getLocations().timeout(const Duration(seconds: 10));
       // DEBUG: voir exactement ce qui vient du backend
       debugPrint('🔍 RAW API response: ${locations.map((l) => 'ID=${l['id']} statut=${l['statut']}').toList()}');
       setState(() {
@@ -66,26 +69,20 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
-  // Vérifier et expirer les locations automatiquement
+  // Vérifier et expirer les locations automatiquement (lancé sans await)
   Future<void> _checkAndExpireLocations() async {
     try {
       final token = await ApiService.getToken();
-      final response = await http.get(
+      await http.get(
         Uri.parse('${ApiService.baseUrl}/locations/check-expired'),
         headers: {
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-      );
-      
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        if (data['expired'] != null && (data['expired'] as List).length > 0) {
-          debugPrint('✅ ${(data['expired'] as List).length} location(s) expirée(s) automatiquement');
-        }
-      }
+      ).timeout(const Duration(seconds: 3));
     } catch (e) {
-      debugPrint('⚠️ Erreur expiration automatique: $e');
+      // Silencieux - on ne veut pas bloquer le chargement
+      debugPrint('⚠️ Erreur expiration: $e');
     }
   }
 
