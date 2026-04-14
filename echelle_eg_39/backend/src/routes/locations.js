@@ -557,15 +557,13 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 module.exports = router;
 
 // Supprimer toutes les locations terminees (corbeille)
+console.log('🗑️ [REGISTER] Route /terminate-all ENREGISTREE');
 router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
+  console.log('🗑️ [EXEC] ARRETEEEEEE executee!');
   try {
-    console.log('🗑️ [DEBUG] Arrivee sur endpoint terminate-all');
-    
-    // Repondre immediatement pour tester
-    res.json({ message: 'OK - endpoint atteint', test: true });
-    return;
-  } catch (error) {
-    console.error('🗑️ [DEBUG] ERREUR:', error.message);
-    res.status(500).json({ error: error.message });
+    res.json({ test: 'REUSSITE', code: '97411cd' });
+  } catch (e) {
+    console.error('🗑️ ERREUR:', e.message);
+    res.status(500).json({ error: e.message });
   }
 });

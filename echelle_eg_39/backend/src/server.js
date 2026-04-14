@@ -7,9 +7,12 @@ require('dotenv').config();
 
 const { Pool } = require('pg');
 const { runMigrations } = require('./config/migrate');
+const { checkAndNotifyAdmin, startReminderCron } = require('./services/reminderService');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+
+console.log('🆕 DEMARRAGE SERVEUR - COMMIT: 97411cd');
 
 // ---------- CONFIGURATION POSTGRESQL ----------
 const pool = new Pool({
@@ -43,6 +46,36 @@ app.use('/api/appareils', require('./routes/appareils'));
 app.use('/api/demandes', require('./routes/demandes'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/prolongations', require('./routes/prolongations'));
+
+// ---------- ROUTE: Déclencher le rappel manuel ----------
+app.post('/api/admin/trigger-reminder', async (req, res) => {
+  try {
+    const { hoursDelay } = req.body;
+    const result = await checkAndNotifyAdmin(hoursDelay || 48);
+    res.json(result);
+  } catch (error) {
+    console.error('Erreur trigger-reminder:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ---------- ROUTE: Obtenir les demandes en attente ----------
+app.get('/api/admin/pending-requests', async (req, res) => {
+  try {
+    const { hoursDelay } = req.query;
+    const reminderService = require('./services/reminderService');
+    const locations = await reminderService.getPendingLocations(hoursDelay || 48);
+    const demandes = await reminderService.getPendingDemandes(hoursDelay || 48);
+    res.json({
+      locations,
+      demandes,
+      total: locations.length + demandes.length
+    });
+  } catch (error) {
+    console.error('Erreur pending-requests:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
 
 // ---------- ROUTE DE SANTÉ ----------
 app.get('/health', (req, res) => {
@@ -177,6 +210,10 @@ async function checkExpiredLocations() {
     // Vérifier les locations expirées
     console.log('🔍 Vérification des locations expirées...');
     await checkExpiredLocations();
+    
+    // Démarrer le cron job de rappel pour les demandes en attente
+    console.log('🔔 Configuration du cron job de rappel...');
+    startReminderCron('0 9 * * *', 24); // Tous les jours à 9h, après 24h d'attente
   } catch (e) {
     console.error('❌ Échec des migrations:', e);
   } finally {
