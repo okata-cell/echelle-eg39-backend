@@ -556,26 +556,13 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 module.exports = router;
 
-// Test simple - aucun middleware
-console.log('🗑️ Route /term-test ENREGISTREE');
-router.get('/term-test', async (req, res) => {
-  console.log('🗑️ TEST EXECUTE!');
-  res.json({ test: 'OK' });
-});
-
-// Supprimer toutes les locations terminees (corbeille) - SANS middleware
-console.log('🗑️ [REGISTER] Route /terminate-all ENREGISTREE');
+// Route simple pour supprimer terminees - SANS auth
 router.delete('/terminate-all', async (req, res) => {
-  console.log('🗑️ [EXEC] delete executee!');
   try {
-    // Supprimer prolongations
     await pool.query('DELETE FROM prolongations');
-    // Supprimer locations terminees
     const r = await pool.query("DELETE FROM locations WHERE statut = 'termine' RETURNING id");
-    console.log('🗑️ SUPPRIME:', r.rowCount);
-    res.json({ ok: true, count: r.rowCount });
+    res.json({ ok: true, supprime: r.rowCount });
   } catch (e) {
-    console.error('🗑️ ERREUR:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
