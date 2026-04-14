@@ -556,13 +556,23 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 
 module.exports = router;
 
-// Route simple pour supprimer terminees - SANS auth
+// Route supprimer terminees - AVEC gestion erreurs complete
 router.delete('/terminate-all', async (req, res) => {
   try {
-    await pool.query('DELETE FROM prolongations');
+    // Compter avant
+    const avant = await pool.query("SELECT COUNT(*) FROM locations WHERE statut = 'termine'");
+    const nb = parseInt(avant.rows[0].count);
+    if (nb === 0) return res.json({ ok: true, message: 'Deja vide' });
+    
+    // Supprimer prolongations
+    await pool.query(`DELETE FROM prolongations WHERE location_id IN (SELECT id FROM locations WHERE statut = 'termine')`);
+    
+    // Supprimer locations
     const r = await pool.query("DELETE FROM locations WHERE statut = 'termine' RETURNING id");
+    
     res.json({ ok: true, supprime: r.rowCount });
   } catch (e) {
+    console.error('❌ Suppression echouee:', e.message);
     res.status(500).json({ error: e.message });
   }
 });
