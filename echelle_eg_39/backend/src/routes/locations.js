@@ -558,37 +558,14 @@ module.exports = router;
 
 // Supprimer toutes les locations terminees (corbeille)
 router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
-  const client = await pool.connect();
   try {
-    console.log('🗑️ [DEBUG] Debut suppression...');
-    await client.query('BEGIN');
+    console.log('🗑️ [DEBUG] Arrivee sur endpoint terminate-all');
     
-    // Verifier d'abord ce qui existe
-    const check = await client.query("SELECT id, statut FROM locations WHERE statut = 'termine'");
-    console.log(`🗑️ [DEBUG] Trouve ${check.rows.length} locations terminees`);
-    for (const r of check.rows) {
-      console.log(`🗑️ [DEBUG] - ID: ${r.id}, statut: ${r.statut}`);
-    }
-    
-    // Supprimer prolongations
-    if (check.rows.length > 0) {
-      const ids = check.rows.map(r => r.id);
-      await client.query('DELETE FROM prolongations WHERE location_id = ANY($1)', [ids]);
-      console.log('🗑️ [DEBUG] Prolongations supprimees');
-    }
-    
-    // Supprimer locations
-    const result = await client.query("DELETE FROM locations WHERE statut = 'termine' RETURNING id");
-    console.log(`🗑️ [DEBUG] Supprime: ${result.rowCount}`);
-    
-    await client.query('COMMIT');
-    
-    res.json({ message: `${result.rowCount} supprimé(s)`, count: result.rowCount });
+    // Repondre immediatement pour tester
+    res.json({ message: 'OK - endpoint atteint', test: true });
+    return;
   } catch (error) {
-    await client.query('ROLLBACK');
     console.error('🗑️ [DEBUG] ERREUR:', error.message);
     res.status(500).json({ error: error.message });
-  } finally {
-    client.release();
   }
 });
