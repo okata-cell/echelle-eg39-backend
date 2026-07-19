@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
 import 'appareil_images.dart';
+import 'widgets/image_zoom_viewer.dart';
 
 class AdminAppareilsPage extends StatefulWidget {
   const AdminAppareilsPage({super.key});
@@ -785,42 +786,13 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                         ClipRRect(
                           borderRadius: const BorderRadius.vertical(
                               top: Radius.circular(20)),
-                          child: Image.network(
-                            a.imageUrl,
+                          child: ZoomableImage(
+                            imageUrl: a.imageUrl,
+                            fallbackUrl: AppareilImages.getImageUrlForType(a.type),
                             height: 200,
                             width: double.infinity,
                             fit: BoxFit.cover,
-                            errorBuilder: (context, error, stackTrace) {
-                              return Container(
-                                height: 200,
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade200,
-                                  borderRadius: const BorderRadius.vertical(
-                                      top: Radius.circular(20)),
-                                ),
-                                child: Center(
-                                  child: Column(
-                                    mainAxisAlignment: MainAxisAlignment.center,
-                                    children: [
-                                      Icon(
-                                        Icons.image_not_supported,
-                                        size: 48,
-                                        color: Colors.grey.shade400,
-                                      ),
-                                      const SizedBox(height: 8),
-                                      Text(
-                                        'Image non disponible',
-                                        style: TextStyle(
-                                          color: Colors.grey.shade600,
-                                          fontSize: 12,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                              );
-                            },
+                            title: a.nom,
                           ),
                         ),
                         // Gradient overlay
