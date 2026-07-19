@@ -26,6 +26,10 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
     setState(() => _isLoadingAppareils = true);
     try {
       final appareils = await ApiService.getAppareils();
+      print('📡 Appareils reçus du backend: ${appareils.length}');
+      for (final a in appareils) {
+        print('  - ${a['code']}: ${a['nom']} | imageUrl: ${a['imageUrl']}');
+      }
       if (mounted && appareils.isNotEmpty) {
         // Vider la liste actuelle et ajouter les appareils du backend
           _dataManager.clearAppareils();
@@ -410,9 +414,9 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
         type: type,
         prixLocation: prixLoc,
         prixVente: prixVente,
-        imageUrl: imageUrl ?? _getImageUrlForType(type),
+        imageUrl: imageUrl,
       );
-      
+
       // Ajouter aussi localement pour l'affichage immédiat
       _dataManager.addAppareil(
         Appareil(
