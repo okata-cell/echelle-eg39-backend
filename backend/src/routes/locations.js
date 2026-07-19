@@ -10,9 +10,11 @@ router.get('/', authMiddleware, async (req, res) => {
     const { statut } = req.query;
     
     let query = `
-      SELECT l.*, u.first_name, u.last_name, u.email, u.phone
+      SELECT l.*, u.first_name, u.last_name, u.email, u.phone,
+             a.type as appareil_type, a.image_url as appareil_image_url
       FROM locations l
       JOIN users u ON l.user_id = u.id
+      LEFT JOIN appareils a ON l.appareil_id = a.id
     `;
     const params = [];
 
@@ -39,7 +41,10 @@ router.get('/', authMiddleware, async (req, res) => {
         clientNom: `${l.first_name} ${l.last_name}`,
         clientEmail: l.email,
         clientPhone: l.phone,
+        appareilId: l.appareil_id,
         appareilNom: l.appareil_nom,
+        appareilType: l.appareil_type,
+        imageUrl: l.appareil_image_url,
         dateDebut: l.date_debut,
         dateFin: l.date_fin,
         prixJournalier: l.prix_journalier,
