@@ -11,9 +11,10 @@ router.get('/', authMiddleware, async (req, res) => {
     const { statut } = req.query;
     
     let query = `
-      SELECT l.*, u.first_name, u.last_name, u.email, u.phone
+      SELECT l.*, u.first_name, u.last_name, u.email, u.phone, a.image_url, a.type, a.code as appareil_code
       FROM locations l
       JOIN users u ON l.user_id = u.id
+      LEFT JOIN appareils a ON l.appareil_id = a.id
     `;
     const params = [];
 
@@ -46,8 +47,10 @@ router.get('/', authMiddleware, async (req, res) => {
         clientNom: `${l.first_name} ${l.last_name}`,
         clientEmail: l.email,
         clientPhone: l.phone,
-        appareilId: l.appareil_id,
+        appareilId: l.appareil_code,
         appareilNom: l.appareil_nom,
+        appareilType: l.type,
+        imageUrl: l.image_url,
         dateDebut: l.date_debut,
         dateFin: l.date_fin,
         prixJournalier: l.prix_journalier,
@@ -511,6 +514,27 @@ router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) =
   }
 });
 
+// Supprimer toutes les locations terminées (admin)
+router.delete('/terminate-all', authMiddleware, async (req, res) => {
+  try {
+    // Compter avant
+    const avant = await pool.query("SELECT COUNT(*) FROM locations WHERE statut IN ('termine', 'rejetee')");
+    const nb = parseInt(avant.rows[0].count);
+    if (nb === 0) return res.json({ ok: true, message: 'Deja vide', supprime: 0 });
+
+    // Supprimer prolongations liées
+    await pool.query(`DELETE FROM prolongations WHERE location_id IN (SELECT id FROM locations WHERE statut IN ('termine', 'rejetee'))`);
+
+    // Supprimer locations terminées et rejetées
+    const r = await pool.query("DELETE FROM locations WHERE statut IN ('termine', 'rejetee') RETURNING id");
+
+    res.json({ ok: true, supprime: r.rowCount });
+  } catch (e) {
+    console.error('❌ Suppression echouee:', e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
+
 // Supprimer une location terminée ou rejétée (client ou admin)
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
@@ -555,24 +579,3 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 });
 
 module.exports = router;
-
-// Route supprimer terminees - AVEC gestion erreurs complete
-router.delete('/terminate-all', async (req, res) => {
-  try {
-    // Compter avant
-    const avant = await pool.query("SELECT COUNT(*) FROM locations WHERE statut = 'termine'");
-    const nb = parseInt(avant.rows[0].count);
-    if (nb === 0) return res.json({ ok: true, message: 'Deja vide' });
-    
-    // Supprimer prolongations
-    await pool.query(`DELETE FROM prolongations WHERE location_id IN (SELECT id FROM locations WHERE statut = 'termine')`);
-    
-    // Supprimer locations
-    const r = await pool.query("DELETE FROM locations WHERE statut = 'termine' RETURNING id");
-    
-    res.json({ ok: true, supprime: r.rowCount });
-  } catch (e) {
-    console.error('❌ Suppression echouee:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});

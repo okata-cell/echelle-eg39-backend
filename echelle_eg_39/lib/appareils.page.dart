@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
+import 'appareil_images.dart';
 
 class AdminAppareilsPage extends StatefulWidget {
   const AdminAppareilsPage({super.key});
@@ -11,34 +12,59 @@ class AdminAppareilsPage extends StatefulWidget {
 
 class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
   final _dataManager = DataManager();
+  bool _isLoadingAppareils = false;
 
   @override
   void initState() {
     super.initState();
     _dataManager.initialize();
+    _loadAppareilsFromBackend();
+  }
+
+  Future<void> _loadAppareilsFromBackend() async {
+    if (_isLoadingAppareils) return;
+    setState(() => _isLoadingAppareils = true);
+    try {
+      final appareils = await ApiService.getAppareils();
+      if (mounted && appareils.isNotEmpty) {
+        // Vider la liste actuelle et ajouter les appareils du backend
+          _dataManager.clearAppareils();
+          for (final a in appareils) {
+          _dataManager.addAppareil(Appareil(
+            id: a['code'] as String? ?? 'APP-${a['id']}',
+            nom: a['nom'] as String,
+            type: a['type'] as String,
+            imageUrl: a['imageUrl'] as String? ??
+                AppareilImages.getImageUrlForAppareilId(
+                  a['code'] as String? ?? '',
+                ),
+            prixLocation: a['prixLocation'] as int,
+            prixVente: a['prixVente'] as int,
+            disponible: a['disponible'] as bool? ?? true,
+          ));
+        }
+      }
+    } catch (e) {
+      print('⚠️ Failed to load appareils from backend: $e');
+    } finally {
+      if (mounted) {
+        setState(() => _isLoadingAppareils = false);
+      }
+    }
   }
 
 
-  // Map des URLs d'images par type d'appareil
-  final Map<String, String> imageUrlsByType = {
-    'gps': 'https://images.unsplash.com/photo-1579567761406-4684ee0c75b6?w=400',
-    'niveau': 'https://images.unsplash.com/photo-1590650153855-d9e808231d41?w=400',
-    'station totale': 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?w=400',
-    'theodolite': 'https://images.unsplash.com/photo-1581092162384-8987c1d64718?w=400',
-    'trepied': 'https://images.unsplash.com/photo-1590650046871-92c887180603?w=400',
-    'mire': 'https://images.unsplash.com/photo-1590650153855-d9e808231d41?w=400',
-    'drone': 'https://images.unsplash.com/photo-1508614589041-895b8c9d755c?w=400',
-    'embase': 'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400',
-    'reflecteur': 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400',
-  };
-
   // URL d'image par défaut pour les types non définis
-  final String defaultImageUrl = 'https://images.unsplash.com/photo-1581092334494-8b6a8c3a52f3?auto=format&fit=crop&w=800&q=80';
+  final String defaultImageUrl = 'https://dodacvienthong.com/site/pictures/content/may-dinh-vi-ve-tinh-2-tan-so-gps-rtk-e-survey-e300-pro-imu.jpg';
+
+  // Fonction pour obtenir l'URL d'image selon l'ID de l'appareil (prioritaire)
+  String _getImageUrlForAppareilId(String appareilId) {
+    return AppareilImages.getImageUrlForAppareilId(appareilId);
+  }
 
   // Fonction pour obtenir l'URL d'image selon le type d'appareil
   String _getImageUrlForType(String type) {
-    final normalizedType = type.toLowerCase().trim();
-    return imageUrlsByType[normalizedType] ?? defaultImageUrl;
+    return AppareilImages.getImageUrlForType(type);
   }
 
   // Fonction de validation pour les champs numériques
@@ -80,6 +106,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
     final typeCtrl = TextEditingController();
     final prixLocCtrl = TextEditingController();
     final prixVenteCtrl = TextEditingController();
+    final imageUrlCtrl = TextEditingController();
     
     final formKey = GlobalKey<FormState>();
 
@@ -144,7 +171,20 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                     },
                   ),
                   const SizedBox(height: 16),
-                  // Prévisualisation de l'image selon le type
+                  TextFormField(
+                    controller: imageUrlCtrl,
+                    decoration: const InputDecoration(
+                      labelText: "URL de l'image (optionnel)",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.link),
+                      helperText: "Laissez vide pour utiliser l'image par défaut selon le type",
+                    ),
+                    onChanged: (value) {
+                      setState(() {});
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // Prévisualisation de l'image selon le type ou URL personnalisée
                   Container(
                     height: 120,
                     width: double.infinity,
@@ -153,13 +193,15 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                       borderRadius: BorderRadius.circular(12),
                       border: Border.all(color: Colors.grey.shade300),
                     ),
-                    child: typeCtrl.text.trim().isNotEmpty
+                    child: (typeCtrl.text.trim().isNotEmpty || imageUrlCtrl.text.trim().isNotEmpty)
                         ? ClipRRect(
                             borderRadius: BorderRadius.circular(12),
                             child: Stack(
                               children: [
                                 Image.network(
-                                  _getImageUrlForType(typeCtrl.text.trim()),
+                                  imageUrlCtrl.text.trim().isNotEmpty
+                                      ? imageUrlCtrl.text.trim()
+                                      : _getImageUrlForType(typeCtrl.text.trim()),
                                   width: double.infinity,
                                   height: double.infinity,
                                   fit: BoxFit.cover,
@@ -194,7 +236,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                     );
                                   },
                                 ),
-                                // Overlay avec le nom du type
+                                // Overlay avec le nom du type ou URL personnalisée
                                 Positioned(
                                   bottom: 0,
                                   left: 0,
@@ -210,7 +252,9 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                       ),
                                     ),
                                     child: Text(
-                                      'Image pour: ${typeCtrl.text.trim()}',
+                                      imageUrlCtrl.text.trim().isNotEmpty
+                                          ? 'Image personnalisée'
+                                          : 'Image pour: ${typeCtrl.text.trim()}',
                                       style: const TextStyle(
                                         color: Colors.white,
                                         fontSize: 12,
@@ -322,6 +366,9 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                     type: typeCtrl.text.trim(),
                     prixLoc: int.parse(prixLocCtrl.text.trim()),
                     prixVente: int.parse(prixVenteCtrl.text.trim()),
+                    imageUrl: imageUrlCtrl.text.trim().isNotEmpty
+                        ? imageUrlCtrl.text.trim()
+                        : null,
                   );
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -354,6 +401,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
     required String type,
     required int prixLoc,
     required int prixVente,
+    String? imageUrl,
   }) async {
     try {
       // Envoyer à la base de données backend
@@ -362,7 +410,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
         type: type,
         prixLocation: prixLoc,
         prixVente: prixVente,
-        imageUrl: _getImageUrlForType(type),
+        imageUrl: imageUrl ?? _getImageUrlForType(type),
       );
       
       // Ajouter aussi localement pour l'affichage immédiat
@@ -371,7 +419,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
           id: result['appareil']?['code'] ?? "APP-${DateTime.now().millisecondsSinceEpoch}",
           nom: nom,
           type: type,
-          imageUrl: _getImageUrlForType(type),
+          imageUrl: imageUrl ?? _getImageUrlForType(type),
           prixLocation: prixLoc,
           prixVente: prixVente,
           disponible: true,
@@ -393,7 +441,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
           id: "APP-${DateTime.now().millisecondsSinceEpoch}",
           nom: nom,
           type: type,
-          imageUrl: _getImageUrlForType(type),
+          imageUrl: imageUrl ?? _getImageUrlForType(type),
           prixLocation: prixLoc,
           prixVente: prixVente,
           disponible: true,
@@ -410,6 +458,203 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
       }
     }
   }
+
+  void _ouvrirFormulaireModification(BuildContext context, int index) {
+     final appareil = _dataManager.appareils[index];
+     final nomCtrl = TextEditingController(text: appareil.nom);
+     final typeCtrl = TextEditingController(text: appareil.type);
+     final prixLocCtrl = TextEditingController(text: appareil.prixLocation.toString());
+     final prixVenteCtrl = TextEditingController(text: appareil.prixVente.toString());
+     final imageUrlCtrl = TextEditingController(text: appareil.imageUrl);
+     
+     final formKey = GlobalKey<FormState>();
+
+     showDialog(
+       context: context,
+       builder: (context) {
+         return AlertDialog(
+           shape: RoundedRectangleBorder(
+             borderRadius: BorderRadius.circular(16),
+           ),
+           title: const Text(
+             "Modifier l'appareil",
+             style: TextStyle(
+               fontWeight: FontWeight.bold,
+               color: Color(0xFF1E293B),
+             ),
+           ),
+           content: SingleChildScrollView(
+             child: Form(
+               key: formKey,
+               child: Column(
+                 mainAxisSize: MainAxisSize.min,
+                 children: [
+                   TextFormField(
+                     controller: nomCtrl,
+                     decoration: const InputDecoration(
+                       labelText: "Nom de l'appareil",
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.devices),
+                     ),
+                     validator: (value) {
+                       if (value == null || value.trim().isEmpty) {
+                         return 'Le nom de l\'appareil est requis';
+                       }
+                       if (value.trim().length < 2) {
+                         return 'Le nom doit contenir au moins 2 caractères';
+                       }
+                       return null;
+                     },
+                   ),
+                   const SizedBox(height: 16),
+                   TextFormField(
+                     controller: typeCtrl,
+                     decoration: const InputDecoration(
+                       labelText: "Type",
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.category),
+                     ),
+                     validator: (value) {
+                       if (value == null || value.trim().isEmpty) {
+                         return 'Le type d\'appareil est requis';
+                       }
+                       return null;
+                     },
+                   ),
+                   const SizedBox(height: 16),
+                   TextFormField(
+                     controller: imageUrlCtrl,
+                     decoration: const InputDecoration(
+                       labelText: "URL image",
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.image),
+                       hintText: "https://...jpg",
+                     ),
+                     keyboardType: TextInputType.url,
+                   ),
+                   const SizedBox(height: 16),
+                   TextFormField(
+                     controller: prixLocCtrl,
+                     keyboardType: TextInputType.number,
+                     decoration: const InputDecoration(
+                       labelText: "Prix location / jour (FCFA)",
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.access_time),
+                     ),
+                     validator: (value) => _validateNumericValue(value, "prix de location"),
+                   ),
+                   const SizedBox(height: 16),
+                   TextFormField(
+                     controller: prixVenteCtrl,
+                     keyboardType: TextInputType.number,
+                     decoration: const InputDecoration(
+                       labelText: "Prix de vente (FCFA)",
+                       border: OutlineInputBorder(),
+                       prefixIcon: Icon(Icons.sell),
+                     ),
+                     validator: (value) => _validateNumericValue(value, "prix de vente"),
+                   ),
+                 ],
+               ),
+             ),
+           ),
+           actions: [
+             TextButton(
+               onPressed: () => Navigator.pop(context),
+               child: const Text("Annuler"),
+             ),
+             ElevatedButton(
+               onPressed: () {
+                 if (formKey.currentState!.validate()) {
+                   _modifierAppareil(
+                     index: index,
+                     nom: nomCtrl.text.trim(),
+                     type: typeCtrl.text.trim(),
+                     prixLoc: int.parse(prixLocCtrl.text.trim()),
+                     prixVente: int.parse(prixVenteCtrl.text.trim()),
+                     imageUrl: imageUrlCtrl.text.trim(),
+                   );
+                   Navigator.pop(context);
+                 }
+               },
+               style: ElevatedButton.styleFrom(
+                 backgroundColor: Colors.blue.shade600,
+                 foregroundColor: Colors.white,
+               ),
+               child: const Text("Enregistrer"),
+             ),
+           ],
+         );
+       },
+     );
+   }
+
+   Future<void> _modifierAppareil({
+     required int index,
+     required String nom,
+     required String type,
+     required int prixLoc,
+     required int prixVente,
+     required String imageUrl,
+   }) async {
+     try {
+       final appareil = _dataManager.appareils[index];
+       final id = int.tryParse(appareil.id.replaceAll('APP-', '')) ?? 0;
+       final result = await ApiService.updateAppareil(
+         id: id,
+         nom: nom,
+         type: type,
+         prixLocation: prixLoc,
+         prixVente: prixVente,
+         imageUrl: imageUrl.isNotEmpty ? imageUrl : null,
+       );
+       
+       _dataManager.updateAppareil(
+         index,
+         Appareil(
+           id: appareil.id,
+           nom: nom,
+           type: type,
+           imageUrl: imageUrl.isNotEmpty ? imageUrl : appareil.imageUrl,
+           prixLocation: prixLoc,
+           prixVente: prixVente,
+           disponible: appareil.disponible,
+         ),
+       );
+       
+       if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           const SnackBar(
+             content: Text('Appareil modifié avec succès!'),
+             backgroundColor: Colors.green,
+           ),
+         );
+       }
+     } catch (e) {
+       final appareil = _dataManager.appareils[index];
+       _dataManager.updateAppareil(
+         index,
+         Appareil(
+           id: appareil.id,
+           nom: nom,
+           type: type,
+           imageUrl: imageUrl.isNotEmpty ? imageUrl : appareil.imageUrl,
+           prixLocation: prixLoc,
+           prixVente: prixVente,
+           disponible: appareil.disponible,
+         ),
+       );
+       
+       if (mounted) {
+         ScaffoldMessenger.of(context).showSnackBar(
+           SnackBar(
+             content: Text('Appareil modifié (local): $e'),
+             backgroundColor: Colors.orange,
+           ),
+         );
+       }
+     }
+   }
 
   void changerStatut(int index) {
     _dataManager.toggleDisponibilite(index);
@@ -742,49 +987,64 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
 
                               // Enhanced popup menu
                               PopupMenuButton<String>(
-                                icon: Icon(
-                                  Icons.more_vert,
-                                  color: Colors.grey.shade600,
-                                ),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(12),
-                                ),
-                                onSelected: (value) {
-                                  if (value == "statut") {
-                                    changerStatut(index);
-                                  } else if (value == "delete") {
-                                    supprimerAppareil(index);
-                                  }
-                                },
-                                itemBuilder: (context) => [
-                                  PopupMenuItem(
-                                    value: "statut",
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.toggle_on,
-                                          color: Colors.blue.shade600,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        const Text("Changer disponibilité"),
-                                      ],
-                                    ),
-                                  ),
-                                  PopupMenuItem(
-                                    value: "delete",
-                                    child: Row(
-                                      children: [
-                                        Icon(
-                                          Icons.delete,
-                                          color: Colors.red.shade600,
-                                        ),
-                                        const SizedBox(width: 12),
-                                        const Text("Supprimer"),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
+                                 icon: Icon(
+                                   Icons.more_vert,
+                                   color: Colors.grey.shade600,
+                                 ),
+                                 shape: RoundedRectangleBorder(
+                                   borderRadius: BorderRadius.circular(12),
+                                 ),
+                                 onSelected: (value) {
+                                   if (value == "edit") {
+                                     _ouvrirFormulaireModification(context, index);
+                                   } else if (value == "statut") {
+                                     changerStatut(index);
+                                   } else if (value == "delete") {
+                                     supprimerAppareil(index);
+                                   }
+                                 },
+                                 itemBuilder: (context) => [
+                                   PopupMenuItem(
+                                     value: "edit",
+                                     child: Row(
+                                       children: [
+                                         Icon(
+                                           Icons.edit,
+                                           color: Colors.blue.shade600,
+                                         ),
+                                         const SizedBox(width: 12),
+                                         const Text("Modifier"),
+                                       ],
+                                     ),
+                                   ),
+                                   PopupMenuItem(
+                                     value: "statut",
+                                     child: Row(
+                                       children: [
+                                         Icon(
+                                           Icons.toggle_on,
+                                           color: Colors.blue.shade600,
+                                         ),
+                                         const SizedBox(width: 12),
+                                         const Text("Changer disponibilité"),
+                                       ],
+                                     ),
+                                   ),
+                                   PopupMenuItem(
+                                     value: "delete",
+                                     child: Row(
+                                       children: [
+                                         Icon(
+                                           Icons.delete,
+                                           color: Colors.red.shade600,
+                                         ),
+                                         const SizedBox(width: 12),
+                                         const Text("Supprimer"),
+                                       ],
+                                     ),
+                                   ),
+                                 ],
+                               ),
                             ],
                           ),
                         ],

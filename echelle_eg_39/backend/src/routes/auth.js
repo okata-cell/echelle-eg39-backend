@@ -298,17 +298,25 @@ router.post('/register', [
 
     console.log('Tentative inscription - Email:', email, '- Phone:', phone);
 
-    // Vérifier si l'utilisateur existe déjà (avec logs détaillés)
-    const existingUser = await pool.query(
-      'SELECT id, email, phone FROM users WHERE LOWER(email) = LOWER($1) OR phone = $2',
-      [email, phone]
+    // Vérifier si l'utilisateur existe déjà (email et téléphone séparément pour un message précis)
+    const existingEmail = await pool.query(
+      'SELECT id, email FROM users WHERE LOWER(email) = LOWER($1)',
+      [email]
     );
 
-    console.log('Résultat vérification utilisateur:', existingUser.rows.length, 'lignes');
+    const existingPhone = await pool.query(
+      'SELECT id, phone FROM users WHERE phone = $1 OR phone = $2',
+      [phone, '+' + phone]
+    );
 
-    if (existingUser.rows.length > 0) {
-      console.log('Utilisateur déjà existant:', existingUser.rows[0]);
-      return res.status(400).json({ error: 'Email ou téléphone déjà utilisé' });
+    if (existingEmail.rows.length > 0) {
+      console.log('Email déjà utilisé:', existingEmail.rows[0]);
+      return res.status(400).json({ error: 'Cet email est déjà utilisé. Choisissez-en un autre.' });
+    }
+
+    if (existingPhone.rows.length > 0) {
+      console.log('Téléphone déjà utilisé:', existingPhone.rows[0]);
+      return res.status(400).json({ error: 'Ce numéro de téléphone est déjà utilisé. Choisissez-en un autre.' });
     }
 
     // Déterminer le rôle (admin si email/phone/password contient "admin")

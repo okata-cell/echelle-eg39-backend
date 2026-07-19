@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:pdf/pdf.dart';
+import 'appareil_images.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -29,6 +30,7 @@ class Transaction {
   final int unpaidExtensionAmount;
   final String? adminComment;
   final String? clientEmail;
+  final String? imageUrl;
 
   Transaction({
     required this.id,
@@ -47,6 +49,7 @@ class Transaction {
     this.unpaidExtensionAmount = 0,
     this.adminComment,
     this.clientEmail,
+    this.imageUrl,
   })  : dailyRate = dailyRate ?? 0,
         extensionIds = extensionIds ?? [];
 
@@ -67,6 +70,7 @@ class Transaction {
     int? unpaidExtensionAmount,
     String? adminComment,
     String? clientEmail,
+    String? imageUrl,
   }) {
     return Transaction(
       id: id ?? this.id,
@@ -85,6 +89,7 @@ class Transaction {
       unpaidExtensionAmount: unpaidExtensionAmount ?? this.unpaidExtensionAmount,
       adminComment: adminComment ?? this.adminComment,
       clientEmail: clientEmail ?? this.clientEmail,
+      imageUrl: imageUrl ?? this.imageUrl,
     );
   }
 }
@@ -220,6 +225,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           invoiceNumber: loc['code'] as String?,
           adminComment: loc['commentaireAdmin'] as String?,
           clientEmail: loc['clientEmail'] as String?,
+          imageUrl: loc['imageUrl'] as String?,
         ));
       }
 
@@ -771,24 +777,28 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     switch (type) {
       case 'location':
         return {
+          'label': 'Location',
           'bgColor': const Color(0xFFDBEAFE),
           'icon': Icons.inventory_2,
           'iconColor': const Color(0xFF2563EB),
         };
       case 'achat':
         return {
+          'label': 'Vente',
           'bgColor': const Color(0xFFF0FDF4),
           'icon': Icons.shopping_cart,
           'iconColor': const Color(0xFF059669),
         };
       case 'service':
         return {
+          'label': 'Service',
           'bgColor': const Color(0xFFF3E8FF),
           'icon': Icons.build,
           'iconColor': const Color(0xFF9333EA),
         };
       default:
         return {
+          'label': 'Inconnu',
           'bgColor': const Color(0xFFF3F4F6),
           'icon': Icons.help,
           'iconColor': const Color(0xFF6B7280),
@@ -1860,17 +1870,30 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
             onPressed: () async {
               Navigator.pop(ctx);
               try {
-                await ApiService.deleteLocation(transaction.id);
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Location supprimée'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                  // Recharger la liste
-                  await _loadTransactionsFromBackend();
+                // Appeler la bonne méthode selon le type de transaction
+                if (transaction.type == 'location') {
+                  await ApiService.deleteLocation(transaction.id);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Location supprimée'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
+                } else if (transaction.type == 'achat') {
+                  await ApiService.deleteDemande(transaction.id);
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(
+                        content: Text('Demande supprimée'),
+                        backgroundColor: Colors.green,
+                      ),
+                    );
+                  }
                 }
+                // Recharger la liste
+                await _loadTransactionsFromBackend();
               } catch (e) {
                 if (mounted) {
                   ScaffoldMessenger.of(context).showSnackBar(
@@ -2112,39 +2135,89 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 48,
-                  height: 48,
-                  decoration: BoxDecoration(
-                    color: typeConfig['bgColor'],
-                    borderRadius: BorderRadius.circular(12),
+                // Image equipment
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    transaction.imageUrl ??
+                        AppareilImages.getImageUrlForType(transaction.title),
+                    width: 48,
+                    height: 48,
+                    fit: BoxFit.cover,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return Container(
+                        width: 48,
+                        height: 48,
+                        color: typeConfig['bgColor'],
+                        child: Icon(typeConfig['icon'],
+                          color: typeConfig['iconColor'], size: 24),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Container(
+                        width: 48,
+                        height: 48,
+                        decoration: BoxDecoration(
+                          color: typeConfig['bgColor'],
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(typeConfig['icon'],
+                          color: typeConfig['iconColor'], size: 24),
+                      );
+                    },
                   ),
-                  child: Icon(typeConfig['icon'],
-                      color: typeConfig['iconColor'], size: 24),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Titre + badge statut
+                      // Titre + badge type + badge statut
                       Row(
                         crossAxisAlignment:
                             CrossAxisAlignment.start,
                         children: [
-                          Expanded(
+                          Flexible(
                             child: Text(
                               transaction.title,
+                              overflow: TextOverflow.ellipsis,
                               style: const TextStyle(
                                   fontSize: 16,
                                   fontWeight: FontWeight.bold,
                                   color: Color(0xFF111827)),
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          // Badge type (Location / Vente)
                           Container(
                             padding: const EdgeInsets.symmetric(
-                                horizontal: 6, vertical: 3),
+                                horizontal: 4, vertical: 2),
+                            decoration: BoxDecoration(
+                              color: typeConfig['bgColor'],
+                              borderRadius:
+                                  BorderRadius.circular(6),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(typeConfig['icon'],
+                                    size: 8,
+                                    color: typeConfig['iconColor']),
+                                const SizedBox(width: 2),
+                                Text(
+                                  typeConfig['label'],
+                                  style: TextStyle(
+                                      fontSize: 8,
+                                      color: typeConfig['iconColor'],
+                                      fontWeight: FontWeight.bold),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 4),
+                          Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 4, vertical: 2),
                             decoration: BoxDecoration(
                               color: statusConfig['bgColor'],
                               borderRadius:
@@ -2207,15 +2280,18 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                       // Montant + badges
                       Row(
                         children: [
-                          Text(
-                            '${_formatNumber(transaction.amount)} F CFA',
-                            style: const TextStyle(
-                                fontSize: 14,
-                                color: Color(0xFF111827),
-                                fontWeight: FontWeight.bold),
+                          Flexible(
+                            child: Text(
+                              '${_formatNumber(transaction.amount)} F CFA',
+                              style: const TextStyle(
+                                  fontSize: 14,
+                                  color: Color(0xFF111827),
+                                  fontWeight: FontWeight.bold),
+                              overflow: TextOverflow.ellipsis,
+                            ),
                           ),
-                          const SizedBox(width: 8),
-                          if (!transaction.isPaid)
+                          const SizedBox(width: 4),
+                          if (!transaction.isPaid && transaction.status != 'rejetee')
                             Container(
                               padding:
                                   const EdgeInsets.symmetric(
@@ -2232,7 +2308,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                                       fontWeight:
                                           FontWeight.bold)),
                             ),
-                          if (transaction.unpaidExtensionAmount > 0)
+                          if (transaction.unpaidExtensionAmount > 0 && transaction.status != 'rejetee')
                             Container(
                               margin:
                                   const EdgeInsets.only(left: 4),
@@ -2451,9 +2527,10 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.start,
               children: [
-                _buildActionButton('Facture', Icons.receipt_long,
-                    const Color(0xFF2563EB),
-                    () => _downloadInvoice(transaction)),
+                if (transaction.status != 'rejetee')
+                  _buildActionButton('Facture', Icons.receipt_long,
+                      const Color(0xFF2563EB),
+                      () => _downloadInvoice(transaction)),
                 if (transaction.status == 'en-cours' &&
                     transaction.type == 'location')
                   _buildActionButton('Prolonger', Icons.update,
@@ -2467,7 +2544,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   _buildActionButton('Évaluer', Icons.star_outline,
                       const Color(0xFFEA580C),
                       () => _evaluerService(transaction)),
-                if (!transaction.isPaid)
+                if (!transaction.isPaid && transaction.status != 'rejetee')
                   _buildActionButton(
                       'Payer', Icons.payment, Colors.red,
                       () => _payerFacture(transaction)),

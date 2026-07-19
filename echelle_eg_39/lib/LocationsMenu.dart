@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
+import 'appareil_images.dart';
+import 'widgets/image_zoom_viewer.dart';
 
 class LocationPage extends StatefulWidget {
   const LocationPage({Key? key}) : super(key: key);
@@ -619,18 +621,28 @@ class _LocationPageState extends State<LocationPage> {
             padding: const EdgeInsets.all(16),
             child: Row(
               children: [
-                // Icône appareil
-                Container(
+                // Image appareil
+                SizedBox(
                   width: 56,
                   height: 56,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF6366F1).withOpacity(0.1),
+                  child: ClipRRect(
                     borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.gps_fixed,
-                    color: Color(0xFF6366F1),
-                    size: 28,
+                    child: Image.network(
+                      loc['imageUrl'] as String? ??
+                          AppareilImages.getImageUrl(
+                            loc['appareilId']?.toString() ?? '',
+                            loc['appareilType'] ?? '',
+                          ),
+                      fit: BoxFit.cover,
+                      errorBuilder: (context, error, stackTrace) => Container(
+                        color: const Color(0xFF6366F1).withOpacity(0.1),
+                        child: const Icon(
+                          Icons.gps_fixed,
+                          color: Color(0xFF6366F1),
+                          size: 28,
+                        ),
+                      ),
+                    ),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -760,14 +772,24 @@ class _LocationPageState extends State<LocationPage> {
       ),
       child: Row(
         children: [
-          Container(
+          SizedBox(
             width: 48,
             height: 48,
-            decoration: BoxDecoration(
-              color: Colors.green.withOpacity(0.1),
+            child: ClipRRect(
               borderRadius: BorderRadius.circular(10),
+              child: Image.network(
+                loc['imageUrl'] as String? ??
+                    AppareilImages.getImageUrl(
+                      loc['appareilId']?.toString() ?? '',
+                      loc['appareilType'] ?? '',
+                    ),
+                fit: BoxFit.cover,
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: Colors.green.withOpacity(0.1),
+                  child: const Icon(Icons.check_circle, color: Colors.green, size: 24),
+                ),
+              ),
             ),
-            child: const Icon(Icons.check_circle, color: Colors.green, size: 24),
           ),
           const SizedBox(width: 12),
           Expanded(

@@ -22,28 +22,10 @@ class ApiService {
     if (token != null) {
       return token;
     }
-    
-    // 2. Si pas de token, vérifier si des identifiants sont sauvegardés
-    final prefs = await SharedPreferences.getInstance();
-    final savedIdentifier = prefs.getString('saved_identifier');
-    final savedPassword = prefs.getString('saved_password');
-    
-    if (savedIdentifier != null && savedPassword != null) {
-      // 3. Tenter une reconnexion automatique
-      print('🔄 Token manquant, tentative de reconnexion automatique...');
-      try {
-        final result = await login(savedIdentifier, savedPassword);
-        if (result['token'] != null) {
-          print('✅ Reconnexion automatique réussie');
-          return result['token'];
-        }
-      } catch (e) {
-        print('❌ Échec de la reconnexion automatique: $e');
-        // Ne pas throw, retourner null pour que l'utilisateur soit redirigé vers login
-      }
-    }
-    
-    // 4. Pas de token et pas d'identifiants sauvegardés
+
+    // 2. Pas de token : on ne stocke plus le mot de passe en local,
+    //    donc pas de reconnexion automatique. L'utilisateur doit se reconnecter manuellement.
+    print('🔄 Token manquant, reconnexion manuelle requise (aucun mot de passe local).');
     return null;
   }
 
@@ -521,51 +503,120 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
     }
   }
 
-  /// Créer un nouvel appareil (admin only)
-  static Future<Map<String, dynamic>> createAppareil({
-    required String nom,
-    required String type,
-    required int prixLocation,
-    required int prixVente,
-    String? imageUrl,
-  }) async {
+  /// Supprimer une demande d'achat terminée ou rejétée
+  static Future<void> deleteDemande(int demandeId) async {
     final token = await ensureAuthenticated();
-    if (token == null) throw Exception('Not authenticated - Veuillez vous reconnecter');
-
-    print('📡 API createAppareil called with:');
-    print('   - nom: $nom');
-    print('   - type: $type');
-    print('   - prixLocation: $prixLocation');
-    print('   - prixVente: $prixVente');
-
-    final response = await http.post(
-      Uri.parse('$baseUrl/appareils'),
+    final response = await http.delete(
+      Uri.parse('$baseUrl/demandes/$demandeId'),
       headers: {
         'Content-Type': 'application/json',
         'Authorization': 'Bearer $token',
       },
-      body: jsonEncode({
-        'nom': nom,
-        'type': type,
-        'prixLocation': prixLocation,
-        'prixVente': prixVente,
-        'imageUrl': imageUrl,
-      }),
     );
-
-    print('📡 createAppareil status: ${response.statusCode}');
-    print('📡 createAppareil body: ${response.body}');
-
-    if (response.statusCode == 201) {
-      final data = jsonDecode(response.body);
-      print('✅ Appareil créé: ${data['appareil']?['code']}');
-      return data;
+    
+    print('📡 deleteDemande status: ${response.statusCode}');
+    
+    if (response.statusCode == 200 || response.statusCode == 204) {
+      return;
     } else {
       final errorBody = jsonDecode(response.body);
       final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
-      print('❌ createAppareil failed: $errorMsg');
+      print('❌ deleteDemande failed: $errorMsg');
       throw Exception(errorMsg);
     }
   }
-}
+
+  /// Créer un nouvel appareil (admin only)
+   static Future<Map<String, dynamic>> createAppareil({
+     required String nom,
+     required String type,
+     required int prixLocation,
+     required int prixVente,
+     String? imageUrl,
+   }) async {
+     final token = await ensureAuthenticated();
+     if (token == null) throw Exception('Not authenticated - Veuillez vous reconnecter');
+
+     print('📡 API createAppareil called with:');
+     print('   - nom: $nom');
+     print('   - type: $type');
+     print('   - prixLocation: $prixLocation');
+     print('   - prixVente: $prixVente');
+
+     final response = await http.post(
+       Uri.parse('$baseUrl/appareils'),
+       headers: {
+         'Content-Type': 'application/json',
+         'Authorization': 'Bearer $token',
+       },
+       body: jsonEncode({
+         'nom': nom,
+         'type': type,
+         'prixLocation': prixLocation,
+         'prixVente': prixVente,
+         'imageUrl': imageUrl,
+       }),
+     );
+
+     print('📡 createAppareil status: ${response.statusCode}');
+     print('📡 createAppareil body: ${response.body}');
+
+     if (response.statusCode == 201) {
+       final data = jsonDecode(response.body);
+       print('✅ Appareil créé: ${data['appareil']?['code']}');
+       return data;
+     } else {
+       final errorBody = jsonDecode(response.body);
+       final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+       print('❌ createAppareil failed: $errorMsg');
+       throw Exception(errorMsg);
+     }
+   }
+
+   /// Modifier un appareil existant (admin only)
+   static Future<Map<String, dynamic>> updateAppareil({
+     required int id,
+     String? nom,
+     String? type,
+     int? prixLocation,
+     int? prixVente,
+     String? imageUrl,
+   }) async {
+     final token = await ensureAuthenticated();
+     if (token == null) throw Exception('Not authenticated - Veuillez vous reconnecter');
+
+     print('📡 API updateAppareil called with:');
+     print('   - id: $id');
+     print('   - imageUrl: $imageUrl');
+
+     final response = await http.put(
+       Uri.parse('$baseUrl/appareils/$id'),
+       headers: {
+         'Content-Type': 'application/json',
+         'Authorization': 'Bearer $token',
+       },
+       body: jsonEncode({
+         'nom': nom,
+         'type': type,
+         'prixLocation': prixLocation,
+         'prixVente': prixVente,
+         'imageUrl': imageUrl,
+       }),
+     );
+
+     print('📡 updateAppareil status: ${response.statusCode}');
+     print('📡 updateAppareil body: ${response.body}');
+
+     if (response.statusCode == 200) {
+       final data = jsonDecode(response.body);
+       print('✅ Appareil modifié: ${data['appareil']?['code']}');
+       return data;
+     } else {
+       final errorBody = jsonDecode(response.body);
+       final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+       print('❌ updateAppareil failed: $errorMsg');
+       throw Exception(errorMsg);
+     }
+   }
+ }
 

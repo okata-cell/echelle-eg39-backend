@@ -10,9 +10,10 @@ router.get('/', authMiddleware, async (req, res) => {
     const { statut } = req.query;
     
     let query = `
-      SELECT d.*, u.first_name, u.last_name, u.email, u.phone
+      SELECT d.*, u.first_name, u.last_name, u.email, u.phone, a.code as appareil_code
       FROM demandes_achat d
       JOIN users u ON d.user_id = u.id
+      LEFT JOIN appareils a ON d.appareil_id = a.id
     `;
     const params = [];
 
@@ -41,6 +42,7 @@ router.get('/', authMiddleware, async (req, res) => {
         clientNom: `${d.first_name} ${d.last_name}`,
         clientEmail: d.email,
         clientPhone: d.phone,
+        appareilId: d.appareil_code,
         appareilNom: d.appareil_nom,
         appareilPrix: d.appareil_prix,
         quantite: d.quantite,
