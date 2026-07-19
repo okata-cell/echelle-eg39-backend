@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'data_manager.dart';
+import 'appareil_images.dart';
 import 'api_service.dart';
 import 'login.page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -7,6 +8,7 @@ import 'widgets/image_zoom_viewer.dart';
 
 class Product {
   final int id;
+  final String code;
   final String name;
   final String category;
   final int price;
@@ -15,6 +17,7 @@ class Product {
 
   Product({
     required this.id,
+    required this.code,
     required this.name,
     required this.category,
     required this.price,
@@ -23,7 +26,7 @@ class Product {
   });
 
   /// Identifiant de produit utilisé dans les demandes d'achat
-  String get produitId => 'APP-${id.toString().padLeft(3, '0')}';
+  String get produitId => code;
 }
 
 class VenteScreen extends StatefulWidget {
@@ -36,6 +39,7 @@ class VenteScreen extends StatefulWidget {
 class _VenteScreenState extends State<VenteScreen> {
   final _dataManager = DataManager();
   List<Product> _apiProducts = [];  // Products from API
+  List<Map<String, dynamic>> _pendingDemandes = []; // Pending purchase requests from API
 
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
@@ -45,32 +49,50 @@ class _VenteScreenState extends State<VenteScreen> {
 
   final List<String> _categories = [
     'Tous', 'GPS', 'Station totale', 'Niveau', 'Mire',
-    'Drone', 'Laser', 'Réflecteur'
+    'Drone', 'Laser', 'Réflecteur', 'Canne',
+    'Antenne', 'Accessoire'
   ];
 
-  List<Product> get _products {
-    // Use API products if available, otherwise fallback to local
-    if (_apiProducts.isNotEmpty) {
-      return _apiProducts;
-    }
-    return _dataManager.appareils.map((a) => Product(
-      id: int.parse(a.id.substring(4)),
-      name: a.nom,
-      category: a.type,
-      price: a.prixVente,
-      inStock: a.disponible,
-      imageUrl: a.imageUrl,
-    )).toList();
-  }
+  List<Product> get _products => _apiProducts;
 
   @override
   void initState() {
     super.initState();
     _loadCurrentUser();
     _loadProductsFromAPI();
-    _dataManager.initialize();
+    _loadPendingDemandesFromAPI();
     // Quand le DG valide/refuse → notifyListeners → setState → bouton se débloque
     _dataManager.addListener(_onDataChanged);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    // Refresh pending demandes when returning to this page
+    _loadPendingDemandesFromAPI();
+  }
+
+  /// Charger les demandes d'achat en attente depuis l'API
+  Future<void> _loadPendingDemandesFromAPI() async {
+    try {
+      final token = await ApiService.ensureAuthenticated();
+      if (token == null || !mounted) return;
+      
+      final demandes = await ApiService.getDemandesAchat(statut: 'en_attente');
+      if (mounted) {
+        setState(() {
+          _pendingDemandes = demandes;
+        });
+        print('📡 Pending demandes loaded: ${demandes.length}');
+      }
+    } catch (e) {
+      print('⚠️ Failed to load pending demandes: $e');
+    }
+  }
+
+  /// Rafraîchir les demandes en attente (appelé après approbation/rejet)
+  Future<void> _refreshPendingDemandes() async {
+    await _loadPendingDemandesFromAPI();
   }
 
   Future<void> _loadProductsFromAPI() async {
@@ -78,14 +100,18 @@ class _VenteScreenState extends State<VenteScreen> {
       final appareils = await ApiService.getAppareils();
       if (mounted && appareils.isNotEmpty) {
         setState(() {
-          _apiProducts = appareils.map((a) => Product(
-            id: a['id'] as int,
-            name: a['nom'] as String,
-            category: a['type'] as String,
-            price: a['prixVente'] as int,
-            inStock: a['disponible'] as bool? ?? true,
-            imageUrl: a['imageUrl'] as String? ?? '',
-          )).toList();
+        _apiProducts = appareils.map((a) => Product(
+id: a['id'] as int,
+code: a['code'] as String? ?? '',
+name: a['nom'] as String,
+category: a['type'] as String,
+price: a['prixVente'] as int,
+inStock: a['disponible'] as bool? ?? true,
+imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
+  a['code'] as String? ?? '',
+  a['type'] as String? ?? '',
+),
+)).toList();
         });
       }
     } catch (e) {
@@ -122,6 +148,16 @@ class _VenteScreenState extends State<VenteScreen> {
   // ── Vérifie si l'utilisateur a déjà une demande EN ATTENTE pour ce produit ──
   bool _hasPendingDemande(Product product) {
     if (_currentUserEmail.isEmpty) return false;
+    
+    // First check API pending requests (most up-to-date)
+    if (_pendingDemandes.any((d) =>
+        d['clientEmail'] == _currentUserEmail &&
+        d['appareilId'] == product.code &&
+        d['statut'] == 'en_attente')) {
+      return true;
+    }
+    
+    // Fallback to local data manager
     return _dataManager.demandesAchat.any((d) =>
         d.clientEmail == _currentUserEmail &&
         d.produitId == product.produitId &&
@@ -414,6 +450,10 @@ class _VenteScreenState extends State<VenteScreen> {
                 }
                 Navigator.of(ctx).pop();
                 if (!mounted) return;
+                
+                // Refresh pending demandes to update button state
+                await _refreshPendingDemandes();
+                
                 ScaffoldMessenger.of(context).showSnackBar(
                   SnackBar(
                     content: Text(
@@ -486,6 +526,7 @@ class _VenteScreenState extends State<VenteScreen> {
             width: double.infinity,
             child: ZoomableImage(
               imageUrl: product.imageUrl,
+              fallbackUrl: AppareilImages.getImageUrl(product.produitId, product.category),
               title: product.name,
               width: double.infinity,
               height: 120,

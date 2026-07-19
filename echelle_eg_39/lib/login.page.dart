@@ -1,6 +1,5 @@
 import 'package:echelle_eg_39/main.dart';
 import 'package:flutter/material.dart';
-import 'AdminHomePage.dart';
 import 'AdminDashBoard.dart';
 import 'register.page.dart';
 import 'forgot_password.page.dart';
@@ -32,13 +31,11 @@ class _LoginPageState extends State<LoginPage> {
     await prefs.setBool('isLoggedIn', true);
     await prefs.setBool('isAdmin', isAdmin);
     
-    // Stocker les infos utilisateur
+    // Stocker les infos utilisateur (SANS le mot de passe pour la sécurité)
     await prefs.setString('userIdentifier', identifier);
-    await prefs.setString('userPassword', password);
-    
-    // Stocker les identifiants de manière permanente pour récupération après réinstallation
+
+    // Stocker l'identifiant (PAS le mot de passe) pour pré-remplir le login
     await prefs.setString('saved_identifier', identifier);
-    await prefs.setString('saved_password', password);
     await prefs.setBool('saved_isAdmin', isAdmin);
     
     // Déterminer le nom et email basée sur l'identifiant
@@ -117,52 +114,41 @@ class _LoginPageState extends State<LoginPage> {
       return;
     }
 
-    // 📱 VALIDATION DU NUMÉRO DE TÉLÉPHONE OU EMAIL
-    bool isPhoneNumber = RegExp(r'^[0-9]+$').hasMatch(identifier.replaceAll(' ', ''));
-    bool isValidEmail = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(identifier);
+    // 📧 VALIDATION EMAIL OU 📱 IDENTIFIANT TÉLÉPHONE
+    bool isEmail = identifier.contains('@');
 
-    if (isPhoneNumber) {
-      // Validation du numéro de téléphone : 8 à 15 chiffres
-      String phoneDigits = identifier.replaceAll(RegExp(r'[^0-9]'), '');
-      if (phoneDigits.length < 8 || phoneDigits.length > 15) {
+    if (isEmail) {
+      // Format email attendu : okataolaniyi@gmail.com
+      final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
+      if (!emailRegex.hasMatch(identifier)) {
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(
-            content: Text("Le numéro de téléphone doit contenir entre 8 et 15 chiffres"),
+            content: Text("Veuillez saisir un email valide (ex: okataolaniyi@gmail.com)"),
             backgroundColor: Colors.red,
           ),
         );
         return;
       }
-    } else if (!isValidEmail) {
-      // Validation de l'email
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Veuillez saisir un email valide"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
+    } else {
+      // Format identifiant attendu : +228990929132 (Togo)
+      final phoneRegex = RegExp(r'^\+228[0-9]{8,9}$');
+      if (!phoneRegex.hasMatch(identifier)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text("Le numéro doit être au format +228 suivi de 8 ou 9 chiffres (ex: +22890000000)"),
+            backgroundColor: Colors.red,
+          ),
+        );
+        return;
+      }
     }
 
-    // 🔑 VALIDATION DU MOT DE PASSE
-    if (password.length < 6) {
+    // 🔑 VALIDATION DU MOT DE PASSE : 4 chiffres + 4 lettres majuscules (ex: 1234AZER)
+    final passwordRegex = RegExp(r'^\d{4}[A-Z]{4}$');
+    if (!passwordRegex.hasMatch(password)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Le mot de passe doit contenir au moins 6 caractères"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    // Vérifier que le mot de passe contient au moins une lettre et un chiffre
-    bool hasLetter = RegExp(r'[a-zA-Z]').hasMatch(password);
-    bool hasDigit = RegExp(r'[0-9]').hasMatch(password);
-
-    if (!hasLetter || !hasDigit) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Le mot de passe doit contenir des lettres et des chiffres"),
+          content: Text("Le mot de passe doit contenir 4 chiffres suivis de 4 lettres majuscules (ex: 1234AZER)"),
           backgroundColor: Colors.red,
         ),
       );
@@ -183,7 +169,9 @@ class _LoginPageState extends State<LoginPage> {
 
       if (mounted) {
         // Connexion API réussie
-        bool isAdmin = result['user']['role'] == 'admin';
+        // Accès admin réservé UNIQUEMENT au DG (admin@echelle-eg39.com)
+        final String loggedEmail = (result['user']['email'] ?? '').toString().toLowerCase();
+        final bool isAdmin = loggedEmail == 'admin@echelle-eg39.com';
         
         // Sauvegarder la session
         await _saveUserSession(identifier, password, isAdmin);
@@ -222,7 +210,8 @@ class _LoginPageState extends State<LoginPage> {
           if ((identifier == storedEmail || identifier == storedPhone) && 
               password == storedPassword) {
             userFound = true;
-            isAdmin = storedRole == 'admin';
+            // Accès admin réservé UNIQUEMENT au DG (admin@echelle-eg39.com)
+            isAdmin = storedEmail.toLowerCase() == 'admin@echelle-eg39.com';
             
             // Sauvegarder les infos utilisateur
             // NOTE: Pas de vrai token car c'est un login local
@@ -252,8 +241,15 @@ class _LoginPageState extends State<LoginPage> {
             ),
           );
 
-          // 🔄 Tenter de synchroniser avec l'API en arrière-plan
-          _attemptBackgroundSync();
+          // 🔄 Synchroniser le compte local avec l'API, puis récupérer un vrai token JWT
+          await _attemptBackgroundSync();
+          try {
+            // Le compte est maintenant (normalement) dans la base : on se connecte via l'API pour obtenir le JWT
+            await ApiService.login(identifier, password);
+            print('✅ Token JWT obtenu après synchronisation locale');
+          } catch (e) {
+            print('⚠️ Token JWT non obtenu après sync local (API peut être indisponible): $e');
+          }
 
           if (isAdmin) {
             Navigator.pushReplacement(
@@ -337,7 +333,7 @@ class _LoginPageState extends State<LoginPage> {
                     controller: identifierController,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: "Téléphone ou Email",
+                      hintText: "Email (ex: okataolaniyi@gmail.com) ou +228990929132",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.15),

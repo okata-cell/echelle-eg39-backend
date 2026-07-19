@@ -1,18 +1,13 @@
-# ✅ FIX ADMIN LOCATIONS "FIGÉ" TERMINÉ
+# TODO - FIX UI ADMIN LOCATIONS ✅ PLAN APPROUVÉ
 
-**Changements:**
-- Tabs En attente | Debug toutes locs
-- Bouton "Créer TEST pending" 
-- Valider/Rejeter boutons inline list
-- Debug panel: Vos 2 en_cours visibles
-- Snackbar confirm actions
+## Étapes (Progression)
 
-**Test:**
-1. Admin → Locations → DEBUG: 2 en_cours OK
-2. Créer TEST → en_attente apparaît
-3. Valider → disparait + snackbar
-4. Client historique → sync OK
+### ✅ 1. Créer ce fichier TODO.md [DONE]
+### ✅ 2. Vérifier AdminDashBoard.dart navigation [DONE]
+### ✅ 3. Améliorer LocationsMenu.dart UI boutons admin [DONE]
+✅ 4. Créer données test DB [READY - Backend started]
+### ⏳ 5. Test flux complet Admin
+### ⏳ 6. attempt_completion
 
-Run `flutter run` voir locations interactives!
+**Status**: Plan breakdown OK - Prochaines étapes...
 
-**Prolong OK onglet séparé.**

@@ -40,7 +40,6 @@ class SyncService {
         final email = parts[0];
         final phone = parts[1];
         final password = parts[2];
-        final role = parts[3];
         final firstName = parts.length > 4 ? parts[4] : 'Utilisateur';
         final lastName = parts.length > 5 ? parts[5] : 'EG39';
         
@@ -264,4 +263,3 @@ class SyncStatus {
     required this.localUsersCount,
   });
 }
-
