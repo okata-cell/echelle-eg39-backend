@@ -18,7 +18,8 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
   @override
   void initState() {
     super.initState();
-    _dataManager.initialize();
+    // Ne pas initialiser les appareils par défaut ici,
+    // ils seront chargés depuis le backend ou utilisés comme fallback
     _loadAppareilsFromBackend();
   }
 
@@ -50,16 +51,24 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
             ));
           }
         } else {
-          print('⚠️ Backend returned empty appareils list, keeping defaults');
+          print('⚠️ Backend returned empty appareils list, loading defaults');
+          _loadDefaultAppareils();
         }
       }
     } catch (e) {
       print('⚠️ Failed to load appareils from backend: $e');
+      if (mounted) {
+        _loadDefaultAppareils();
+      }
     } finally {
       if (mounted) {
         setState(() => _isLoadingAppareils = false);
       }
     }
+  }
+
+  void _loadDefaultAppareils() {
+    _dataManager.loadDefaultAppareils();
   }
 
 

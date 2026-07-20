@@ -415,6 +415,13 @@ class DataManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // Charger les appareils par défaut
+  void loadDefaultAppareils() {
+    _appareils.clear();
+    _appareils.addAll(_defaultAppareils);
+    notifyListeners();
+  }
+
   // Ajouter un nouvel appareil
   void addAppareil(Appareil appareil) {
     _appareils.add(appareil);
