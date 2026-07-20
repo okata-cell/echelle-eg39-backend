@@ -31,22 +31,26 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
       for (final a in appareils) {
         print('  - ${a['code']}: ${a['nom']} | imageUrl: ${a['imageUrl']}');
       }
-      if (mounted && appareils.isNotEmpty) {
+      if (mounted) {
         // Vider la liste actuelle et ajouter les appareils du backend
-          _dataManager.clearAppareils();
+        _dataManager.clearAppareils();
+        if (appareils.isNotEmpty) {
           for (final a in appareils) {
-          _dataManager.addAppareil(Appareil(
-            id: a['code'] as String? ?? 'APP-${a['id']}',
-            nom: a['nom'] as String,
-            type: a['type'] as String,
-            imageUrl: a['imageUrl'] as String? ??
-                AppareilImages.getImageUrlForAppareilId(
-                  a['code'] as String? ?? '',
-                ),
-            prixLocation: a['prixLocation'] as int,
-            prixVente: a['prixVente'] as int,
-            disponible: a['disponible'] as bool? ?? true,
-          ));
+            _dataManager.addAppareil(Appareil(
+              id: a['code'] as String? ?? 'APP-${a['id']}',
+              nom: a['nom'] as String,
+              type: a['type'] as String,
+              imageUrl: a['imageUrl'] as String? ??
+                  AppareilImages.getImageUrlForAppareilId(
+                    a['code'] as String? ?? '',
+                  ),
+              prixLocation: a['prixLocation'] as int,
+              prixVente: a['prixVente'] as int,
+              disponible: a['disponible'] as bool? ?? true,
+            ));
+          }
+        } else {
+          print('⚠️ Backend returned empty appareils list, keeping defaults');
         }
       }
     } catch (e) {
@@ -795,19 +799,22 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                             title: a.nom,
                           ),
                         ),
-                        // Gradient overlay
-                        Positioned.fill(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              borderRadius: const BorderRadius.vertical(
-                                  top: Radius.circular(20)),
-                              gradient: LinearGradient(
-                                begin: Alignment.topCenter,
-                                end: Alignment.bottomCenter,
-                                colors: [
-                                  Colors.transparent,
-                                  Colors.black.withValues(alpha: 0.3),
-                                ],
+                        // Gradient overlay (ignore pointer to allow tap on image)
+                        IgnorePointer(
+                          ignoring: true,
+                          child: Positioned.fill(
+                            child: Container(
+                              decoration: BoxDecoration(
+                                borderRadius: const BorderRadius.vertical(
+                                    top: Radius.circular(20)),
+                                gradient: LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.transparent,
+                                    Colors.black.withValues(alpha: 0.3),
+                                  ],
+                                ),
                               ),
                             ),
                           ),
