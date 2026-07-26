@@ -612,11 +612,36 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
        print('✅ Appareil modifié: ${data['appareil']?['code']}');
        return data;
      } else {
-       final errorBody = jsonDecode(response.body);
-       final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
-       print('❌ updateAppareil failed: $errorMsg');
-       throw Exception(errorMsg);
-     }
-   }
- }
+        final errorBody = jsonDecode(response.body);
+        final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+        print('❌ updateAppareil failed: $errorMsg');
+        throw Exception(errorMsg);
+      }
+    }
+
+    /// Supprimer un appareil (admin only)
+    static Future<void> deleteAppareil(int id) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/appareils/$id'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📡 deleteAppareil status: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return;
+      } else {
+        final errorBody = jsonDecode(response.body);
+        final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+        print('❌ deleteAppareil failed: $errorMsg');
+        throw Exception(errorMsg);
+      }
+    }
+  }
 

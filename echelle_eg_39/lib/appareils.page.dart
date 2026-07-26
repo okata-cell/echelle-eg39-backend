@@ -39,6 +39,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
           for (final a in appareils) {
             _dataManager.addAppareil(Appareil(
               id: a['code'] as String? ?? 'APP-${a['id']}',
+              dbId: a['id'] as int?,
               nom: a['nom'] as String,
               type: a['type'] as String,
               imageUrl: a['imageUrl'] as String? ??
@@ -432,9 +433,11 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
       );
 
       // Ajouter aussi localement pour l'affichage immédiat
+      final createdAppareil = result['appareil'];
       _dataManager.addAppareil(
         Appareil(
-          id: result['appareil']?['code'] ?? "APP-${DateTime.now().millisecondsSinceEpoch}",
+          id: createdAppareil?['code'] ?? "APP-${DateTime.now().millisecondsSinceEpoch}",
+          dbId: createdAppareil?['id'],
           nom: nom,
           type: type,
           imageUrl: imageUrl ?? _getImageUrlForType(type),
@@ -457,6 +460,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
       _dataManager.addAppareil(
         Appareil(
           id: "APP-${DateTime.now().millisecondsSinceEpoch}",
+          dbId: null, // Pas d'ID backend, sera assigné après sauvegarde
           nom: nom,
           type: type,
           imageUrl: imageUrl ?? _getImageUrlForType(type),
@@ -607,61 +611,64 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
      );
    }
 
-   Future<void> _modifierAppareil({
-     required int index,
-     required String nom,
-     required String type,
-     required int prixLoc,
-     required int prixVente,
-     required String imageUrl,
-   }) async {
-     try {
-       final appareil = _dataManager.appareils[index];
-       final id = int.tryParse(appareil.id.replaceAll('APP-', '')) ?? 0;
-       final result = await ApiService.updateAppareil(
-         id: id,
-         nom: nom,
-         type: type,
-         prixLocation: prixLoc,
-         prixVente: prixVente,
-         imageUrl: imageUrl.isNotEmpty ? imageUrl : null,
-       );
+    Future<void> _modifierAppareil({
+      required int index,
+      required String nom,
+      required String type,
+      required int prixLoc,
+      required int prixVente,
+      required String imageUrl,
+    }) async {
+      try {
+        final appareil = _dataManager.appareils[index];
+        // Utiliser dbId (ID de la base de données) au lieu d'extraire l'ID du code
+        final id = appareil.dbId ?? 0;
+        final result = await ApiService.updateAppareil(
+          id: id,
+          nom: nom,
+          type: type,
+          prixLocation: prixLoc,
+          prixVente: prixVente,
+          imageUrl: imageUrl.isNotEmpty ? imageUrl : null,
+        );
        
-       _dataManager.updateAppareil(
-         index,
-         Appareil(
-           id: appareil.id,
-           nom: nom,
-           type: type,
-           imageUrl: imageUrl.isNotEmpty ? imageUrl : appareil.imageUrl,
-           prixLocation: prixLoc,
-           prixVente: prixVente,
-           disponible: appareil.disponible,
-         ),
-       );
-       
-       if (mounted) {
-         ScaffoldMessenger.of(context).showSnackBar(
-           const SnackBar(
-             content: Text('Appareil modifié avec succès!'),
-             backgroundColor: Colors.green,
-           ),
-         );
-       }
-     } catch (e) {
-       final appareil = _dataManager.appareils[index];
-       _dataManager.updateAppareil(
-         index,
-         Appareil(
-           id: appareil.id,
-           nom: nom,
-           type: type,
-           imageUrl: imageUrl.isNotEmpty ? imageUrl : appareil.imageUrl,
-           prixLocation: prixLoc,
-           prixVente: prixVente,
-           disponible: appareil.disponible,
-         ),
-       );
+        _dataManager.updateAppareil(
+          index,
+          Appareil(
+            id: appareil.id,
+            dbId: appareil.dbId,
+            nom: nom,
+            type: type,
+            imageUrl: imageUrl.isNotEmpty ? imageUrl : appareil.imageUrl,
+            prixLocation: prixLoc,
+            prixVente: prixVente,
+            disponible: appareil.disponible,
+          ),
+        );
+
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Appareil modifié avec succès!'),
+              backgroundColor: Colors.green,
+            ),
+          );
+        }
+      } catch (e) {
+        final appareil = _dataManager.appareils[index];
+        _dataManager.updateAppareil(
+          index,
+          Appareil(
+            id: appareil.id,
+            dbId: appareil.dbId,
+            nom: nom,
+            type: type,
+            imageUrl: imageUrl.isNotEmpty ? imageUrl : appareil.imageUrl,
+            prixLocation: prixLoc,
+            prixVente: prixVente,
+            disponible: appareil.disponible,
+          ),
+        );
        
        if (mounted) {
          ScaffoldMessenger.of(context).showSnackBar(
@@ -712,18 +719,29 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
               ),
             ),
             ElevatedButton(
-              onPressed: () {
+              onPressed: () async {
                 Navigator.of(context).pop();
+                final appareil = _dataManager.appareils[index];
+                // Supprimer aussi sur le backend
+                if (appareil.dbId != null) {
+                  try {
+                    await ApiService.deleteAppareil(appareil.dbId!);
+                  } catch (e) {
+                    print('⚠️ Erreur suppression backend: $e');
+                  }
+                }
                 _dataManager.removeAppareil(index);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Appareil supprimé avec succès',
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(
+                      content: Text(
+                        'Appareil supprimé avec succès',
+                      ),
+                      backgroundColor: Colors.orange,
+                      duration: const Duration(seconds: 3),
                     ),
-                    backgroundColor: Colors.orange,
-                    duration: const Duration(seconds: 3),
-                  ),
-                );
+                  );
+                }
               },
               style: ElevatedButton.styleFrom(
                 backgroundColor: Colors.red.shade600,
