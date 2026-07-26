@@ -40,6 +40,7 @@ class Client {
 // Modèle pour un appareil
 class Appareil {
   final String id;
+  final int? dbId; // ID de la base de données (pour les opérations PUT/DELETE)
   final String nom;
   final String type;
   final String imageUrl;
@@ -49,6 +50,7 @@ class Appareil {
 
   Appareil({
     required this.id,
+    this.dbId,
     required this.nom,
     required this.type,
     required this.imageUrl,
@@ -418,7 +420,19 @@ class DataManager extends ChangeNotifier {
   // Charger les appareils par défaut
   void loadDefaultAppareils() {
     _appareils.clear();
-    _appareils.addAll(_defaultAppareils);
+    // Les appareils par défaut n'ont pas de dbId (pas encore sauvegardés en base)
+    for (final appareil in _defaultAppareils) {
+      _appareils.add(Appareil(
+        id: appareil.id,
+        dbId: null,
+        nom: appareil.nom,
+        type: appareil.type,
+        imageUrl: appareil.imageUrl,
+        prixLocation: appareil.prixLocation,
+        prixVente: appareil.prixVente,
+        disponible: appareil.disponible,
+      ));
+    }
     notifyListeners();
   }
 
