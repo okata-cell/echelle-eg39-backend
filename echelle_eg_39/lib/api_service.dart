@@ -566,14 +566,62 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
        print('✅ Appareil créé: ${data['appareil']?['code']}');
        return data;
      } else {
-       final errorBody = jsonDecode(response.body);
-       final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
-       print('❌ createAppareil failed: $errorMsg');
-       throw Exception(errorMsg);
-     }
-   }
+        final errorBody = jsonDecode(response.body);
+        final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+        print('❌ createAppareil failed: $errorMsg');
+        throw Exception(errorMsg);
+      }
+    }
 
-   /// Modifier un appareil existant (admin only)
+    /// Soumettre une demande de devis (public)
+    static Future<Map<String, dynamic>> createDevis({
+      required String serviceId,
+      required String serviceName,
+      required String description,
+      required String nom,
+      required String telephone,
+      required String email,
+    }) async {
+      try {
+        print('📡 API createDevis called with:');
+        print('   - serviceId: $serviceId');
+        print('   - serviceName: $serviceName');
+        print('   - nom: $nom');
+
+        final response = await http.post(
+          Uri.parse('$baseUrl/devis'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({
+            'serviceId': serviceId,
+            'serviceName': serviceName,
+            'description': description,
+            'nom': nom,
+            'telephone': telephone,
+            'email': email,
+          }),
+        );
+
+        print('📡 createDevis status: ${response.statusCode}');
+        print('📡 createDevis body: ${response.body}');
+
+        if (response.statusCode == 201) {
+          final data = jsonDecode(response.body);
+          print('✅ Devis créé: ${data['devis']?['id']}');
+          return data;
+        } else {
+          final errorBody = jsonDecode(response.body);
+          final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+          print('❌ createDevis failed: $errorMsg');
+          throw Exception(errorMsg);
+        }
+      } catch (e) {
+        if (e is Exception) rethrow;
+        print('❌ Erreur réseau createDevis: $e');
+        throw Exception('Impossible de contacter le serveur. Vérifiez votre connexion internet.');
+      }
+    }
+
+    /// Modifier un appareil existant (admin only)
    static Future<Map<String, dynamic>> updateAppareil({
      required int id,
      String? nom,
@@ -640,6 +688,84 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
         final errorBody = jsonDecode(response.body);
         final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
         print('❌ deleteAppareil failed: $errorMsg');
+        throw Exception(errorMsg);
+      }
+    }
+
+    /// Récupérer les demandes de devis (admin)
+    static Future<List<Map<String, dynamic>>> getDevis({String? statut}) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      String url = '$baseUrl/devis';
+      if (statut != null) {
+        url += '?statut=$statut';
+      }
+
+      print('📡 API getDevis: $url');
+
+      final response = await http.get(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📡 getDevis status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['devis']);
+      } else {
+        throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la récupération des devis');
+      }
+    }
+
+    /// Mettre à jour le statut d'un devis (admin)
+    static Future<Map<String, dynamic>> updateDevisStatut(int devisId, String statut) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/devis/$devisId/statut'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'statut': statut}),
+      );
+
+      print('📡 updateDevisStatut status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      } else {
+        throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la mise à jour du statut');
+      }
+    }
+
+    /// Supprimer un devis (admin)
+    static Future<void> deleteDevis(int devisId) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/devis/$devisId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📡 deleteDevis status: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return;
+      } else {
+        final errorBody = jsonDecode(response.body);
+        final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+        print('❌ deleteDevis failed: $errorMsg');
         throw Exception(errorMsg);
       }
     }
