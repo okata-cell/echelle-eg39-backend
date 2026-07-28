@@ -147,6 +147,25 @@ async function migrate() {
       `, appareil);
     }
 
+    // Table: devis (demandes de devis)
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS devis (
+        id SERIAL PRIMARY KEY,
+        service_id VARCHAR(50),
+        service_name VARCHAR(255),
+        description TEXT,
+        nom VARCHAR(255) NOT NULL,
+        telephone VARCHAR(20),
+        email VARCHAR(255),
+        statut VARCHAR(20) DEFAULT 'nouveau' CHECK (statut IN ('nouveau', 'en_cours', 'envoye', 'termine')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query('CREATE INDEX IF NOT EXISTS idx_devis_statut ON devis(statut)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_devis_created_at ON devis(created_at)');
+
     await client.query('COMMIT');
     console.log('✅ Migration réussie !');
     console.log(`📧 Admin créé: ${adminEmail}`);
