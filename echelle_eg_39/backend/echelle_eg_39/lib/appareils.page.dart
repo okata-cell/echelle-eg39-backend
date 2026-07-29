@@ -1,0 +1,850 @@
+import 'package:flutter/material.dart';
+import 'data_manager.dart';
+import 'api_service.dart';
+
+class AdminAppareilsPage extends StatefulWidget {
+  const AdminAppareilsPage({super.key});
+
+  @override
+  State<AdminAppareilsPage> createState() => _AdminAppareilsPageState();
+}
+
+class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
+  final _dataManager = DataManager();
+
+  @override
+  void initState() {
+    super.initState();
+    _dataManager.initialize();
+  }
+
+
+  // Map des URLs d'images par type d'appareil
+  final Map<String, String> imageUrlsByType = {
+    'gps': 'https://images.unsplash.com/photo-1579567761406-4684ee0c75b6?w=400',
+    'niveau': 'https://images.unsplash.com/photo-1590650153855-d9e808231d41?w=400',
+    'station totale': 'https://images.unsplash.com/photo-1574958269340-fa927503f3dd?w=400',
+    'theodolite': 'https://images.unsplash.com/photo-1581092162384-8987c1d64718?w=400',
+    'trepied': 'https://images.unsplash.com/photo-1590650046871-92c887180603?w=400',
+    'mire': 'https://images.unsplash.com/photo-1590650153855-d9e808231d41?w=400',
+    'drone': 'https://images.unsplash.com/photo-1508614589041-895b8c9d755c?w=400',
+    'embase': 'https://images.unsplash.com/photo-1504917595217-d4dc5ebe6122?w=400',
+    'reflecteur': 'https://images.unsplash.com/photo-1581092160562-40aa08e78837?w=400',
+  };
+
+  // URL d'image par défaut pour les types non définis
+  final String defaultImageUrl = 'https://images.unsplash.com/photo-1581092334494-8b6a8c3a52f3?auto=format&fit=crop&w=800&q=80';
+
+  // Fonction pour obtenir l'URL d'image selon le type d'appareil
+  String _getImageUrlForType(String type) {
+    final normalizedType = type.toLowerCase().trim();
+    return imageUrlsByType[normalizedType] ?? defaultImageUrl;
+  }
+
+  // Fonction de validation pour les champs numériques
+  String? _validateNumericValue(String? value, String fieldName) {
+    if (value == null || value.trim().isEmpty) {
+      return 'Le $fieldName est requis';
+    }
+    
+    // Supprimer les espaces
+    final cleanValue = value.trim();
+    
+    // Vérifier si c'est un nombre valide
+    final numericRegex = RegExp(r'^[0-9]+$');
+    if (!numericRegex.hasMatch(cleanValue)) {
+      return 'Le $fieldName doit contenir uniquement des chiffres';
+    }
+    
+    // Vérifier si la valeur est positive
+    final number = int.tryParse(cleanValue);
+    if (number == null) {
+      return 'Le $fieldName n\'est pas valide';
+    }
+    
+    if (number <= 0) {
+      return 'Le $fieldName doit être supérieur à 0';
+    }
+    
+    // Vérifier si la valeur n'est pas trop grande
+    if (number > 999999999) {
+      return 'Le $fieldName est trop élevé';
+    }
+    
+    return null; // Validation réussie
+  }
+
+  // FORMULAIRE D'AJOUT D'APPAREIL
+  void _ouvrirFormulaireAjout(BuildContext context) {
+    final nomCtrl = TextEditingController();
+    final typeCtrl = TextEditingController();
+    final prixLocCtrl = TextEditingController();
+    final prixVenteCtrl = TextEditingController();
+    
+    final formKey = GlobalKey<FormState>();
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            "Ajouter un appareil",
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          content: SingleChildScrollView(
+            child: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: nomCtrl,
+                    decoration: const InputDecoration(
+                      labelText: "Nom de l'appareil",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.devices),
+                    ),
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Le nom de l\'appareil est requis';
+                      }
+                      if (value.trim().length < 2) {
+                        return 'Le nom doit contenir au moins 2 caractères';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+
+                  TextFormField(
+                    controller: typeCtrl,
+                    decoration: const InputDecoration(
+                      labelText: "Type (GPS, Niveau, Station Totale, Trepied, Mire...)",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.category),
+                    ),
+                    onChanged: (value) {
+                      // Actualiser la prévisualisation d'image quand le type change
+                      setState(() {});
+                    },
+                    validator: (value) {
+                      if (value == null || value.trim().isEmpty) {
+                        return 'Le type d\'appareil est requis';
+                      }
+                      if (value.trim().length < 2) {
+                        return 'Le type doit contenir au moins 2 caractères';
+                      }
+                      return null;
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  // Prévisualisation de l'image selon le type
+                  Container(
+                    height: 120,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: Colors.grey.shade100,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: Colors.grey.shade300),
+                    ),
+                    child: typeCtrl.text.trim().isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: Stack(
+                              children: [
+                                Image.network(
+                                  _getImageUrlForType(typeCtrl.text.trim()),
+                                  width: double.infinity,
+                                  height: double.infinity,
+                                  fit: BoxFit.cover,
+                                  errorBuilder: (context, error, stackTrace) {
+                                    return Container(
+                                      width: double.infinity,
+                                      height: double.infinity,
+                                      decoration: BoxDecoration(
+                                        color: Colors.grey.shade200,
+                                        borderRadius: BorderRadius.circular(12),
+                                      ),
+                                      child: Center(
+                                        child: Column(
+                                          mainAxisAlignment: MainAxisAlignment.center,
+                                          children: [
+                                            Icon(
+                                              Icons.image_not_supported,
+                                              size: 32,
+                                              color: Colors.grey.shade400,
+                                            ),
+                                            const SizedBox(height: 4),
+                                            Text(
+                                              'Image non disponible',
+                                              style: TextStyle(
+                                                color: Colors.grey.shade600,
+                                                fontSize: 10,
+                                              ),
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                                // Overlay avec le nom du type
+                                Positioned(
+                                  bottom: 0,
+                                  left: 0,
+                                  right: 0,
+                                  child: Container(
+                                    padding: const EdgeInsets.symmetric(
+                                        horizontal: 8, vertical: 4),
+                                    decoration: BoxDecoration(
+                                      color: Colors.black.withValues(alpha: 0.7),
+                                      borderRadius: const BorderRadius.only(
+                                        bottomLeft: Radius.circular(12),
+                                        bottomRight: Radius.circular(12),
+                                      ),
+                                    ),
+                                    child: Text(
+                                      'Image pour: ${typeCtrl.text.trim()}',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontSize: 12,
+                                        fontWeight: FontWeight.bold,
+                                      ),
+                                      textAlign: TextAlign.center,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          )
+                        : Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.preview,
+                                  size: 32,
+                                  color: Colors.grey.shade400,
+                                ),
+                                const SizedBox(height: 8),
+                                Text(
+                                  'Prévisualisation de l\'image',
+                                  style: TextStyle(
+                                    color: Colors.grey.shade600,
+                                    fontSize: 12,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'L\'image sera automatiquement sélectionnée selon le type d\'appareil',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Colors.grey.shade600,
+                      fontStyle: FontStyle.italic,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: prixLocCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: "Prix location / jour (FCFA)",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.access_time),
+                      helperText: "Veuillez saisir uniquement des chiffres",
+                    ),
+                    validator: (value) => _validateNumericValue(value, "prix de location"),
+                  ),
+                  const SizedBox(height: 16),
+                  TextFormField(
+                    controller: prixVenteCtrl,
+                    keyboardType: TextInputType.number,
+                    decoration: const InputDecoration(
+                      labelText: "Prix de vente (FCFA)",
+                      border: OutlineInputBorder(),
+                      prefixIcon: Icon(Icons.sell),
+                      helperText: "Veuillez saisir uniquement des chiffres",
+                    ),
+                    validator: (value) => _validateNumericValue(value, "prix de vente"),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(
+                      color: Colors.blue.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: Colors.blue.shade200),
+                    ),
+                    child: const Row(
+                      children: [
+                        Icon(
+                          Icons.info_outline,
+                          color: Colors.blue,
+                          size: 20,
+                        ),
+                        SizedBox(width: 8),
+                        Expanded(
+                          child: Text(
+                            "Les prix doivent être exprimés en FCFA et ne contenir que des chiffres.",
+                            style: TextStyle(
+                              fontSize: 12,
+                              color: Colors.blue,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text("Annuler"),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState!.validate()) {
+                  _ajouterAppareil(
+                    nom: nomCtrl.text.trim(),
+                    type: typeCtrl.text.trim(),
+                    prixLoc: int.parse(prixLocCtrl.text.trim()),
+                    prixVente: int.parse(prixVenteCtrl.text.trim()),
+                  );
+                  Navigator.pop(context);
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(
+                      content: Text('Appareil ajouté avec succès!'),
+                      backgroundColor: Colors.green,
+                      duration: Duration(seconds: 3),
+                    ),
+                  );
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.blue.shade600,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text("Ajouter"),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+
+  Future<void> _ajouterAppareil({
+    required String nom,
+    required String type,
+    required int prixLoc,
+    required int prixVente,
+  }) async {
+    try {
+      // Envoyer à la base de données backend
+      final result = await ApiService.createAppareil(
+        nom: nom,
+        type: type,
+        prixLocation: prixLoc,
+        prixVente: prixVente,
+        imageUrl: _getImageUrlForType(type),
+      );
+      
+      // Ajouter aussi localement pour l'affichage immédiat
+      _dataManager.addAppareil(
+        Appareil(
+          id: result['appareil']?['code'] ?? "APP-${DateTime.now().millisecondsSinceEpoch}",
+          nom: nom,
+          type: type,
+          imageUrl: _getImageUrlForType(type),
+          prixLocation: prixLoc,
+          prixVente: prixVente,
+          disponible: true,
+        ),
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Appareil ajouté avec succès!'),
+            backgroundColor: Colors.green,
+          ),
+        );
+      }
+    } catch (e) {
+      // Si l'API échoue, ajouter seulement localement
+      _dataManager.addAppareil(
+        Appareil(
+          id: "APP-${DateTime.now().millisecondsSinceEpoch}",
+          nom: nom,
+          type: type,
+          imageUrl: _getImageUrlForType(type),
+          prixLocation: prixLoc,
+          prixVente: prixVente,
+          disponible: true,
+        ),
+      );
+      
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Appareil ajouté (local): $e'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+    }
+  }
+
+  void changerStatut(int index) {
+    _dataManager.toggleDisponibilite(index);
+  }
+
+  void supprimerAppareil(int index) {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+          ),
+          title: const Text(
+            'Confirmer la suppression',
+            style: TextStyle(
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          content: Text(
+            'Êtes-vous sûr de vouloir supprimer l\'appareil "${_dataManager.appareils[index].nom}" ?',
+            style: const TextStyle(
+              fontSize: 14,
+              color: Color(0xFF64748B),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(),
+              child: Text(
+                'Annuler',
+                style: TextStyle(
+                  color: Colors.grey.shade600,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                Navigator.of(context).pop();
+                _dataManager.removeAppareil(index);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  SnackBar(
+                    content: Text(
+                      'Appareil supprimé avec succès',
+                    ),
+                    backgroundColor: Colors.orange,
+                    duration: const Duration(seconds: 3),
+                  ),
+                );
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red.shade600,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(8),
+                ),
+              ),
+              child: const Text('Supprimer'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text(
+          "Gestion des Appareils",
+          style: TextStyle(
+            fontWeight: FontWeight.bold,
+            fontSize: 20,
+          ),
+        ),
+        centerTitle: true,
+        backgroundColor: Colors.blue.shade600,
+        foregroundColor: Colors.white,
+        elevation: 8,
+        shadowColor: Colors.blue.withValues(alpha: 0.3),
+        leading: IconButton(
+          icon: const Icon(Icons.add, size: 28),
+          onPressed: () => _ouvrirFormulaireAjout(context),
+          tooltip: "Ajouter un appareil",
+        ),
+        actions: [
+          Container(
+            margin: const EdgeInsets.only(right: 16),
+            child: const Icon(Icons.center_focus_strong, size: 28),
+          ),
+        ],
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0xFFF8FAFC), Color(0xFFE2E8F0)],
+          ),
+        ),
+        child: ListView.builder(
+          padding: const EdgeInsets.all(16),
+          itemCount: _dataManager.appareils.length,
+          itemBuilder: (context, index) {
+            final a = _dataManager.appareils[index];
+
+            return Container(
+              margin: const EdgeInsets.only(bottom: 20),
+              child: Card(
+                elevation: 8,
+                shadowColor: Colors.black.withValues(alpha: 0.1),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(20),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // IMAGE SECTION WITH OVERLAY
+                    Stack(
+                      children: [
+                        ClipRRect(
+                          borderRadius: const BorderRadius.vertical(
+                              top: Radius.circular(20)),
+                          child: Image.network(
+                            a.imageUrl,
+                            height: 200,
+                            width: double.infinity,
+                            fit: BoxFit.cover,
+                            errorBuilder: (context, error, stackTrace) {
+                              return Container(
+                                height: 200,
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Colors.grey.shade200,
+                                  borderRadius: const BorderRadius.vertical(
+                                      top: Radius.circular(20)),
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.image_not_supported,
+                                        size: 48,
+                                        color: Colors.grey.shade400,
+                                      ),
+                                      const SizedBox(height: 8),
+                                      Text(
+                                        'Image non disponible',
+                                        style: TextStyle(
+                                          color: Colors.grey.shade600,
+                                          fontSize: 12,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                        // Gradient overlay
+                        Positioned.fill(
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: const BorderRadius.vertical(
+                                  top: Radius.circular(20)),
+                              gradient: LinearGradient(
+                                begin: Alignment.topCenter,
+                                end: Alignment.bottomCenter,
+                                colors: [
+                                  Colors.transparent,
+                                  Colors.black.withValues(alpha: 0.3),
+                                ],
+                              ),
+                            ),
+                          ),
+                        ),
+                        // ID Badge
+                        Positioned(
+                          top: 12,
+                          left: 12,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.black.withValues(alpha: 0.7),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Text(
+                              a.id,
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+
+                    // CONTENT SECTION
+                    Padding(
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // Appareil name
+                          Text(
+                            a.nom,
+                            style: const TextStyle(
+                              fontSize: 22,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                          const SizedBox(height: 8),
+
+                          // Type with icon
+                          Row(
+                            children: [
+                              Icon(
+                                _getTypeIcon(a.type),
+                                size: 18,
+                                color: Colors.blue.shade600,
+                              ),
+                              const SizedBox(width: 8),
+                              Text(
+                                "Type : ${a.type}",
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  color: Colors.grey.shade600,
+                                  fontWeight: FontWeight.w500,
+                                ),
+                              ),
+                            ],
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Pricing section
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  Colors.blue.shade50,
+                                  Colors.indigo.shade50,
+                                ],
+                              ),
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: Colors.blue.shade200,
+                              ),
+                            ),
+                            child: Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceAround,
+                              children: [
+                                _buildPriceItem(
+                                  "Location",
+                                  "${a.prixLocation.toString()} FCFA",
+                                  Icons.access_time,
+                                  Colors.orange,
+                                ),
+                                Container(
+                                  height: 40,
+                                  width: 1,
+                                  color: Colors.grey.shade300,
+                                ),
+                                _buildPriceItem(
+                                  "Vente",
+                                  "${a.prixVente.toString()} FCFA",
+                                  Icons.sell,
+                                  Colors.green,
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+
+                          // Status and actions
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              // Status chip with enhanced design
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 16, vertical: 8),
+                                decoration: BoxDecoration(
+                                  color: a.disponible
+                                      ? Colors.green.shade100
+                                      : Colors.red.shade100,
+                                  borderRadius: BorderRadius.circular(20),
+                                  border: Border.all(
+                                    color: a.disponible
+                                        ? Colors.green.shade300
+                                        : Colors.red.shade300,
+                                  ),
+                                ),
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Icon(
+                                      a.disponible
+                                          ? Icons.check_circle
+                                          : Icons.cancel,
+                                      size: 16,
+                                      color: a.disponible
+                                          ? Colors.green.shade700
+                                          : Colors.red.shade700,
+                                    ),
+                                    const SizedBox(width: 6),
+                                    Text(
+                                      a.disponible
+                                          ? "Disponible"
+                                          : "Indisponible",
+                                      style: TextStyle(
+                                        fontWeight: FontWeight.bold,
+                                        color: a.disponible
+                                            ? Colors.green.shade700
+                                            : Colors.red.shade700,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+
+                              // Enhanced popup menu
+                              PopupMenuButton<String>(
+                                icon: Icon(
+                                  Icons.more_vert,
+                                  color: Colors.grey.shade600,
+                                ),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                                onSelected: (value) {
+                                  if (value == "statut") {
+                                    changerStatut(index);
+                                  } else if (value == "delete") {
+                                    supprimerAppareil(index);
+                                  }
+                                },
+                                itemBuilder: (context) => [
+                                  PopupMenuItem(
+                                    value: "statut",
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.toggle_on,
+                                          color: Colors.blue.shade600,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Text("Changer disponibilité"),
+                                      ],
+                                    ),
+                                  ),
+                                  PopupMenuItem(
+                                    value: "delete",
+                                    child: Row(
+                                      children: [
+                                        Icon(
+                                          Icons.delete,
+                                          color: Colors.red.shade600,
+                                        ),
+                                        const SizedBox(width: 12),
+                                        const Text("Supprimer"),
+                                      ],
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  IconData _getTypeIcon(String type) {
+    switch (type.toLowerCase()) {
+      case 'gps':
+        return Icons.gps_fixed;
+      case 'niveau':
+        return Icons.straighten;
+      case 'station totale':
+      case 'theodolite':
+        return Icons.engineering;
+      case 'trepied':
+        return Icons.adjust;
+      case 'mire':
+        return Icons.straighten;
+      default:
+        return Icons.devices;
+    }
+  }
+
+  Widget _buildPriceItem(String label, String price, IconData icon, Color color) {
+    return Column(
+      children: [
+        Icon(
+          icon,
+          color: color,
+          size: 20,
+        ),
+        const SizedBox(height: 4),
+        Text(
+          label,
+          style: TextStyle(
+            fontSize: 12,
+            color: Colors.grey.shade600,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Text(
+          price,
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.bold,
+            color: color,
+          ),
+        ),
+      ],
+    );
+  }
+}

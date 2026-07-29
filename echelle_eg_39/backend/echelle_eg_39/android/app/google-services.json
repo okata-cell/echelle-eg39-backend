@@ -1,0 +1,30 @@
+{
+  "project_info": {
+    "project_number": "591671013448",
+    "project_id": "echelle-eg-39",
+    "storage_bucket": "echelle-eg-39.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:591671013448:android:0466c891d5e21e1134687d",
+        "android_client_info": {
+          "package_name": "com.okata.echelleeg39"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyCProXHAGxc5Ivtad7uMmw4Xj81vIpktWc"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
+
