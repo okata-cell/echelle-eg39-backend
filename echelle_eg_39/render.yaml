@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: echelle-eg39-backend-1
+    env: node
+    buildCommand: cd backend/echelle_eg_39/backend && npm install
+    startCommand: cd backend/echelle_eg_39/backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
