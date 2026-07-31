@@ -11,7 +11,11 @@ router.post('/', [
   body('description').optional().isString(),
   body('nom').trim().notEmpty().withMessage('Le nom est requis'),
   body('telephone').optional().isString(),
-  body('email').optional().isEmail().withMessage('Email invalide'),
+  body('email')
+    .trim()
+    .optional({ checkFalsy: true })
+    .isEmail()
+    .withMessage('Email invalide'),
 ], async (req, res) => {
   try {
     const errors = validationResult(req);
