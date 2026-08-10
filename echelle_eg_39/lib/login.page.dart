@@ -5,7 +5,6 @@ import 'register.page.dart';
 import 'forgot_password.page.dart';
 import 'demo_main.dart';
 import 'api_service.dart';
-import 'sync_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
@@ -21,6 +20,23 @@ class _LoginPageState extends State<LoginPage> {
 
 
   bool isLoading = false;
+
+  void _showLoginMessage(
+    String message, {
+    required Color backgroundColor,
+  }) {
+    if (!mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.hideCurrentSnackBar();
+    messenger.showSnackBar(
+      SnackBar(
+        content: Text(message),
+        backgroundColor: backgroundColor,
+        duration: const Duration(seconds: 5),
+      ),
+    );
+  }
 
 // Fonction pour sauvegarder les infos de connexion
   Future<void> _saveUserSession(String identifier, String password, bool isAdmin) async {
@@ -54,42 +70,8 @@ class _LoginPageState extends State<LoginPage> {
     print('✅ Session utilisateur sauvegardée');
   }
 
-  // 🔄 Méthode pour tenter la synchronisation en arrière-plan
-  Future<void> _attemptBackgroundSync() async {
-    try {
-      // Vérifier si l'API est disponible
-      final apiAvailable = await SyncService.isApiAvailable();
-      
-      if (apiAvailable) {
-        print('🔄 API disponible, tentative de synchronisation...');
-        
-        // Tenter de synchroniser les utilisateurs locaux
-        final result = await SyncService.syncLocalUsers();
-        
-        if (result.success && result.syncedCount > 0) {
-          print('✅ Synchronisation réussie: ${result.syncedCount} utilisateurs');
-          
-          if (mounted) {
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(
-                content: Text('${result.syncedCount} utilisateur(s) synchronisé(s) avec le serveur'),
-                backgroundColor: Colors.green,
-                duration: const Duration(seconds: 3),
-              ),
-            );
-          }
-        } else {
-          print('ℹ️ ${result.message}');
-        }
-      } else {
-        print('⚠️ API non disponible, synchronisation reportée');
-      }
-    } catch (e) {
-      print('❌ Erreur lors de la synchronisation: $e');
-    }
-  }
 
-  void login() async {
+  Future<void> login() async {
     String identifier = identifierController.text.trim();
     String password = passwordController.text.trim();
 
@@ -163,124 +145,58 @@ class _LoginPageState extends State<LoginPage> {
       // Essayer d'abord via l'API
       final result = await ApiService.login(identifier, password);
       
+      if (!mounted) return;
+
       setState(() {
         isLoading = false;
       });
 
-      if (mounted) {
-        // Connexion API réussie
-        // Accès admin réservé UNIQUEMENT au DG (admin@echelle-eg39.com)
-        final String loggedEmail = (result['user']['email'] ?? '').toString().toLowerCase();
-        final bool isAdmin = loggedEmail == 'admin@echelle-eg39.com';
-        
-        // Sauvegarder la session
-        await _saveUserSession(identifier, password, isAdmin);
+      // Connexion API réussie
+      // Accès admin réservé UNIQUEMENT au DG (admin@echelle-eg39.com)
+      final String loggedEmail = (result['user']['email'] ?? '').toString().toLowerCase();
+      final bool isAdmin = loggedEmail == 'admin@echelle-eg39.com';
+      
+      // Sauvegarder la session
+      await _saveUserSession(identifier, password, isAdmin);
+      if (!mounted) return;
 
-        if (isAdmin) {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const AdminDashBoard()),
-          );
-        } else {
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => const MainScreen()),
-          );
-        }
+      if (isAdmin) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const AdminDashBoard()),
+        );
+      } else {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const MainScreen()),
+        );
       }
-    } catch (apiError) {
-      // Si l'API échoue, vérifier localement
-      print('API login failed, checking local users: $apiError');
-      
-      final prefs = await SharedPreferences.getInstance();
-      final registeredUsers = prefs.getStringList('registered_users') ?? [];
-      
-      bool userFound = false;
-      bool isAdmin = false;
-      
-      for (String userData in registeredUsers) {
-        final parts = userData.split('|');
-        if (parts.length >= 4) {
-          final storedEmail = parts[0];
-          final storedPhone = parts[1];
-          final storedPassword = parts[2];
-          final storedRole = parts[3];
-          
-          // Vérifier si les identifiants correspondent
-          if ((identifier == storedEmail || identifier == storedPhone) && 
-              password == storedPassword) {
-            userFound = true;
-            // Accès admin réservé UNIQUEMENT au DG (admin@echelle-eg39.com)
-            isAdmin = storedEmail.toLowerCase() == 'admin@echelle-eg39.com';
-            
-            // Sauvegarder les infos utilisateur
-            // NOTE: Pas de vrai token car c'est un login local
-            await prefs.setBool('isLoggedIn', true);
-            await prefs.setBool('isAdmin', isAdmin);
-            await prefs.setString('userIdentifier', identifier);
-            await prefs.setString('userEmail', storedEmail);
-            await prefs.setString('userPhone', storedPhone);
-            await prefs.setString('userName', parts.length > 4 ? parts[4] : 'Utilisateur');
-            
-            break;
-          }
-        }
-      }
-      
-      setState(() {
-        isLoading = false;
-      });
+    } on ApiException catch (apiError) {
+      print('❌ API login failed: $apiError');
 
       if (mounted) {
-        if (userFound) {
-          // Connexion locale réussie
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Connexion réussie !"),
-              backgroundColor: Colors.green,
-            ),
-          );
+        setState(() {
+          isLoading = false;
+        });
 
-          // 🔄 Synchroniser le compte local avec l'API, puis récupérer un vrai token JWT
-          await _attemptBackgroundSync();
-          try {
-            // Le compte est maintenant (normalement) dans la base : on se connecte via l'API pour obtenir le JWT
-            await ApiService.login(identifier, password);
-            print('✅ Token JWT obtenu après synchronisation locale');
-          } catch (e) {
-            print('⚠️ Token JWT non obtenu après sync local (API peut être indisponible): $e');
-          }
+        final isServerIssue = apiError.type == ApiErrorType.serverUnavailable ||
+            apiError.type == ApiErrorType.network;
+        _showLoginMessage(
+          apiError.message,
+          backgroundColor: isServerIssue ? Colors.orange.shade800 : Colors.red,
+        );
+      }
+    } catch (error) {
+      print('❌ Erreur inattendue login: $error');
 
-          if (isAdmin) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const AdminDashBoard()),
-            );
-          } else {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const MainScreen()),
-            );
-          }
-        } else {
-          // Utilisateur non trouvé
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: const Text("L'email ou le mot de passe est incorrect, veuillez reverifier vos identifiants ou creér un nouveau compte"),
-              backgroundColor: Colors.red,
-              action: SnackBarAction(
-                label: "S'inscrire",
-                textColor: Colors.white,
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(builder: (_) => const RegisterPage()),
-                  );
-                },
-              ),
-            ),
-          );
-        }
+      if (mounted) {
+        setState(() {
+          isLoading = false;
+        });
+        _showLoginMessage(
+          'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+          backgroundColor: Colors.orange.shade800,
+        );
       }
     }
   }

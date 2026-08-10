@@ -1,6 +1,32 @@
-import 'package:http/http.dart' as http;
+import 'dart:async';
 import 'dart:convert';
+
+import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
+
+enum ApiErrorType {
+  invalidIdentifier,
+  invalidPassword,
+  invalidCredentials,
+  serverUnavailable,
+  network,
+  request,
+}
+
+class ApiException implements Exception {
+  const ApiException({
+    required this.type,
+    required this.message,
+    this.statusCode,
+  });
+
+  final ApiErrorType type;
+  final String message;
+  final int? statusCode;
+
+  @override
+  String toString() => message;
+}
 
 class ApiService {
   // URL du backend Render - NOTE: Le suffixe "-1" est important !
@@ -41,35 +67,94 @@ class ApiService {
 
   static Future<Map<String, dynamic>> login(String identifier, String password) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/login'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'identifier': identifier, 'password': password}),
-      );
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/login'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'identifier': identifier,
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       print('📡 Login Status Code: ${response.statusCode}');
       print('📡 Login Response: ${response.body}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        await setToken(data['token']);
-        return data;
-      } else {
-        try {
-          final errorData = jsonDecode(response.body);
-          if (errorData['error'] != null) {
-            throw Exception(errorData['error']);
-          }
-          throw Exception('Erreur ${response.statusCode}');
-        } catch (e) {
-          if (e is Exception) rethrow;
-          throw Exception('Erreur serveur (${response.statusCode})');
+      Map<String, dynamic> responseData = <String, dynamic>{};
+      try {
+        final decoded = jsonDecode(response.body);
+        if (decoded is Map<String, dynamic>) {
+          responseData = decoded;
         }
+      } on FormatException {
+        // Le message générique ci-dessous sera utilisé pour une réponse invalide.
       }
-    } catch (e) {
-      if (e is Exception) rethrow;
-      print('❌ Erreur réseau login: $e');
-      throw Exception('Impossible de contacter le serveur. Vérifiez votre connexion internet.');
+
+      if (response.statusCode == 200) {
+        final token = responseData['token'];
+        if (token is! String || token.isEmpty) {
+          throw const ApiException(
+            type: ApiErrorType.request,
+            message: 'Réponse de connexion invalide.',
+          );
+        }
+
+        await setToken(token);
+        return responseData;
+      }
+
+      final serverCode = responseData['code']?.toString();
+      if (response.statusCode == 401) {
+        if (serverCode == 'INVALID_PASSWORD') {
+          throw const ApiException(
+            type: ApiErrorType.invalidPassword,
+            message: 'Mot de passe incorrect. Vérifiez votre mot de passe.',
+            statusCode: 401,
+          );
+        }
+        if (serverCode == 'IDENTIFIER_NOT_FOUND') {
+          throw const ApiException(
+            type: ApiErrorType.invalidIdentifier,
+            message: 'Email ou téléphone introuvable. Vérifiez votre identifiant.',
+            statusCode: 401,
+          );
+        }
+        throw const ApiException(
+          type: ApiErrorType.invalidCredentials,
+          message: 'Email, téléphone ou mot de passe incorrect.',
+          statusCode: 401,
+        );
+      }
+
+      if (response.statusCode >= 500) {
+        throw ApiException(
+          type: ApiErrorType.serverUnavailable,
+          message: 'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+          statusCode: response.statusCode,
+        );
+      }
+
+      throw ApiException(
+        type: ApiErrorType.request,
+        message: responseData['error']?.toString() ??
+            'Impossible de se connecter (${response.statusCode}).',
+        statusCode: response.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } on TimeoutException catch (error) {
+      print('❌ Timeout login: $error');
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message: 'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+      );
+    } catch (error) {
+      print('❌ Erreur réseau login: $error');
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
     }
   }
 
