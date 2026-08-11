@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'data_manager.dart';
 import 'appareil_images.dart';
 import 'api_service.dart';
 import 'login.page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'widgets/image_zoom_viewer.dart';
+import 'widgets/image_zoom_viewer.dart' show openImageZoom;
 
 class Product {
   final int id;
@@ -170,12 +171,23 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
       backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 1,
-        title: const Text(
+        elevation: 0,
+        title: Text(
           'Vente d\'appareils',
-          style: TextStyle(color: Color(0xFF111827)),
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF111827),
+          ),
         ),
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            onPressed: _loadProductsFromAPI,
+            icon: const Icon(Icons.refresh, color: Color(0xFF059669)),
+            tooltip: 'Actualiser',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -188,21 +200,34 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
                   onChanged: (value) => setState(() => _searchQuery = value),
                   decoration: InputDecoration(
                     hintText: 'Rechercher un appareil...',
-                    prefixIcon:
-                        const Icon(Icons.search, color: Color(0xFF9CA3AF)),
+                    hintStyle: GoogleFonts.poppins(
+                      color: const Color(0xFF9CA3AF),
+                      fontSize: 14,
+                    ),
+                    prefixIcon: const Icon(Icons.search, color: Color(0xFF9CA3AF)),
+                    suffixIcon: _searchQuery.isNotEmpty
+                        ? IconButton(
+                            onPressed: () {
+                              setState(() => _searchQuery = '');
+                            },
+                            icon: const Icon(Icons.clear, color: Color(0xFF9CA3AF)),
+                          )
+                        : null,
                     border: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
                     ),
                     enabledBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFD1D5DB)),
+                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide:
-                          const BorderSide(color: Color(0xFF059669), width: 2),
+                      borderSide: const BorderSide(color: Color(0xFF059669), width: 2),
                     ),
+                    filled: true,
+                    fillColor: const Color(0xFFF9FAFB),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -217,17 +242,22 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
                       return Padding(
                         padding: const EdgeInsets.only(right: 8),
                         child: ChoiceChip(
-                          label: Text(category),
+                          label: Text(
+                            category,
+                            style: GoogleFonts.poppins(
+                              fontSize: 12,
+                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                            ),
+                          ),
                           selected: isSelected,
                           onSelected: (_) =>
                               setState(() => _selectedCategory = category),
                           backgroundColor: const Color(0xFFF3F4F6),
                           selectedColor: const Color(0xFF059669),
                           labelStyle: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFF374151),
+                            color: isSelected ? Colors.white : const Color(0xFF374151),
                           ),
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                         ),
                       );
                     },
@@ -237,19 +267,45 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
             ),
           ),
           Expanded(
-            child: GridView.builder(
-              padding: const EdgeInsets.all(16),
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 2,
-                crossAxisSpacing: 12,
-                mainAxisSpacing: 12,
-                childAspectRatio: 0.72,
-              ),
-              itemCount: _filteredProducts.length,
-              itemBuilder: (context, index) {
-                final product = _filteredProducts[index];
-                return _buildProductCard(product);
-              },
+            child: _filteredProducts.isEmpty
+                ? _buildEmptyState()
+                : GridView.builder(
+                    padding: const EdgeInsets.all(16),
+                    gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      crossAxisSpacing: 12,
+                      mainAxisSpacing: 12,
+                      childAspectRatio: 0.75,
+                    ),
+                    itemCount: _filteredProducts.length,
+                    itemBuilder: (context, index) {
+                      final product = _filteredProducts[index];
+                      return _buildProductCard(product);
+                    },
+                  ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Icon(
+            Icons.search_off,
+            size: 64,
+            color: Colors.grey[300],
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Aucun produit trouvé',
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w500,
+              color: const Color(0xFF6B7280),
             ),
           ),
         ],
@@ -521,24 +577,55 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Image (tappable → zoom plein écran)
-          SizedBox(
-            height: 120,
-            width: double.infinity,
-            child: ZoomableImage(
-              imageUrl: product.imageUrl,
-              fallbackUrl: AppareilImages.getImageUrl(product.produitId, product.category),
-              title: product.name,
-              width: double.infinity,
-              height: 120,
+          GestureDetector(
+            onTap: () {
+              openImageZoom(
+                context,
+                imageUrl: product.imageUrl,
+              );
+            },
+            child: ClipRRect(
               borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(12),
-                topRight: Radius.circular(12),
+                topLeft: Radius.circular(16),
+                topRight: Radius.circular(16),
+              ),
+              child: Image.network(
+                product.imageUrl,
+                width: double.infinity,
+                height: 140,
+                fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return Container(
+                    width: double.infinity,
+                    height: 140,
+                    color: const Color(0xFFF3F4F6),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF059669),
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Container(
+                    width: double.infinity,
+                    height: 140,
+                    color: const Color(0xFFF3F4F6),
+                    child: Icon(
+                      Icons.image_not_supported,
+                      size: 32,
+                      color: Colors.grey[400],
+                    ),
+                  );
+                },
               ),
             ),
           ),
 
           Padding(
-            padding: const EdgeInsets.all(4),
+            padding: const EdgeInsets.all(12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
@@ -546,30 +633,38 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
                   product.name,
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF111827),
-                  ),
-                ),
-                const SizedBox(height: 1),
-                Text(
-                  product.category,
-                  style: const TextStyle(
-                    fontSize: 9,
-                    color: Color(0xFF6B7280),
-                  ),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  '${product.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ')} FCFA',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: Color(0xFF059669),
-                    fontWeight: FontWeight.bold,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
                   ),
                 ),
                 const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFD1FAE5),
+                    borderRadius: BorderRadius.circular(6),
+                  ),
+                  child: Text(
+                    product.category,
+                    style: GoogleFonts.poppins(
+                      fontSize: 10,
+                      fontWeight: FontWeight.w500,
+                      color: const Color(0xFF059669),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '${product.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ')} FCFA',
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF059669),
+                  ),
+                ),
+                const SizedBox(height: 8),
 
                 // ── Bouton Acheter / En attente / Rupture ──────────────────
                 SizedBox(
@@ -589,12 +684,15 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
       // Rupture de stock
       return ElevatedButton.icon(
         onPressed: null,
-        icon: const Icon(Icons.remove_shopping_cart, size: 10),
-        label: const Text('Rupture', style: TextStyle(fontSize: 9)),
+        icon: const Icon(Icons.remove_shopping_cart, size: 14),
+        label: Text('Rupture', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
         style: ElevatedButton.styleFrom(
           disabledBackgroundColor: const Color(0xFFD1D5DB),
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          minimumSize: const Size(double.infinity, 24),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          minimumSize: const Size(double.infinity, 36),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
@@ -603,15 +701,18 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
       // Demande déjà en attente → bouton orange informatif, tappable pour voir le message
       return ElevatedButton.icon(
         onPressed: () => _showDejaEnAttenteDialog(product),
-        icon: const Icon(Icons.hourglass_top, size: 10),
-        label: const Text('En attente...', style: TextStyle(fontSize: 9)),
+        icon: const Icon(Icons.hourglass_top, size: 14),
+        label: Text('En attente...', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFFEF3C7),
           foregroundColor: const Color(0xFFD97706),
-          padding: const EdgeInsets.symmetric(vertical: 2),
-          minimumSize: const Size(double.infinity, 24),
+          padding: const EdgeInsets.symmetric(vertical: 8),
+          minimumSize: const Size(double.infinity, 36),
           elevation: 0,
           side: const BorderSide(color: Color(0xFFFBBF24), width: 1),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
         ),
       );
     }
@@ -619,13 +720,16 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
     // Disponible → bouton vert actif
     return ElevatedButton.icon(
       onPressed: () => _handleAchat(product),
-      icon: const Icon(Icons.shopping_cart, size: 10),
-      label: const Text('Acheter', style: TextStyle(fontSize: 9)),
+      icon: const Icon(Icons.shopping_cart, size: 14),
+      label: Text('Acheter', style: GoogleFonts.poppins(fontSize: 11, fontWeight: FontWeight.w600)),
       style: ElevatedButton.styleFrom(
         backgroundColor: const Color(0xFF059669),
         disabledBackgroundColor: const Color(0xFFD1D5DB),
-        padding: const EdgeInsets.symmetric(vertical: 2),
-        minimumSize: const Size(double.infinity, 24),
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        minimumSize: const Size(double.infinity, 36),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+        ),
       ),
     );
   }

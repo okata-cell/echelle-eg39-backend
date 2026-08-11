@@ -1,5 +1,6 @@
 
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -720,9 +721,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
       children: [
         Text(
           _userName,
-          style: const TextStyle(
-            fontSize: 20,
-            fontWeight: FontWeight.bold,
+          style: GoogleFonts.poppins(
+            fontSize: 22,
+            fontWeight: FontWeight.w700,
             color: Colors.white,
           ),
         ),
@@ -732,9 +733,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
           children: [
             Text(
               _userEmail,
-              style: const TextStyle(
+              style: GoogleFonts.poppins(
                 fontSize: 14,
-                color: Color(0xFFBFDBFE),
+                color: const Color(0xFFBFDBFE),
               ),
             ),
             const SizedBox(width: 8),
@@ -939,31 +940,31 @@ class _ProfilScreenState extends State<ProfilScreen> {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
             offset: const Offset(0, 2),
           ),
         ],
       ),
-      child: const Column(
+      child: Column(
         children: [
           Text(
             'ÉCHELLE EG39',
-            style: TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF111827),
+            style: GoogleFonts.poppins(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+              color: const Color(0xFF111827),
             ),
           ),
-          SizedBox(height: 4),
+          const SizedBox(height: 4),
           Text(
             'Version 1.0.0',
-            style: TextStyle(
+            style: GoogleFonts.poppins(
               fontSize: 12,
-              color: Color(0xFF6B7280),
+              color: const Color(0xFF6B7280),
             ),
           ),
         ],
@@ -978,12 +979,15 @@ class _ProfilScreenState extends State<ProfilScreen> {
       child: ElevatedButton.icon(
         onPressed: () => _showLogoutDialog(context),
         icon: const Icon(Icons.logout),
-        label: const Text('Se déconnecter'),
+        label: Text('Se déconnecter', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFFEE2E2),
           foregroundColor: const Color(0xFFDC2626),
-          padding: const EdgeInsets.symmetric(vertical: 12),
+          padding: const EdgeInsets.symmetric(vertical: 14),
           elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
         ),
       ),
     );
@@ -1060,11 +1064,11 @@ class _ProfilScreenState extends State<ProfilScreen> {
     return Container(
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
             offset: const Offset(0, 2),
           ),
         ],
@@ -1073,17 +1077,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Text(
               title,
-              style: const TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF111827),
+              style: GoogleFonts.poppins(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF111827),
               ),
             ),
           ),
-          const Divider(height: 1),
+          const Divider(height: 1, color: Color(0xFFE5E7EB)),
           ...items,
         ],
       ),
@@ -1101,31 +1105,45 @@ class _ProfilScreenState extends State<ProfilScreen> {
   }) {
     return InkWell(
       onTap: onTap,
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        decoration: const BoxDecoration(
+          border: Border(
+            bottom: BorderSide(color: Color(0xFFF3F4F6), width: 1),
+          ),
+        ),
         child: Row(
           children: [
-            Icon(icon, color: const Color(0xFF6B7280)),
+            Container(
+              width: 36,
+              height: 36,
+              decoration: BoxDecoration(
+                color: const Color(0xFFDBEAFE),
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Icon(icon, color: const Color(0xFF2563EB), size: 20),
+            ),
             const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
-                style: const TextStyle(
+                style: GoogleFonts.poppins(
                   fontSize: 14,
-                  color: Color(0xFF111827),
+                  fontWeight: FontWeight.w500,
+                  color: const Color(0xFF111827),
                 ),
               ),
             ),
             if (trailing != null)
               Text(
                 trailing,
-                style: const TextStyle(
-                  fontSize: 14,
-                  color: Color(0xFF6B7280),
+                style: GoogleFonts.poppins(
+                  fontSize: 13,
+                  color: const Color(0xFF6B7280),
                 ),
               ),
             const SizedBox(width: 8),
-            const Icon(Icons.chevron_right, color: Color(0xFF9CA3AF)),
+            Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
           ],
         ),
       ),

@@ -8,6 +8,7 @@ import 'location.dart';
 import 'historique.dart';
 import 'service.dart';
 import 'profile.dart';
+import 'home_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'AdminDashBoard.dart';
 import 'sync_service.dart';
@@ -258,9 +259,10 @@ class _MainScreenState extends State<MainScreen> {
   int _currentIndex = 0;
 
   final List<Widget> _screens = [
-    const HomeScreen(),
+    const ModernHomePage(),
     const LocationScreen(),
-    const  VenteScreen(),  // Utilisation de AdminVentesPageFixed qui correspond à admin_ventes_page_fixed.dart
+    const VenteScreen(),
+    const ServiceScreen(),
     const HistoriqueScreen(),
     const ProfilScreen(),
   ];
@@ -277,39 +279,41 @@ class _MainScreenState extends State<MainScreen> {
           });
         },
         type: BottomNavigationBarType.fixed,
-        selectedItemColor: Colors.blue[700],
-        unselectedItemColor: Colors.grey[600],
-        selectedFontSize: 12,
-        unselectedFontSize: 12,
+        selectedItemColor: const Color(0xFF2563EB),
+        unselectedItemColor: const Color(0xFF9CA3AF),
+        selectedFontSize: 11,
+        unselectedFontSize: 11,
+        backgroundColor: Colors.white,
+        elevation: 8,
         items: const [
           BottomNavigationBarItem(
-            icon: Icon(Icons.home),
+            icon: Icon(Icons.home_outlined),
+            activeIcon: Icon(Icons.home),
             label: 'Accueil',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.location_city,
-            color: Color(0xFF00897B),
-            ),
-            label: 'Location',
-            
+            icon: Icon(Icons.location_city_outlined),
+            activeIcon: Icon(Icons.location_city),
+            label: 'Locations',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart,
-            color: Color(0xFF5D4037),
-            
-            ),
-            label: 'Vente',
+            icon: Icon(Icons.shopping_cart_outlined),
+            activeIcon: Icon(Icons.shopping_cart),
+            label: 'Ventes',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.history,
-            color: Color(0xFF6B7280),
-            ),
+            icon: Icon(Icons.engineering_outlined),
+            activeIcon: Icon(Icons.engineering),
+            label: 'Services',
+          ),
+          BottomNavigationBarItem(
+            icon: Icon(Icons.history_outlined),
+            activeIcon: Icon(Icons.history),
             label: 'Historique',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person,
-            color: Color(0xFF1E88E5),
-            ),
+            icon: Icon(Icons.person_outlined),
+            activeIcon: Icon(Icons.person),
             label: 'Profil',
           ),
         ],

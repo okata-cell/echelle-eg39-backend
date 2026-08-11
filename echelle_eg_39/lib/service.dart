@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'api_service.dart';
 
 class Service {
@@ -422,21 +423,23 @@ class _ServiceScreenState extends State<ServiceScreen> {
       backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 1,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
-            Text(
-              'Services Topographiques',
-              style: TextStyle(color: Color(0xFF111827), fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-            Text(
-              'Expertise professionnelle pour tous vos projets',
-              style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
-            ),
-          ],
+        elevation: 0,
+        title: Text(
+          'Services Topographiques',
+          style: GoogleFonts.poppins(
+            fontSize: 20,
+            fontWeight: FontWeight.w700,
+            color: const Color(0xFF111827),
+          ),
         ),
         automaticallyImplyLeading: false,
+        actions: [
+          IconButton(
+            onPressed: () {},
+            icon: const Icon(Icons.info_outline, color: Color(0xFF2563EB)),
+            tooltip: 'Informations',
+          ),
+        ],
       ),
       body: Column(
         children: [
@@ -452,7 +455,19 @@ class _ServiceScreenState extends State<ServiceScreen> {
               },
               decoration: InputDecoration(
                 hintText: 'Rechercher un service...',
-                prefixIcon: const Icon(Icons.search, color: Color(0xFF6B7280)),
+                hintStyle: GoogleFonts.poppins(
+                  color: const Color(0xFF9CA3AF),
+                  fontSize: 14,
+                ),
+                prefixIcon: const Icon(Icons.search, color: Color(0xFF9CA3AF)),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        onPressed: () {
+                          setState(() => _searchQuery = '');
+                        },
+                        icon: const Icon(Icons.clear, color: Color(0xFF9CA3AF)),
+                      )
+                    : null,
                 border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
                   borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
@@ -463,10 +478,11 @@ class _ServiceScreenState extends State<ServiceScreen> {
                 ),
                 focusedBorder: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF2563EB)),
+                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
                 ),
                 filled: true,
                 fillColor: const Color(0xFFF9FAFB),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
               ),
             ),
           ),
@@ -483,7 +499,13 @@ class _ServiceScreenState extends State<ServiceScreen> {
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: FilterChip(
-                      label: Text(category),
+                      label: Text(
+                        category,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
                       selected: isSelected,
                       onSelected: (selected) {
                         setState(() {
@@ -495,7 +517,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                       checkmarkColor: Colors.white,
                       labelStyle: TextStyle(
                         color: isSelected ? Colors.white : const Color(0xFF374151),
-                        fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                         fontSize: 12,
                       ),
                     ),
@@ -555,10 +577,17 @@ class _ServiceScreenState extends State<ServiceScreen> {
   }
 
   Widget _buildServiceCard(Service service) {
-    return Card(
-      elevation: 4,
-      shape: RoundedRectangleBorder(
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
         borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
+            offset: const Offset(0, 2),
+          ),
+        ],
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -574,13 +603,25 @@ class _ServiceScreenState extends State<ServiceScreen> {
               child: Image.network(
                 service.imageUrl,
                 fit: BoxFit.cover,
+                loadingBuilder: (context, child, progress) {
+                  if (progress == null) return child;
+                  return Container(
+                    color: const Color(0xFFF3F4F6),
+                    child: const Center(
+                      child: CircularProgressIndicator(
+                        color: Color(0xFF2563EB),
+                        strokeWidth: 2,
+                      ),
+                    ),
+                  );
+                },
                 errorBuilder: (context, error, stackTrace) {
                   return Container(
-                    color: Colors.grey[200],
-                    child: const Icon(
+                    color: const Color(0xFFF3F4F6),
+                    child: Icon(
                       Icons.image,
                       size: 48,
-                      color: Colors.grey,
+                      color: Colors.grey[400],
                     ),
                   );
                 },
@@ -596,62 +637,62 @@ class _ServiceScreenState extends State<ServiceScreen> {
               children: [
                 // Category Badge
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
                   decoration: BoxDecoration(
                     color: _getCategoryColor(service.category).withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     service.category,
-                    style: TextStyle(
-                      fontSize: 10,
+                    style: GoogleFonts.poppins(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w600,
                       color: _getCategoryColor(service.category),
-                      fontWeight: FontWeight.bold,
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 10),
 
                 // Title
                 Text(
                   service.name,
-                  style: const TextStyle(
+                  style: GoogleFonts.poppins(
                     fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF111827),
+                    fontWeight: FontWeight.w700,
+                    color: const Color(0xFF111827),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 6),
 
                 // Description
                 Text(
                   service.description,
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF6B7280),
-                    height: 1.4,
+                  style: GoogleFonts.poppins(
+                    fontSize: 13,
+                    color: const Color(0xFF6B7280),
+                    height: 1.5,
                   ),
-                  maxLines: 3,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
                 const SizedBox(height: 12),
 
                 // Features
                 Wrap(
-                  spacing: 4,
-                  runSpacing: 4,
-                  children: service.features.take(2).map((feature) {
+                  spacing: 6,
+                  runSpacing: 6,
+                  children: service.features.take(3).map((feature) {
                     return Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                       decoration: BoxDecoration(
                         color: const Color(0xFFF3F4F6),
                         borderRadius: BorderRadius.circular(6),
                       ),
                       child: Text(
                         feature,
-                        style: const TextStyle(
-                          fontSize: 9,
-                          color: Color(0xFF6B7280),
+                        style: GoogleFonts.poppins(
+                          fontSize: 10,
+                          color: const Color(0xFF6B7280),
                           fontWeight: FontWeight.w500,
                         ),
                       ),
@@ -670,14 +711,15 @@ class _ServiceScreenState extends State<ServiceScreen> {
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: BorderRadius.circular(10),
                       ),
+                      elevation: 2,
                     ),
-                    child: const Text(
+                    child: Text(
                       'Demander un devis',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
+                      style: GoogleFonts.poppins(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
                       ),
                     ),
                   ),
@@ -868,9 +910,10 @@ class _ServiceScreenState extends State<ServiceScreen> {
                         ),
                       ),
                       validator: (value) {
-                        if (value != null && value.isNotEmpty) {
-                          final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$');
-                          if (!emailRegex.hasMatch(value)) {
+                        final email = value?.trim() ?? '';
+                        if (email.isNotEmpty) {
+                          final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
+                          if (!emailRegex.hasMatch(email)) {
                             return 'Email invalide';
                           }
                         }
@@ -914,7 +957,9 @@ class _ServiceScreenState extends State<ServiceScreen> {
                                           description: descriptionCtrl.text.trim(),
                                           nom: nomCtrl.text.trim(),
                                           telephone: telephoneCtrl.text.trim(),
-                                          email: emailCtrl.text.trim(),
+                                          email: emailCtrl.text.trim().isEmpty
+                                              ? null
+                                              : emailCtrl.text.trim(),
                                         );
                                         if (mounted) {
                                           Navigator.pop(context);

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:pdf/pdf.dart';
 import 'appareil_images.dart';
 import 'package:pdf/widgets.dart' as pw;
@@ -352,17 +353,25 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       backgroundColor: const Color(0xFFF9FAFB),
       appBar: AppBar(
         backgroundColor: Colors.white,
-        elevation: 1,
+        elevation: 0,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: const [
+          children: [
             Text(
               'Historique & Suivi',
-              style: TextStyle(color: Color(0xFF111827), fontSize: 18),
+              style: GoogleFonts.poppins(
+                fontSize: 20,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF111827),
+              ),
             ),
             Text(
               'Gérez vos commandes et locations',
-              style: TextStyle(color: Color(0xFF6B7280), fontSize: 12),
+              style: GoogleFonts.poppins(
+                fontSize: 12,
+                fontWeight: FontWeight.w400,
+                color: const Color(0xFF6B7280),
+              ),
             ),
           ],
         ),
@@ -450,18 +459,22 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           // ── Filtres ───────────────────────────────────────────────────
           Container(
             color: Colors.white,
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children:
-                    ['Tous', 'En cours', 'Terminés', 'En attente'].map((filter) {
+                children: ['Tous', 'En cours', 'Terminés', 'En attente'].map((filter) {
                   final isSelected = _selectedFilter == filter;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
                     child: ChoiceChip(
-                      label: Text(filter),
+                      label: Text(
+                        filter,
+                        style: GoogleFonts.poppins(
+                          fontSize: 12,
+                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                        ),
+                      ),
                       selected: isSelected,
                       onSelected: (selected) {
                         setState(() => _selectedFilter = filter);
@@ -469,12 +482,8 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                       backgroundColor: const Color(0xFFF3F4F6),
                       selectedColor: const Color(0xFF2563EB),
                       labelStyle: TextStyle(
-                        color: isSelected
-                            ? Colors.white
-                            : const Color(0xFF374151),
-                        fontWeight: isSelected
-                            ? FontWeight.bold
-                            : FontWeight.normal,
+                        color: isSelected ? Colors.white : const Color(0xFF374151),
+                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                       ),
                     ),
                   );
@@ -521,8 +530,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
         children: [
           // En-tête bannière
           Padding(
-            padding:
-                const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
             child: Row(
               children: [
                 Container(
@@ -531,8 +539,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                     color: Colors.white.withOpacity(0.2),
                     shape: BoxShape.circle,
                   ),
-                  child: const Icon(Icons.warning_rounded,
-                      color: Colors.white, size: 20),
+                  child: const Icon(Icons.warning_rounded, color: Colors.white, size: 20),
                 ),
                 const SizedBox(width: 10),
                 Expanded(
@@ -543,15 +550,18 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                         lateList.length == 1
                             ? '🚨 RETARD — 1 appareil à retourner'
                             : '🚨 RETARD — ${lateList.length} appareils à retourner',
-                        style: const TextStyle(
+                        style: GoogleFonts.poppins(
                           color: Colors.white,
-                          fontWeight: FontWeight.bold,
+                          fontWeight: FontWeight.w700,
                           fontSize: 14,
                         ),
                       ),
-                      const Text(
+                      Text(
                         'Des pénalités s\'accumulent. Agissez maintenant.',
-                        style: TextStyle(color: Colors.white70, fontSize: 11),
+                        style: GoogleFonts.poppins(
+                          color: Colors.white70,
+                          fontSize: 11,
+                        ),
                       ),
                     ],
                   ),
@@ -715,18 +725,22 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           children: [
             Icon(Icons.history, size: 72, color: Colors.grey[300]),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Aucune transaction pour le moment',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF374151)),
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             Text(
               'Vos locations, achats et services apparaîtront ici dès que vous effectuez une opération.',
-              style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -744,25 +758,29 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           children: [
             Icon(Icons.error_outline, size: 72, color: Colors.red[300]),
             const SizedBox(height: 20),
-            const Text(
+            Text(
               'Erreur de chargement',
-              style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF374151)),
+              style: GoogleFonts.poppins(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: const Color(0xFF374151),
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 10),
             Text(
               _errorMessage ?? 'Une erreur est survenue',
-              style: TextStyle(fontSize: 13, color: Colors.grey[500]),
+              style: GoogleFonts.poppins(
+                fontSize: 13,
+                color: const Color(0xFF6B7280),
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 20),
             ElevatedButton.icon(
               onPressed: _loadTransactionsFromBackend,
               icon: const Icon(Icons.refresh),
-              label: const Text('Réessayer'),
+              label: Text('Réessayer', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF2563EB),
               ),
@@ -2117,13 +2135,12 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
       margin: const EdgeInsets.only(bottom: 12),
       decoration: BoxDecoration(
         color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border:
-            isLate ? Border.all(color: Colors.red, width: 2) : null,
+        borderRadius: BorderRadius.circular(16),
+        border: isLate ? Border.all(color: Colors.red, width: 2) : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
+            color: Colors.black.withOpacity(0.06),
+            blurRadius: 12,
             offset: const Offset(0, 2),
           ),
         ],
@@ -2137,18 +2154,18 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
               children: [
                 // Image equipment
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                   child: Image.network(
                     transaction.imageUrl ??
                         AppareilImages.getImageUrlForType(transaction.title),
-                    width: 48,
-                    height: 48,
+                    width: 56,
+                    height: 56,
                     fit: BoxFit.cover,
                     loadingBuilder: (context, child, loadingProgress) {
                       if (loadingProgress == null) return child;
                       return Container(
-                        width: 48,
-                        height: 48,
+                        width: 56,
+                        height: 56,
                         color: typeConfig['bgColor'],
                         child: Icon(typeConfig['icon'],
                           color: typeConfig['iconColor'], size: 24),
@@ -2156,8 +2173,8 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                     },
                     errorBuilder: (context, error, stackTrace) {
                       return Container(
-                        width: 48,
-                        height: 48,
+                        width: 56,
+                        height: 56,
                         decoration: BoxDecoration(
                           color: typeConfig['bgColor'],
                           borderRadius: BorderRadius.circular(12),
@@ -2175,70 +2192,65 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                     children: [
                       // Titre + badge type + badge statut
                       Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
+                        crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Flexible(
                             child: Text(
                               transaction.title,
                               overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF111827)),
+                              style: GoogleFonts.poppins(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: const Color(0xFF111827),
+                              ),
                             ),
                           ),
                           // Badge type (Location / Vente)
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: typeConfig['bgColor'],
-                              borderRadius:
-                                  BorderRadius.circular(6),
+                              borderRadius: BorderRadius.circular(6),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(typeConfig['icon'],
-                                    size: 8,
+                                    size: 10,
                                     color: typeConfig['iconColor']),
-                                const SizedBox(width: 2),
+                                const SizedBox(width: 4),
                                 Text(
                                   typeConfig['label'],
-                                  style: TextStyle(
-                                      fontSize: 8,
-                                      color: typeConfig['iconColor'],
-                                      fontWeight: FontWeight.bold),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    color: typeConfig['iconColor'],
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                               ],
                             ),
                           ),
-                          const SizedBox(width: 4),
+                          const SizedBox(width: 6),
                           Container(
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 4, vertical: 2),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
                               color: statusConfig['bgColor'],
-                              borderRadius:
-                                  BorderRadius.circular(10),
+                              borderRadius: BorderRadius.circular(10),
                             ),
                             child: Row(
                               mainAxisSize: MainAxisSize.min,
                               children: [
                                 Icon(statusConfig['icon'],
-                                    size: 10,
-                                    color:
-                                        statusConfig['textColor']),
-                                const SizedBox(width: 3),
+                                    size: 12,
+                                    color: statusConfig['textColor']),
+                                const SizedBox(width: 4),
                                 Text(
                                   statusConfig['label'],
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color:
-                                          statusConfig['textColor'],
-                                      fontWeight:
-                                          FontWeight.bold),
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    color: statusConfig['textColor'],
+                                    fontWeight: FontWeight.w600,
+                                  ),
                                 ),
                                 if (statusConfig['showDetails'] == true) ...[
                                   const SizedBox(width: 4),
@@ -2268,10 +2280,10 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                           Text(
                             'du ${_formatDateFr(transaction.date)}' +
                             (transaction.dateRetour != null ? ' au ${_formatDateFr(transaction.dateRetour!)}' : ''),
-                            style: TextStyle(
+                            style: GoogleFonts.poppins(
                               fontSize: 12,
-                              color: isLate ? Colors.red : Colors.grey[600],
-                              fontWeight: isLate ? FontWeight.bold : FontWeight.normal,
+                              color: isLate ? Colors.red : const Color(0xFF6B7280),
+                              fontWeight: isLate ? FontWeight.w600 : FontWeight.w400,
                             ),
                           ),
                         ],
@@ -2283,30 +2295,28 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                           Flexible(
                             child: Text(
                               '${_formatNumber(transaction.amount)} F CFA',
-                              style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF111827),
-                                  fontWeight: FontWeight.bold),
+                              style: GoogleFonts.poppins(
+                                fontSize: 14,
+                                color: const Color(0xFF111827),
+                                fontWeight: FontWeight.w700,
+                              ),
                               overflow: TextOverflow.ellipsis,
                             ),
                           ),
                           const SizedBox(width: 4),
                           if (!transaction.isPaid && transaction.status != 'rejetee')
                             Container(
-                              padding:
-                                  const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
+                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                               decoration: BoxDecoration(
                                 color: Colors.red[50],
-                                borderRadius:
-                                    BorderRadius.circular(6),
+                                borderRadius: BorderRadius.circular(6),
                               ),
-                              child: const Text('Non payé',
-                                  style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.red,
-                                      fontWeight:
-                                          FontWeight.bold)),
+                              child: Text('Non payé',
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 10,
+                                    color: Colors.red,
+                                    fontWeight: FontWeight.w600,
+                                  )),
                             ),
                           if (transaction.unpaidExtensionAmount > 0 && transaction.status != 'rejetee')
                             Container(
@@ -2515,10 +2525,10 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           // Boutons d'action
           Container(
             decoration: BoxDecoration(
-              color: Colors.grey[50],
+              color: const Color(0xFFF9FAFB),
               borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(12),
-                bottomRight: Radius.circular(12),
+                bottomLeft: Radius.circular(16),
+                bottomRight: Radius.circular(16),
               ),
             ),
             padding: const EdgeInsets.all(12),
@@ -2553,7 +2563,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                       Icons.payment, Colors.orange,
                       () => _payerExtension(transaction)),
                 // Supprimer pour terminée ou rejétée
-                if (transaction.status == 'termine' || 
+                if (transaction.status == 'termine' ||
                     transaction.status == 'rejetee')
                   _buildActionButton('Supprimer', Icons.delete_outline,
                       const Color(0xFFDC2626),
