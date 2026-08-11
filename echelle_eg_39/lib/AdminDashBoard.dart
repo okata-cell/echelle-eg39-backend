@@ -4,6 +4,9 @@ import 'ClientMenuPage.dart';
 import 'appareils.page.dart';
 import 'LocationsMenu.dart';
 import 'admin_ventes_page.dart';
+import 'admin_devis.page.dart';
+import 'admin_promotions.page.dart';
+import 'admin/admin_shell.dart';
 
 import 'login.page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -27,11 +30,13 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
   }
 
 
-final List<Widget> pages = [
+  final List<Widget> pages = [
     ClientsMenuPage(),
     AdminAppareilsPage(),
     const LocationPage(), // ADMIN LOCATIONS ✅
     const AdminVentesPageFixed(),
+    const AdminDevisPage(),
+    const AdminPromotionsPage(),
   ];
 
   /// Afficher le dialogue de confirmation de déconnexion
@@ -81,63 +86,13 @@ final List<Widget> pages = [
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-title: const Row(
-          children: [
-            Text(
-              "ADMIN",
-              style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: Colors.red,
-              ),
-            ),
-            SizedBox(width: 8),
-            Text(
-              "EG39 Locations",
-              style: TextStyle(fontSize: 16),
-            ),
-          ],
-        ),
-        flexibleSpace: const SizedBox.shrink(),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout, color: Colors.red),
-            onPressed: () => _showLogoutDialog(context),
-            tooltip: 'Se déconnecter',
-          ),
-        ],
-      ),
-      body: pages[currentIndex],
-      bottomNavigationBar: BottomNavigationBar(
-        currentIndex: currentIndex,
-        onTap: (index) {
-          setState(() {
-            currentIndex = index;
-          });
-        },
-        type: BottomNavigationBarType.fixed,
-        items: const [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people),
-            label: "Clients",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.center_focus_strong),
-            label: "Appareils",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.assignment),
-            label: "Locations",
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.shopping_cart),
-            label: "Ventes",
-          ),
-
-        ],
-      ),
+    return AdminShell(
+      currentIndex: currentIndex,
+      pages: pages,
+      onIndexChanged: (index) {
+        setState(() => currentIndex = index);
+      },
+      onLogout: () => _showLogoutDialog(context),
     );
   }
 }

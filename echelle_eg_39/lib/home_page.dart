@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'api_service.dart';
@@ -5,6 +6,7 @@ import 'appareil_images.dart';
 import 'service.dart';
 import 'location.dart';
 import 'profile.dart';
+import 'promotion_popup.dart';
 
 class ModernHomePage extends StatefulWidget {
   const ModernHomePage({Key? key}) : super(key: key);
@@ -18,6 +20,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
   bool _isLoadingAppareils = true;
   final PageController _pageController = PageController(viewportFraction: 0.85);
   int _currentCarouselIndex = 0;
+  Timer? _carouselTimer;
 
   // Actualités statiques pour la démo
   final List<Map<String, dynamic>> _actualites = [
@@ -45,6 +48,30 @@ class _ModernHomePageState extends State<ModernHomePage> {
   void initState() {
     super.initState();
     _loadAppareils();
+    _startCarouselAutoScroll();
+    // Vérifier et afficher la promotion après un court délai
+    Future.delayed(const Duration(seconds: 2), () {
+      PromotionPopup.checkAndShowPromotion(context);
+    });
+  }
+
+  @override
+  void dispose() {
+    _carouselTimer?.cancel();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _startCarouselAutoScroll() {
+    _carouselTimer = Timer.periodic(const Duration(seconds: 3), (timer) {
+      if (_appareils.isEmpty) return;
+      final nextPage = (_currentCarouselIndex + 1) % _appareils.length;
+      _pageController.animateToPage(
+        nextPage,
+        duration: const Duration(milliseconds: 400),
+        curve: Curves.easeInOut,
+      );
+    });
   }
 
   Future<void> _loadAppareils() async {

@@ -225,7 +225,7 @@ class ApiService {
     }
   }
 
-static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String dateDebut, String dateFin, int nombreJours, int total) async {
+  static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String dateDebut, String dateFin, int nombreJours, int total) async {
     // DEPRECATED: redirige vers createLocation standard
     print('⚠️ createLocationRequest deprecated → createLocation');
     return await createLocation(appareilId, dateDebut.split('T')[0], dateFin.split('T')[0]);
@@ -499,6 +499,40 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
     }
   }
 
+  /// Modifier le statut d'une demande d'achat (admin)
+  static Future<Map<String, dynamic>> updateDemandeAchatStatut(
+    int demandeId,
+    String statut, {
+    String? commentaire,
+  }) async {
+    final token = await ensureAuthenticated();
+    if (token == null) throw Exception('Not authenticated');
+
+    final response = await http.patch(
+      Uri.parse('$baseUrl/demandes/$demandeId/statut'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'statut': statut,
+        if (commentaire != null && commentaire.trim().isNotEmpty)
+          'commentaire': commentaire.trim(),
+      }),
+    );
+
+    print('📡 updateDemandeAchatStatut status: ${response.statusCode}');
+
+    if (response.statusCode == 200) {
+      return jsonDecode(response.body);
+    }
+
+    final errorBody = jsonDecode(response.body);
+    throw Exception(
+      errorBody['error'] ?? 'Erreur lors de la mise à jour de la demande',
+    );
+  }
+
   /// Récupérer les appareils disponibles
   static Future<List<Map<String, dynamic>>> getAppareils({bool? disponible}) async {
     final token = await ensureAuthenticated();
@@ -665,7 +699,7 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       required String description,
       required String nom,
       required String telephone,
-      required String email,
+      String? email,
     }) async {
       try {
         print('📡 API createDevis called with:');
@@ -673,17 +707,22 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
         print('   - serviceName: $serviceName');
         print('   - nom: $nom');
 
+        final payload = <String, dynamic>{
+          'serviceId': serviceId,
+          'serviceName': serviceName,
+          'description': description,
+          'nom': nom,
+          'telephone': telephone,
+        };
+        final normalizedEmail = email?.trim();
+        if (normalizedEmail != null && normalizedEmail.isNotEmpty) {
+          payload['email'] = normalizedEmail;
+        }
+
         final response = await http.post(
           Uri.parse('$baseUrl/devis'),
           headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({
-            'serviceId': serviceId,
-            'serviceName': serviceName,
-            'description': description,
-            'nom': nom,
-            'telephone': telephone,
-            'email': email,
-          }),
+          body: jsonEncode(payload),
         );
 
         print('📡 createDevis status: ${response.statusCode}');
@@ -704,6 +743,89 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
         print('❌ Erreur réseau createDevis: $e');
         throw Exception('Impossible de contacter le serveur. Vérifiez votre connexion internet.');
       }
+    }
+
+    /// Approuver une demande de devis (admin)
+    static Future<Map<String, dynamic>> approveDevis(int devisId) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/devis/$devisId/approuver'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📡 approveDevis status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+
+      final errorBody = jsonDecode(response.body);
+      throw Exception(
+        errorBody['error'] ?? 'Erreur lors de l\'approbation du devis',
+      );
+    }
+
+    /// Rejeter une demande de devis (admin)
+    static Future<Map<String, dynamic>> rejectDevis(
+      int devisId,
+      String raison,
+    ) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/devis/$devisId/rejeter'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'raison': raison.trim()}),
+      );
+
+      print('📡 rejectDevis status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+
+      final errorBody = jsonDecode(response.body);
+      throw Exception(
+        errorBody['error'] ?? 'Erreur lors du rejet du devis',
+      );
+    }
+
+    /// Modifier le statut d'un devis sans transition d'approbation spécifique (admin)
+    static Future<Map<String, dynamic>> updateDevisStatut(
+      int devisId,
+      String statut,
+    ) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/devis/$devisId/statut'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'statut': statut}),
+      );
+
+      print('📡 updateDevisStatut status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        return jsonDecode(response.body);
+      }
+
+      final errorBody = jsonDecode(response.body);
+      throw Exception(
+        errorBody['error'] ?? 'Erreur lors de la mise à jour du statut',
+      );
     }
 
     /// Modifier un appareil existant (admin only)
@@ -807,29 +929,6 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
       }
     }
 
-    /// Mettre à jour le statut d'un devis (admin)
-    static Future<Map<String, dynamic>> updateDevisStatut(int devisId, String statut) async {
-      final token = await ensureAuthenticated();
-      if (token == null) throw Exception('Not authenticated');
-
-      final response = await http.patch(
-        Uri.parse('$baseUrl/devis/$devisId/statut'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: jsonEncode({'statut': statut}),
-      );
-
-      print('📡 updateDevisStatut status: ${response.statusCode}');
-
-      if (response.statusCode == 200) {
-        return jsonDecode(response.body);
-      } else {
-        throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la mise à jour du statut');
-      }
-    }
-
     /// Supprimer un devis (admin)
     static Future<void> deleteDevis(int devisId) async {
       final token = await ensureAuthenticated();
@@ -854,5 +953,127 @@ static Future<Map<String, dynamic>> createLocationRequest(int appareilId, String
         throw Exception(errorMsg);
       }
     }
-  }
 
+    // ============================================
+    // FONCTIONS: Promotions (admin)
+    // ============================================
+
+    /// Récupérer toutes les promotions (admin)
+    static Future<List<Map<String, dynamic>>> getPromotions() async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.get(
+        Uri.parse('$baseUrl/promotions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📡 getPromotions status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return List<Map<String, dynamic>>.from(data['promotions']);
+      } else {
+        throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la récupération des promotions');
+      }
+    }
+
+    /// Créer une promotion (admin)
+    static Future<Map<String, dynamic>> createPromotion(Map<String, dynamic> promotionData) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.post(
+        Uri.parse('$baseUrl/promotions'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode(promotionData),
+      );
+
+      print('📡 createPromotion status: ${response.statusCode}');
+
+      if (response.statusCode == 201) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        final errorBody = jsonDecode(response.body);
+        throw Exception(errorBody['error'] ?? 'Erreur lors de la création de la promotion');
+      }
+    }
+
+    /// Activer/désactiver une promotion (admin)
+    static Future<Map<String, dynamic>> togglePromotion(int promotionId, bool activate) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.patch(
+        Uri.parse('$baseUrl/promotions/$promotionId/toggle'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+        body: jsonEncode({'actif': activate}),
+      );
+
+      print('📡 togglePromotion status: ${response.statusCode}');
+
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body);
+        return data;
+      } else {
+        final errorBody = jsonDecode(response.body);
+        throw Exception(errorBody['error'] ?? 'Erreur lors de la mise à jour de la promotion');
+      }
+    }
+
+    /// Supprimer une promotion (admin)
+    static Future<void> deletePromotion(int promotionId) async {
+      final token = await ensureAuthenticated();
+      if (token == null) throw Exception('Not authenticated');
+
+      final response = await http.delete(
+        Uri.parse('$baseUrl/promotions/$promotionId'),
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
+      );
+
+      print('📡 deletePromotion status: ${response.statusCode}');
+
+      if (response.statusCode == 200 || response.statusCode == 204) {
+        return;
+      } else {
+        final errorBody = jsonDecode(response.body);
+        final errorMsg = errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+        print('❌ deletePromotion failed: $errorMsg');
+        throw Exception(errorMsg);
+      }
+    }
+
+    /// Récupérer la promotion active à afficher (client)
+    static Future<Map<String, dynamic>?> getActivePromotion() async {
+      try {
+        final response = await http.get(
+          Uri.parse('$baseUrl/promotions/active'),
+        );
+
+        print('📡 getActivePromotion status: ${response.statusCode}');
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(response.body);
+          return data['promotion'];
+        }
+        return null;
+      } catch (e) {
+        print('❌ getActivePromotion error: $e');
+        return null;
+      }
+    }
+  }
+}
