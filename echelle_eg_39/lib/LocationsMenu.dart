@@ -1,36 +1,37 @@
-import 'package:flutter/material.dart';
 import 'dart:async';
-import 'dart:convert';
+
+import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
-import 'data_manager.dart';
+
+import 'admin/admin_components.dart';
+import 'admin/admin_tokens.dart';
 import 'api_service.dart';
 import 'appareil_images.dart';
-import 'widgets/image_zoom_viewer.dart';
 
 class LocationPage extends StatefulWidget {
-  const LocationPage({Key? key}) : super(key: key);
+  const LocationPage({super.key});
+
   @override
   State<LocationPage> createState() => _LocationPageState();
 }
 
 class _LocationPageState extends State<LocationPage> {
-  final DataManager _dataManager = DataManager();
-  
-  List<Map<String, dynamic>> _locationsFromAPI = [];
-  bool _isLoadingLocations = true;
-  String? _errorLoadingLocations;
-  bool _showTrash = false; // New: track if showing trash bin
-  
+  List<Map<String, dynamic>> _locations = [];
+  final Set<int> _busyLocationIds = <int>{};
   Timer? _autoRefreshTimer;
+  bool _isLoading = true;
+  String? _errorMessage;
+  String _filter = 'en_attente';
+  bool _isLoadingLocations = false;
 
   @override
   void initState() {
     super.initState();
-    debugPrint('🚀 LocationPage ADMIN - initState()');
-    _dataManager.initialize();
-    _loadLocationsFromAPI();
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) => _loadLocationsFromAPI());
+    _loadLocations();
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadLocations(silent: true),
+    );
   }
 
   @override
@@ -39,42 +40,44 @@ class _LocationPageState extends State<LocationPage> {
     super.dispose();
   }
 
-  Future<void> _loadLocationsFromAPI({bool retry = false}) async {
-    setState(() {
-      _isLoadingLocations = true;
-      if (retry) _errorLoadingLocations = null;
-    });
-    
+  Future<void> _loadLocations({bool silent = false}) async {
+    if (_isLoadingLocations) return;
+    _isLoadingLocations = true;
+
+    if (!silent && mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
+
     try {
-      // Essayer de vérifier et expirer les locations (avec timeout court)
-      _checkAndExpireLocations().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => debugPrint('⏱️ Timeout check-expired, on continue...')
-      ).catchError((e) => debugPrint('⚠️ Erreur check-expired: $e'));
-      
-      // Ensuite charger les locations avec timeout
-      final locations = await ApiService.getLocations().timeout(const Duration(seconds: 10));
-      // DEBUG: voir exactement ce qui vient du backend
-      debugPrint('🔍 RAW API response: ${locations.map((l) => 'ID=${l['id']} statut=${l['statut']}').toList()}');
+      await _checkAndExpireLocations();
+      final locations = await ApiService.getLocations().timeout(
+        const Duration(seconds: 10),
+      );
+
+      if (!mounted) return;
       setState(() {
-        _locationsFromAPI = locations;
-        _isLoadingLocations = false;
+        _locations = locations;
+        _isLoading = false;
+        _errorMessage = null;
       });
-      debugPrint('📡 Locations admin: ${locations.length} ( ${_getPendingLocations().length} en attente)');
-      debugPrint('📡 Détails locations: ${locations.map((l) => 'ID: ${l['id']}, Statut: ${l['statut']}, Client: ${l['clientNom']}').join(', ')}');
-    } catch (e) {
+    } catch (error) {
+      if (!mounted) return;
       setState(() {
-        _errorLoadingLocations = e.toString();
-        _isLoadingLocations = false;
+        _isLoading = false;
+        _errorMessage = error.toString();
       });
-      debugPrint('❌ Erreur locations: $e');
+    } finally {
+      _isLoadingLocations = false;
     }
   }
 
-  // Vérifier et expirer les locations automatiquement (lancé sans await)
   Future<void> _checkAndExpireLocations() async {
     try {
       final token = await ApiService.getToken();
+      if (token == null) return;
       await http.get(
         Uri.parse('${ApiService.baseUrl}/locations/check-expired'),
         headers: {
@@ -82,1047 +85,421 @@ class _LocationPageState extends State<LocationPage> {
           'Authorization': 'Bearer $token',
         },
       ).timeout(const Duration(seconds: 3));
-    } catch (e) {
-      // Silencieux - on ne veut pas bloquer le chargement
-      debugPrint('⚠️ Erreur expiration: $e');
+    } catch (error) {
+      debugPrint('⚠️ Vérification expiration locations : $error');
     }
   }
 
-  // Fonction pour reset les statuts via API backend
-  Future<void> _resetStatutsEnAttente() async {
-    try {
-      final token = await ApiService.getToken();
-      final response = await http.patch(
-        Uri.parse('${ApiService.baseUrl}/locations/reset-statuts'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-      
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('✅ ${data["message"]}'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          _loadLocationsFromAPI();
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ Erreur reset: $e');
+  String _status(Map<String, dynamic> location) {
+    return adminStatusKey(location['statut']);
+  }
+
+  List<Map<String, dynamic>> _historyLocations() {
+    return _locations.where((location) {
+      final status = _status(location);
+      return status == 'termine' || status == 'rejetee';
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _visibleLocations {
+    switch (_filter) {
+      case 'en_attente':
+        return _locations.where((location) => _status(location) == 'en_attente').toList();
+      case 'en_cours':
+        return _locations.where((location) => _status(location) == 'en_cours').toList();
+      case 'corbeille':
+        return _historyLocations();
+      case 'tous':
+      default:
+        return _locations;
     }
   }
 
-  // Fonction pour corriger la contrainte DB
-  Future<void> _fixDatabaseConstraint() async {
+  int _countFor(String filter) {
+    switch (filter) {
+      case 'en_attente':
+        return _locations.where((location) => _status(location) == 'en_attente').length;
+      case 'en_cours':
+        return _locations.where((location) => _status(location) == 'en_cours').length;
+      case 'corbeille':
+        return _historyLocations().length;
+      case 'tous':
+      default:
+        return _locations.length;
+    }
+  }
+
+  Future<void> _approveLocation(int locationId) async {
+    if (!_startMutation(locationId)) return;
+
     try {
-      final token = await ApiService.getToken();
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/locations/fix-constraint'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      );
-      
+      await ApiService.approveLocation(locationId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(response.statusCode == 200 ? '✅ Contrainte corrigée!' : '❌ Erreur: ${response.body}'),
-            backgroundColor: response.statusCode == 200 ? Colors.green : Colors.red,
-          ),
+        showAdminMessage(
+          context,
+          'Location #$locationId approuvée.',
+          backgroundColor: AdminPalette.approvalGreen,
+        );
+        await _loadLocations();
+      }
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Approbation impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
         );
       }
-    } catch (e) {
-      debugPrint('❌ Erreur fix constraint: $e');
+    } finally {
+      _finishMutation(locationId);
     }
   }
 
-  List<Map<String, dynamic>> _getPendingLocations() {
-    debugPrint('🔍 DEBUG: statuts = ${_locationsFromAPI.map((l) => l['statut']).toSet()}');
-    return _locationsFromAPI.where((loc) {
-      final statut = loc['statut']?.toString().toLowerCase().trim();
-      return statut == 'en_attente' || statut == 'pending';
-    }).toList();
-  }
+  Future<void> _rejectLocation(int locationId) async {
+    if (_busyLocationIds.contains(locationId)) return;
 
-  List<Map<String, dynamic>> _getActiveLocations() {
-    return _locationsFromAPI.where((loc) {
-      final statut = loc['statut']?.toString().toLowerCase().trim();
-      return statut == 'en_cours' || statut == 'active';
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> _getTerminatedLocations() {
-    final terminated = _locationsFromAPI.where((loc) {
-      final statut = loc['statut']?.toString().toLowerCase().trim();
-      return statut == 'termine';
-    }).toList();
-    debugPrint('📋 Locations terminées trouvées: ${terminated.length}');
-    for (var loc in terminated) {
-      debugPrint('  - ${loc['appareilNom']} - statut: ${loc['statut']}');
-    }
-    return terminated;
-  }
-
-@override
-  Widget build(BuildContext context) {
-    debugPrint('🏗️ build() called, _showTrash: $_showTrash');
-    final pendingCount = _getPendingLocations().length;
-    final activeCount = _getActiveLocations().length;
-    debugPrint('📊 ADMIN Locations - Pending: $pendingCount | Active: $activeCount');
-    
-    return Scaffold(
-      backgroundColor: const Color(0xFFF1F5F9),
-      body: CustomScrollView(
-        slivers: [
-          // Header avec statistiques
-          SliverAppBar(
-            expandedHeight: 180,
-            floating: false,
-            pinned: true,
-            elevation: 0,
-            backgroundColor: const Color(0xFF6366F1),
-            automaticallyImplyLeading: false,
-            leading: IconButton(
-              icon: const Icon(Icons.refresh, color: Colors.white),
-              onPressed: () => _loadLocationsFromAPI(retry: true),
-              tooltip: 'Rafraîchir',
-            ),
-            flexibleSpace: FlexibleSpaceBar(
-
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [Color(0xFF6366F1), Color(0xFF8B5CF6)],
-                  ),
-                ),
-                child: SafeArea(
-                  child: Padding(
-                    padding: const EdgeInsets.all(20),
-                    child: Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceAround,
-                      children: [
-                        _buildStatCard(
-                          icon: Icons.hourglass_empty,
-                          label: 'En attente',
-                          value: pendingCount,
-                          color: Colors.orange,
-                        ),
-                        _buildStatCard(
-                          icon: Icons.check_circle,
-                          label: 'Actives',
-                          value: activeCount,
-                          color: Colors.green,
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            ),
-            actions: [
-              IconButton(
-                icon: Icon(
-                  _showTrash ? Icons.close : Icons.delete_outline,
-                  color: Colors.white,
-                ),
-                onPressed: () {
-                  debugPrint('🗑️ 1. Début onPressed');
-                  debugPrint('🗑️ 2. _showTrash AVANT: $_showTrash');
-                  setState(() {
-                    _showTrash = !_showTrash;
-                  });
-                  debugPrint('🗑️ 3. _showTrash APRÈS: $_showTrash');
-                },
-                tooltip: _showTrash ? 'Fermer la corbeille' : 'Corbeille',
-              ),
-            ],
-          ),
-          
-          // Contenu principal
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(16),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Section: Demandes en attente
-                  _buildSectionHeader(
-                    title: 'Demandes en attente',
-                    icon: Icons.pending_actions,
-                    count: pendingCount,
-                    color: Colors.orange,
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  // BOUTON POUR AFFICHER LA CORBEILLE
-                  ElevatedButton.icon(
-                    onPressed: () {
-                      debugPrint('🗑️ Bouton corbeille appuyé');
-                      setState(() {
-                        _showTrash = !_showTrash;
-                      });
-                    },
-                    icon: Icon(_showTrash ? Icons.visibility_off : Icons.delete_outline),
-                    label: Text(_showTrash ? 'Masquer corbeille' : 'Voir corbeille (${_getTerminatedLocations().length})'),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: Colors.red.shade100,
-                      foregroundColor: Colors.red,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  if (_isLoadingLocations)
-                    _buildLoadingCard()
-                  else if (_errorLoadingLocations != null)
-                    _buildErrorCard()
-                  else if (pendingCount == 0)
-                    _buildEmptyPendingCard()
-                  else
-                    ..._getPendingLocations().map((loc) => _buildPendingLocationCard(loc)),
-                  
-                  const SizedBox(height: 24),
-                  
-                  // Section: Locations actives
-                  _buildSectionHeader(
-                    title: 'Locations actives',
-                    icon: Icons.play_circle_outline,
-                    count: activeCount,
-                    color: Colors.green,
-                  ),
-                  const SizedBox(height: 12),
-                  
-                  if (activeCount == 0)
-                    _buildEmptyActiveCard()
-                  else
-                    ..._getActiveLocations().map((loc) => _buildActiveLocationCard(loc)),
-                  
-                  // New: Corbeille section - shows terminated locations
-                  if (_showTrash) ...[
-                    const SizedBox(height: 24),
-                    _buildSectionHeader(
-                      title: 'Corbeille (terminées)',
-                      icon: Icons.delete_outline,
-                      count: _getTerminatedLocations().length,
-                      color: Colors.red,
-                    ),
-                    const SizedBox(height: 12),
-                    if (_getTerminatedLocations().isEmpty)
-                      _buildEmptyTrashCard()
-                    else ...[
-                      ..._getTerminatedLocations().map((loc) => _buildTerminatedLocationCard(loc)),
-                      const SizedBox(height: 16),
-                      // Bouton pour supprimer toutes les demandes terminées
-                      SizedBox(
-                        width: double.infinity,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            debugPrint('🗑️ Bouton supprimer appuyé');
-                            _showDeleteAllConfirmation();
-                          },
-                          icon: const Icon(Icons.delete_sweep),
-                          label: const Text('Supprimer toutes les demandes terminées'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.red,
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ],
-                ],
-              ),
-            ),
-          ),
-        ],
-      ),
+    final reason = await showAdminRejectionSheet(
+      context,
+      entityLabel: 'la location #$locationId',
     );
+    if (!mounted || reason == null || reason.trim().isEmpty) return;
+    if (!_startMutation(locationId)) return;
+
+    try {
+      await ApiService.rejectLocation(locationId, reason);
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Location #$locationId rejetée.',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+        await _loadLocations();
+      }
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Rejet impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+      }
+    } finally {
+      _finishMutation(locationId);
+    }
   }
 
-  // New: Show confirmation dialog to delete all terminated locations
-  Future<void> _showDeleteAllConfirmation() async {
+  Future<void> _deleteLocation(int locationId) async {
+    if (_busyLocationIds.contains(locationId)) return;
+
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Confirmer la suppression'),
-        content: const Text('Êtes-vous sûr de vouloir supprimer toutes les demandes terminées ? Cette action est irréversible.'),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Supprimer de la corbeille ?'),
+        content: Text('La location #$locationId sera supprimée définitivement.'),
         actions: [
           TextButton(
-            onPressed: () => Navigator.pop(ctx, false),
+            onPressed: () => Navigator.pop(dialogContext, false),
             child: const Text('Annuler'),
           ),
           ElevatedButton(
-            onPressed: () => Navigator.pop(ctx, true),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminPalette.destructiveRed,
+              foregroundColor: Colors.white,
+            ),
             child: const Text('Supprimer'),
           ),
         ],
       ),
     );
 
-    if (confirmed == true) {
-      await _deleteAllTerminatedLocations();
-    }
-  }
+    if (!mounted || confirmed != true || !_startMutation(locationId)) return;
 
-  // New: Delete all terminated locations
-  Future<void> _deleteAllTerminatedLocations() async {
-    debugPrint('🗑️ Début suppression...');
     try {
-      final token = await ApiService.getToken();
-      debugPrint('🗑️ Token obtenu');
-      final response = await http.delete(
-        Uri.parse('${ApiService.baseUrl}/locations/terminate-all'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
-
-      debugPrint('🗑️ Réponse: ${response.statusCode}');
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Toutes les demandes terminées ont été supprimées'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          // D'abord recharger les locations pour avoir la liste vide
-          await _loadLocationsFromAPI();
-          // Ensuite masquer la corbeille etForcer le rebuild
-          if (mounted) {
-            setState(() {
-              _showTrash = false;
-            });
-          }
-        }
-      } else {
-        debugPrint('❌ Erreur: ${response.statusCode}');
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('❌ Erreur lors de la suppression: ${response.statusCode}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
-      debugPrint('❌ Erreur suppression: $e');
+      await ApiService.deleteLocation(locationId);
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
+        showAdminMessage(
+          context,
+          'Location #$locationId supprimée.',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+        await _loadLocations();
+      }
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Suppression impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
         );
       }
+    } finally {
+      _finishMutation(locationId);
     }
   }
 
-  // New: Build card for terminated locations
-  Widget _buildTerminatedLocationCard(Map<String, dynamic> loc) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: Colors.red.withOpacity(0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
+  bool _startMutation(int locationId) {
+    if (!mounted || _busyLocationIds.contains(locationId)) return false;
+    setState(() => _busyLocationIds.add(locationId));
+    return true;
+  }
+
+  void _finishMutation(int locationId) {
+    if (!mounted) return;
+    setState(() => _busyLocationIds.remove(locationId));
+  }
+
+  String _display(Object? value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  String _formatDateLong(Object? value) {
+    final raw = value?.toString();
+    if (raw == null || raw.isEmpty) return 'date inconnue';
+
+    try {
+      final date = DateTime.parse(raw).toLocal();
+      const months = [
+        'janvier',
+        'février',
+        'mars',
+        'avril',
+        'mai',
+        'juin',
+        'juillet',
+        'août',
+        'septembre',
+        'octobre',
+        'novembre',
+        'décembre',
+      ];
+      return '${date.day} ${months[date.month - 1]} ${date.year}';
+    } catch (_) {
+      return raw;
+    }
+  }
+
+  Widget _buildEquipmentLeading(Map<String, dynamic> location) {
+    final fallbackUrl = AppareilImages.getImageUrl(
+      location['appareilId']?.toString() ?? '',
+      location['appareilType']?.toString() ?? '',
+    );
+    final imageUrl = location['imageUrl']?.toString();
+
+    return SizedBox(
+      width: 50,
+      height: 50,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(AdminRadii.field),
+        child: Image.network(
+          imageUrl == null || imageUrl.isEmpty ? fallbackUrl : imageUrl,
+          fit: BoxFit.cover,
+          errorBuilder: (context, error, stackTrace) => Container(
+            color: AdminPalette.blueprintBlue.withValues(alpha: 0.1),
+            child: const Icon(Icons.gps_fixed, color: AdminPalette.blueprintBlue),
           ),
-        ],
+        ),
       ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Row(
+    );
+  }
+
+  Widget _buildLocationDetails(Map<String, dynamic> location) {
+    final clientPhone = _display(location['clientTelephone']);
+    final reason = _display(location['commentaireAdmin']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: AdminSpacing.lg,
+          runSpacing: AdminSpacing.xs,
           children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.check_circle, color: Colors.red, size: 24),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    loc['appareilNom'] ?? 'Appareil',
-                    style: const TextStyle(
-                      fontWeight: FontWeight.bold,
-                      fontSize: 14,
-                    ),
-                  ),
-                  Text(
-                    loc['clientNom'] ?? 'Client',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Text(
-                'Terminée',
-                style: TextStyle(
-                  color: Colors.red,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold,
-                ),
-              ),
-            ),
+            _buildMeta('Du ${_formatDateLong(location['dateDebut'])}'),
+            _buildMeta('au ${_formatDateLong(location['dateFin'])}'),
+            if (clientPhone.isNotEmpty) _buildMeta('☎ $clientPhone'),
           ],
         ),
-      ),
-    );
-  }
-
-  // New: Build empty trash card
-  Widget _buildEmptyTrashCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.grey[100],
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.delete_outline, size: 48, color: Colors.grey[400]),
-          const SizedBox(height: 8),
-          Text(
-            'Corbeille vide',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatCard({
-    required IconData icon,
-    required String label,
-    required int value,
-    required Color color,
-  }) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.2),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.white, size: 28),
-          const SizedBox(height: 4),
-          Text(
-            '$value',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 24,
-              fontWeight: FontWeight.bold,
+        if (reason.isNotEmpty) ...[
+          const SizedBox(height: AdminSpacing.md),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AdminSpacing.md),
+            decoration: BoxDecoration(
+              color: AdminPalette.destructiveRed.withValues(alpha: 0.08),
+              borderRadius: BorderRadius.circular(AdminRadii.field),
+              border: Border.all(
+                color: AdminPalette.destructiveRed.withValues(alpha: 0.22),
+              ),
             ),
-          ),
-          Text(
-            label,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.9),
-              fontSize: 12,
+            child: Text(
+              'Note admin : $reason',
+              style: const TextStyle(
+                color: AdminPalette.destructiveRed,
+                height: 1.35,
+              ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildSectionHeader({
-    required String title,
-    required IconData icon,
-    required int count,
-    required Color color,
-  }) {
-    return Row(
-      children: [
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: color, size: 20),
-        ),
-        const SizedBox(width: 12),
-        Text(
-          title,
-          style: const TextStyle(
-            fontSize: 18,
-            fontWeight: FontWeight.bold,
-            color: Color(0xFF1E293B),
-          ),
-        ),
-        const Spacer(),
-        Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-          decoration: BoxDecoration(
-            color: color.withOpacity(0.1),
-            borderRadius: BorderRadius.circular(20),
-          ),
-          child: Text(
-            '$count',
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-            ),
-          ),
-        ),
       ],
     );
   }
 
-  Widget _buildPendingLocationCard(Map<String, dynamic> loc) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              children: [
-                // Image appareil
-                SizedBox(
-                  width: 56,
-                  height: 56,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(12),
-                    child: Image.network(
-                      loc['imageUrl'] as String? ??
-                          AppareilImages.getImageUrl(
-                            loc['appareilId']?.toString() ?? '',
-                            loc['appareilType'] ?? '',
-                          ),
-                      fit: BoxFit.cover,
-                      errorBuilder: (context, error, stackTrace) => Container(
-                        color: const Color(0xFF6366F1).withOpacity(0.1),
-                        child: const Icon(
-                          Icons.gps_fixed,
-                          color: Color(0xFF6366F1),
-                          size: 28,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(width: 16),
-                // Infos
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        loc['appareilNom'] ?? 'Appareil',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.bold,
-                          fontSize: 16,
-                          color: Color(0xFF1E293B),
-                        ),
-                      ),
-                      const SizedBox(height: 4),
-                      Row(
-                        children: [
-                          const Icon(Icons.person_outline, size: 14, color: Color(0xFF64748B)),
-                          const SizedBox(width: 4),
-                          Expanded(
-                            child: Text(
-                              loc['clientNom'] ?? '',
-                              style: const TextStyle(
-                                fontSize: 13,
-                                color: Color(0xFF64748B),
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 2),
-                      Row(
-                        children: [
-                          const Icon(Icons.calendar_today, size: 14, color: Color(0xFF64748B)),
-                          const SizedBox(width: 4),
-                          Text(
-                            _formatDateRange(loc['dateDebut'], loc['dateFin']),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: Color(0xFF64748B),
-                            ),
-                          ),
-                        ],
-                      ),
-                    ],
-                  ),
-                ),
-                // Montant
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  children: [
-                    Text(
-                      '${loc['montantTotal']} F',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.bold,
-                        fontSize: 18,
-                        color: Color(0xFF6366F1),
-                      ),
-                    ),
-                    const Text(
-                      'FCFA',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-              ],
-            ),
-          ),
-          // Boutons d'action
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF8FAFC),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(16),
-                bottomRight: Radius.circular(16),
-              ),
-            ),
-            child: Row(
-              children: [
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: () => _performApprove(loc['id']),
-                    icon: const Icon(Icons.check_circle, color: Colors.green),
-                    label: const Text('Approuver', style: TextStyle(color: Colors.green)),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-                Container(
-                  width: 1,
-                  height: 24,
-                  color: const Color(0xFFE2E8F0),
-                ),
-                Expanded(
-                  child: TextButton.icon(
-                    onPressed: () => _showRejectDialog(loc),
-                    icon: const Icon(Icons.cancel, color: Colors.red),
-                    label: const Text('Rejeter', style: TextStyle(color: Colors.red)),
-                    style: TextButton.styleFrom(
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
+  Widget _buildMeta(String text) {
+    return Text(
+      text,
+      style: const TextStyle(color: AdminPalette.secondaryText, fontSize: 12),
     );
   }
 
-  Widget _buildActiveLocationCard(Map<String, dynamic> loc) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: const Color(0xFFE2E8F0)),
-      ),
-      child: Row(
+  Widget _buildLocationItem(Map<String, dynamic> location, int index) {
+    final locationId = int.tryParse(location['id'].toString());
+    if (locationId == null) return const SizedBox.shrink();
+
+    final amount = formatAdminAmount(location['montantTotal']);
+    final equipment = _display(location['appareilNom'], fallback: 'Appareil non renseigné');
+    final client = _display(location['clientNom'], fallback: 'Client non renseigné');
+    final isHistory = _status(location) == 'termine' || _status(location) == 'rejetee';
+    final isBusy = _busyLocationIds.contains(locationId);
+
+    Widget footer;
+    if (isAdminPending(location['statut'])) {
+      footer = AdminDecisionBar(
+        isBusy: isBusy,
+        onApprove: () => _approveLocation(locationId),
+        onReject: () => _rejectLocation(locationId),
+      );
+    } else if (isHistory) {
+      footer = Row(
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          SizedBox(
-            width: 48,
-            height: 48,
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(10),
-              child: Image.network(
-                loc['imageUrl'] as String? ??
-                    AppareilImages.getImageUrl(
-                      loc['appareilId']?.toString() ?? '',
-                      loc['appareilType'] ?? '',
-                    ),
-                fit: BoxFit.cover,
-                errorBuilder: (context, error, stackTrace) => Container(
-                  color: Colors.green.withOpacity(0.1),
-                  child: const Icon(Icons.check_circle, color: Colors.green, size: 24),
-                ),
-              ),
-            ),
+          IconButton(
+            onPressed: isBusy ? null : () => _deleteLocation(locationId),
+            tooltip: 'Supprimer',
+            icon: const Icon(Icons.delete_outline),
+            color: AdminPalette.destructiveRed,
           ),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  children: [
-                    Expanded(
-                      child: Text(
-                        loc['appareilNom'] ?? 'Appareil',
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 15,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                      decoration: BoxDecoration(
-                        color: (loc['statut'] ?? '') == 'termine' 
-                          ? Colors.grey 
-                          : Colors.green.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(12),
-                      ),
-                      child: Text(
-                        (loc['statut'] ?? '') == 'termine' ? 'Terminé' : 'En cours',
-                        style: TextStyle(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w600,
-                          color: (loc['statut'] ?? '') == 'termine' 
-                            ? Colors.white 
-                            : Colors.green,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  '${loc['clientNom']} • ${_formatDateRange(loc['dateDebut'], loc['dateFin'])}',
-                  style: const TextStyle(
-                    fontSize: 12,
-                    color: Color(0xFF64748B),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            crossAxisAlignment: CrossAxisAlignment.end,
+        ],
+      );
+    } else {
+      footer = Align(
+        alignment: Alignment.centerRight,
+        child: TextButton.icon(
+          onPressed: () => _showLocationDetails(location),
+          icon: const Icon(Icons.visibility_outlined, size: 18),
+          label: const Text('Voir le détail'),
+          style: TextButton.styleFrom(foregroundColor: AdminPalette.blueprintBlue),
+        ),
+      );
+    }
+
+    return AdminWorkItemCard(
+      key: ValueKey('location_$locationId'),
+      status: location['statut'],
+      reference: 'Location #$locationId',
+      title: equipment,
+      requester: client,
+      meta: 'Réservation d’équipement',
+      amount: amount.isEmpty ? null : amount,
+      leading: _buildEquipmentLeading(location),
+      details: _buildLocationDetails(location),
+      footer: footer,
+      onTap: () => _showLocationDetails(location),
+    );
+  }
+
+  void _showLocationDetails(Map<String, dynamic> location) {
+    final locationId = location['id']?.toString() ?? '';
+    final equipment = _display(location['appareilNom'], fallback: 'Appareil non renseigné');
+    final client = _display(location['clientNom'], fallback: 'Client non renseigné');
+    final status = location['statut'];
+
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (sheetContext) => Container(
+        padding: const EdgeInsets.fromLTRB(
+          AdminSpacing.xxl,
+          AdminSpacing.md,
+          AdminSpacing.xxl,
+          AdminSpacing.xxl,
+        ),
+        decoration: const BoxDecoration(
+          color: AdminPalette.surface,
+          borderRadius: BorderRadius.vertical(top: Radius.circular(AdminRadii.sheet)),
+        ),
+        child: SafeArea(
+          top: false,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                '${loc['montantTotal']} F',
-                style: const TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Colors.green,
+              Center(
+                child: Container(
+                  width: 42,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: AdminPalette.border,
+                    borderRadius: BorderRadius.circular(4),
+                  ),
                 ),
               ),
-              const SizedBox(height: 4),
-              GestureDetector(
-                onTap: () => _showEquipmentStatusDialog(loc),
-                child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: Colors.blue.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(6),
+              const SizedBox(height: AdminSpacing.xl),
+              Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      'Location #$locationId',
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                            color: AdminPalette.primaryText,
+                            fontWeight: FontWeight.w800,
+                          ),
+                    ),
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(Icons.info_outline, size: 12, color: Colors.blue),
-                      SizedBox(width: 4),
-                      Text(
-                        'Statut',
-                        style: TextStyle(
-                          fontSize: 10,
-                          color: Colors.blue,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ],
-                  ),
+                  AdminStatusChip(status: status),
+                ],
+              ),
+              const SizedBox(height: AdminSpacing.lg),
+              _buildDetailRow('Équipement', equipment),
+              _buildDetailRow('Client', client),
+              _buildDetailRow(
+                'Période',
+                'Du ${_formatDateLong(location['dateDebut'])} au ${_formatDateLong(location['dateFin'])}',
+              ),
+              _buildDetailRow('Montant', formatAdminAmount(location['montantTotal'])),
+              const SizedBox(height: AdminSpacing.lg),
+              SizedBox(
+                width: double.infinity,
+                child: OutlinedButton(
+                  onPressed: () => Navigator.pop(sheetContext),
+                  style: OutlinedButton.styleFrom(minimumSize: const Size(0, 48)),
+                  child: const Text('Fermer'),
                 ),
               ),
             ],
           ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildLoadingCard() {
-    return Container(
-      padding: const EdgeInsets.all(40),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: const Center(
-        child: CircularProgressIndicator(color: Color(0xFF6366F1)),
-      ),
-    );
-  }
-
-  Widget _buildErrorCard() {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.red.shade50,
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Column(
-        children: [
-          Icon(Icons.error_outline, color: Colors.red.shade700, size: 40),
-          const SizedBox(height: 12),
-          Text(
-            'Erreur: $_errorLoadingLocations',
-            style: TextStyle(color: Colors.red.shade700),
-            textAlign: TextAlign.center,
-          ),
-          const SizedBox(height: 12),
-          ElevatedButton(
-            onPressed: () => _loadLocationsFromAPI(),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
-            child: const Text('Réessayer'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyPendingCard() {
-    return Container(
-      padding: const EdgeInsets.all(32),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), style: BorderStyle.solid),
-      ),
-      child: Column(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(16),
-            decoration: BoxDecoration(
-              color: Colors.orange.withOpacity(0.1),
-              shape: BoxShape.circle,
-            ),
-            child: Icon(Icons.inbox_outlined, color: Colors.orange.shade400, size: 40),
-          ),
-          const SizedBox(height: 16),
-          const Text(
-            'Aucune demande en attente',
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Les nouvelles demandes de location apparaîtront ici',
-            style: TextStyle(
-              fontSize: 13,
-              color: Color(0xFF64748B),
-            ),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildEmptyActiveCard() {
-    return Container(
-      padding: const EdgeInsets.all(24),
-      decoration: BoxDecoration(
-        color: Colors.white.withOpacity(0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: const Center(
-        child: Text(
-          'Aucune location active',
-          style: TextStyle(color: Color(0xFF64748B)),
         ),
       ),
     );
   }
 
-  String _formatDate(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      return '${date.day}/${date.month}/${date.year}';
-    } catch (e) {
-      return dateStr;
-    }
-  }
-
-  /// Format date en format français lisible (ex: 24 avril 2026)
-  String _formatDateLong(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
-                      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-      return '${date.day} ${months[date.month - 1]} ${date.year}';
-    } catch (e) {
-      return dateStr ?? '';
-    }
-  }
-
-  /// Format range de dates (ex: du 24 avril 2026 au 30 avril 2026)
-  String _formatDateRange(String? dateDebut, String? dateFin) {
-    return 'du ${_formatDateLong(dateDebut)} au ${_formatDateLong(dateFin)}';
-  }
-
-  Future<void> _performApprove(int id) async {
-    try {
-      await ApiService.approveLocation(id);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('✅ Demande approuvée avec succès!'),
-            backgroundColor: Colors.green,
-          ),
-        );
-        _loadLocationsFromAPI();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
-        );
-      }
-    }
-  }
-
-  /// Afficher le dialogue de statut de l'appareil
-  void _showEquipmentStatusDialog(Map<String, dynamic> loc) {
-    final appareilNom = loc['appareilNom'] ?? 'Appareil';
-    final clientNom = loc['clientNom'] ?? 'Client';
-    final clientTel = loc['clientTelephone'] ?? 'Non défini';
-    final dateDebut = loc['dateDebut'] ?? '';
-    final dateFin = loc['dateFin'] ?? '';
-    final montant = loc['montantTotal'] ?? 0;
-    final statut = loc['statut'] ?? 'en_cours';
-    
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Row(
-          children: [
-            Container(
-              padding: const EdgeInsets.all(8),
-              decoration: BoxDecoration(
-                color: Colors.blue.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: const Icon(Icons.devices, color: Colors.blue),
-            ),
-            const SizedBox(width: 12),
-            const Text('Statut de l\'appareil'),
-          ],
-        ),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            _buildStatusRow('Appareil', appareilNom, Icons.inventory_2),
-            const Divider(),
-            _buildStatusRow('Client', clientNom, Icons.person),
-            _buildStatusRow('Téléphone', clientTel, Icons.phone),
-            const Divider(),
-            _buildStatusRow('Date début', _formatDate(dateDebut), Icons.play_arrow),
-            _buildStatusRow('Date fin', _formatDate(dateFin), Icons.stop),
-            const Divider(),
-            _buildStatusRow('Montant', '$montant F', Icons.attach_money),
-            const Divider(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              decoration: BoxDecoration(
-                color: Colors.green.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.check_circle, color: Colors.green, size: 16),
-                  const SizedBox(width: 6),
-                  Text(
-                    'En location (actif)',
-                    style: TextStyle(
-                      color: Colors.green[700],
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildStatusRow(String label, String value, IconData icon) {
+  Widget _buildDetailRow(String label, String value) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: AdminSpacing.sm),
       child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(icon, size: 18, color: Colors.grey[600]),
-          const SizedBox(width: 8),
-          Text(
-            '$label: ',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 13,
-            ),
+          SizedBox(
+            width: 90,
+            child: Text(label, style: const TextStyle(color: AdminPalette.secondaryText)),
           ),
           Expanded(
             child: Text(
               value,
               style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
+                color: AdminPalette.primaryText,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
@@ -1131,109 +508,126 @@ class _LocationPageState extends State<LocationPage> {
     );
   }
 
-  void _showRejectDialog(Map<String, dynamic> location) {
-    final controller = TextEditingController();
-    bool isValid = false;
-    
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.red.withOpacity(0.1),
-                  borderRadius: BorderRadius.circular(8),
+  @override
+  Widget build(BuildContext context) {
+    final visibleLocations = _visibleLocations;
+    final content = _isLoading && _locations.isEmpty
+        ? const SliverFillRemaining(
+            hasScrollBody: false,
+            child: AdminLoadingState(label: 'Chargement des locations…'),
+          )
+        : _errorMessage != null && _locations.isEmpty
+            ? SliverFillRemaining(
+                hasScrollBody: false,
+                child: AdminErrorState(
+                  message: _errorMessage!,
+                  onRetry: _loadLocations,
                 ),
-                child: const Icon(Icons.cancel, color: Colors.red),
-              ),
-              const SizedBox(width: 12),
-              const Text('Rejeter la demande'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'La raison sera visible par le client',
-                        style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
-                      ),
+              )
+            : visibleLocations.isEmpty
+                ? SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: AdminEmptyState(
+                      icon: _filter == 'corbeille'
+                          ? Icons.delete_outline
+                          : Icons.inbox_outlined,
+                      title: _filter == 'en_attente'
+                          ? 'Aucune location en attente'
+                          : _filter == 'en_cours'
+                              ? 'Aucune location active'
+                              : _filter == 'corbeille'
+                                  ? 'La corbeille est vide'
+                                  : 'Aucune location enregistrée',
+                      message: _filter == 'en_attente'
+                          ? 'Les nouvelles réservations apparaîtront ici.'
+                          : 'Changez de filtre ou actualisez la file.',
                     ),
-                  ],
+                  )
+                : SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AdminSpacing.lg,
+                      AdminSpacing.sm,
+                      AdminSpacing.lg,
+                      AdminSpacing.section,
+                    ),
+                    sliver: SliverList.builder(
+                      itemCount: visibleLocations.length,
+                      itemBuilder: (context, index) => _buildLocationItem(visibleLocations[index], index),
+                    ),
+                  );
+
+    return RefreshIndicator(
+      onRefresh: _loadLocations,
+      color: AdminPalette.blueprintBlue,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: AdminPageHeader(
+              title: 'Locations',
+              subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
+              icon: Icons.assignment_outlined,
+              actions: [
+                IconButton(
+                  onPressed: _isLoading ? null : _loadLocations,
+                  tooltip: 'Actualiser',
+                  icon: const Icon(Icons.refresh),
+                  color: AdminPalette.blueprintBlue,
                 ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                maxLines: 3,
-                onChanged: (value) {
-                  setDialogState(() {
-                    isValid = value.trim().isNotEmpty;
-                  });
-                },
-                decoration: InputDecoration(
-                  labelText: 'Motif du rejet',
-                  hintText: 'Ex: Appareil indisponible, dates impossibles...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  prefixIcon: const Icon(Icons.message_outlined),
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton.icon(
-              onPressed: isValid
-                  ? () async {
-                      Navigator.pop(dialogContext);
-                      try {
-                        await ApiService.rejectLocation(location['id'], controller.text.trim());
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('✅ Demande rejetée avec succès'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                          _loadLocationsFromAPI();
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
-                          );
-                        }
-                      }
-                    }
-                  : null,
-              icon: const Icon(Icons.close),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+          SliverToBoxAdapter(
+            child: AdminMetricCluster(
+              primary: AdminMetric(
+                label: 'Réservations à traiter',
+                value: _countFor('en_attente'),
+                icon: Icons.pending_actions_outlined,
               ),
-              label: const Text('Confirmer'),
+              secondary: [
+                AdminMetric(
+                  label: 'Locations actives',
+                  value: _countFor('en_cours'),
+                  icon: Icons.play_circle_outline,
+                ),
+                AdminMetric(
+                  label: 'Historique / rejetées',
+                  value: _countFor('corbeille'),
+                  icon: Icons.history_outlined,
+                ),
+              ],
             ),
-          ],
-        ),
+          ),
+          SliverToBoxAdapter(
+            child: AdminSegmentedFilter(
+              selectedValue: _filter,
+              onChanged: (value) => setState(() => _filter = value),
+              options: [
+                AdminFilterOption(
+                  value: 'en_attente',
+                  label: 'En attente',
+                  count: _countFor('en_attente'),
+                ),
+                AdminFilterOption(
+                  value: 'en_cours',
+                  label: 'Actives',
+                  count: _countFor('en_cours'),
+                ),
+                AdminFilterOption(
+                  value: 'corbeille',
+                  label: 'Historique',
+                  count: _countFor('corbeille'),
+                ),
+                AdminFilterOption(
+                  value: 'tous',
+                  label: 'Toutes',
+                  count: _countFor('tous'),
+                ),
+              ],
+            ),
+          ),
+          content,
+        ],
       ),
     );
   }
