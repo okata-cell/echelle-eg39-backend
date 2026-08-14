@@ -27,6 +27,7 @@ class _LocationPageState extends State<LocationPage> {
   @override
   void initState() {
     super.initState();
+    print('📱 LocationPage ADMIN - initState()');
     _loadLocations();
     _autoRefreshTimer = Timer.periodic(
       const Duration(seconds: 10),
@@ -41,8 +42,12 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   Future<void> _loadLocations({bool silent = false}) async {
-    if (_isLoadingLocations) return;
+    if (_isLoadingLocations) {
+      print('⏳ _loadLocations ignoré (déjà en cours)');
+      return;
+    }
     _isLoadingLocations = true;
+    print('🔄 _loadLocations démarré (silent=$silent)');
 
     if (!silent && mounted) {
       setState(() {
@@ -53,9 +58,11 @@ class _LocationPageState extends State<LocationPage> {
 
     try {
       await _checkAndExpireLocations();
+      print('📡 Appel API getLocations...');
       final locations = await ApiService.getLocations().timeout(
         const Duration(seconds: 10),
       );
+      print('✅ API getLocations OK: ${locations.length} locations reçues');
 
       if (!mounted) return;
       setState(() {
@@ -63,7 +70,9 @@ class _LocationPageState extends State<LocationPage> {
         _isLoading = false;
         _errorMessage = null;
       });
+      print('✅ UI mise à jour avec ${locations.length} locations');
     } catch (error) {
+      print('❌ Erreur _loadLocations: $error');
       if (!mounted) return;
       setState(() {
         _isLoading = false;
@@ -71,6 +80,7 @@ class _LocationPageState extends State<LocationPage> {
       });
     } finally {
       _isLoadingLocations = false;
+      print('🔄 _loadLocations terminé');
     }
   }
 
@@ -353,8 +363,12 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   Widget _buildLocationItem(Map<String, dynamic> location, int index) {
-    final locationId = int.tryParse(location['id'].toString());
-    if (locationId == null) return const SizedBox.shrink();
+    try {
+      final locationId = int.tryParse(location['id'].toString());
+      if (locationId == null) {
+        print('⚠️ Location ID invalide à l\'index $index: ${location['id']}');
+        return const SizedBox.shrink();
+      }
 
     final amount = formatAdminAmount(location['montantTotal']);
     final equipment = _display(location['appareilNom'], fallback: 'Appareil non renseigné');
@@ -406,6 +420,11 @@ class _LocationPageState extends State<LocationPage> {
       footer: footer,
       onTap: () => _showLocationDetails(location),
     );
+    } catch (e, stack) {
+      print('❌ Erreur build item index=$index locationId=${location['id']}: $e');
+      print('📋 Stack: $stack');
+      return const SizedBox.shrink();
+    }
   }
 
   void _showLocationDetails(Map<String, dynamic> location) {
@@ -510,125 +529,160 @@ class _LocationPageState extends State<LocationPage> {
 
   @override
   Widget build(BuildContext context) {
-    final visibleLocations = _visibleLocations;
-    final content = _isLoading && _locations.isEmpty
-        ? const SliverFillRemaining(
-            hasScrollBody: false,
-            child: AdminLoadingState(label: 'Chargement des locations…'),
-          )
-        : _errorMessage != null && _locations.isEmpty
-            ? SliverFillRemaining(
-                hasScrollBody: false,
-                child: AdminErrorState(
-                  message: _errorMessage!,
-                  onRetry: _loadLocations,
-                ),
-              )
-            : visibleLocations.isEmpty
-                ? SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: AdminEmptyState(
-                      icon: _filter == 'corbeille'
-                          ? Icons.delete_outline
-                          : Icons.inbox_outlined,
-                      title: _filter == 'en_attente'
-                          ? 'Aucune location en attente'
-                          : _filter == 'en_cours'
-                              ? 'Aucune location active'
-                              : _filter == 'corbeille'
-                                  ? 'La corbeille est vide'
-                                  : 'Aucune location enregistrée',
-                      message: _filter == 'en_attente'
-                          ? 'Les nouvelles réservations apparaîtront ici.'
-                          : 'Changez de filtre ou actualisez la file.',
-                    ),
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AdminSpacing.lg,
-                      AdminSpacing.sm,
-                      AdminSpacing.lg,
-                      AdminSpacing.section,
-                    ),
-                    sliver: SliverList.builder(
-                      itemCount: visibleLocations.length,
-                      itemBuilder: (context, index) => _buildLocationItem(visibleLocations[index], index),
-                    ),
-                  );
+    print('🏗️ build() appelé - filter=$_filter isLoading=$_isLoading locations=${_locations.length}');
+    try {
+      final visibleLocations = _visibleLocations;
+      final content = _isLoading && _locations.isEmpty
+          ? const SliverFillRemaining(
+              hasScrollBody: false,
+              child: AdminLoadingState(label: 'Chargement des locations…'),
+            )
+          : _errorMessage != null && _locations.isEmpty
+              ? SliverFillRemaining(
+                  hasScrollBody: false,
+                  child: AdminErrorState(
+                    message: _errorMessage!,
+                    onRetry: _loadLocations,
+                  ),
+                )
+              : visibleLocations.isEmpty
+                  ? SliverFillRemaining(
+                      hasScrollBody: false,
+                      child: AdminEmptyState(
+                        icon: _filter == 'corbeille'
+                            ? Icons.delete_outline
+                            : Icons.inbox_outlined,
+                        title: _filter == 'en_attente'
+                            ? 'Aucune location en attente'
+                            : _filter == 'en_cours'
+                                ? 'Aucune location active'
+                                : _filter == 'corbeille'
+                                    ? 'La corbeille est vide'
+                                    : 'Aucune location enregistrée',
+                        message: _filter == 'en_attente'
+                            ? 'Les nouvelles réservations apparaîtront ici.'
+                            : 'Changez de filtre ou actualisez la file.',
+                      ),
+                    )
+                  : SliverPadding(
+                      padding: const EdgeInsets.fromLTRB(
+                        AdminSpacing.lg,
+                        AdminSpacing.sm,
+                        AdminSpacing.lg,
+                        AdminSpacing.section,
+                      ),
+                      sliver: SliverList.builder(
+                        itemCount: visibleLocations.length,
+                        itemBuilder: (context, index) => _buildLocationItem(visibleLocations[index], index),
+                      ),
+                    );
 
-    return RefreshIndicator(
-      onRefresh: _loadLocations,
-      color: AdminPalette.blueprintBlue,
-      child: CustomScrollView(
-        physics: const AlwaysScrollableScrollPhysics(),
-        slivers: [
-          SliverToBoxAdapter(
-            child: AdminPageHeader(
-              title: 'Locations',
-              subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
-              icon: Icons.assignment_outlined,
-              actions: [
-                IconButton(
-                  onPressed: _isLoading ? null : _loadLocations,
-                  tooltip: 'Actualiser',
-                  icon: const Icon(Icons.refresh),
-                  color: AdminPalette.blueprintBlue,
-                ),
-              ],
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: AdminMetricCluster(
-              primary: AdminMetric(
-                label: 'Réservations à traiter',
-                value: _countFor('en_attente'),
-                icon: Icons.pending_actions_outlined,
+      return RefreshIndicator(
+        onRefresh: _loadLocations,
+        color: AdminPalette.blueprintBlue,
+        child: CustomScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: AdminPageHeader(
+                title: 'Locations',
+                subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
+                icon: Icons.assignment_outlined,
+                actions: [
+                  IconButton(
+                    onPressed: _isLoading ? null : _loadLocations,
+                    tooltip: 'Actualiser',
+                    icon: const Icon(Icons.refresh),
+                    color: AdminPalette.blueprintBlue,
+                  ),
+                ],
               ),
-              secondary: [
-                AdminMetric(
-                  label: 'Locations actives',
-                  value: _countFor('en_cours'),
-                  icon: Icons.play_circle_outline,
+            ),
+            SliverToBoxAdapter(
+              child: AdminMetricCluster(
+                primary: AdminMetric(
+                  label: 'Réservations à traiter',
+                  value: _countFor('en_attente'),
+                  icon: Icons.pending_actions_outlined,
                 ),
-                AdminMetric(
-                  label: 'Historique / rejetées',
-                  value: _countFor('corbeille'),
-                  icon: Icons.history_outlined,
+                secondary: [
+                  AdminMetric(
+                    label: 'Locations actives',
+                    value: _countFor('en_cours'),
+                    icon: Icons.play_circle_outline,
+                  ),
+                  AdminMetric(
+                    label: 'Historique / rejetées',
+                    value: _countFor('corbeille'),
+                    icon: Icons.history_outlined,
+                  ),
+                ],
+              ),
+            ),
+            SliverToBoxAdapter(
+              child: AdminSegmentedFilter(
+                selectedValue: _filter,
+                onChanged: (value) => setState(() => _filter = value),
+                options: [
+                  AdminFilterOption(
+                    value: 'en_attente',
+                    label: 'En attente',
+                    count: _countFor('en_attente'),
+                  ),
+                  AdminFilterOption(
+                    value: 'en_cours',
+                    label: 'Actives',
+                    count: _countFor('en_cours'),
+                  ),
+                  AdminFilterOption(
+                    value: 'corbeille',
+                    label: 'Historique',
+                    count: _countFor('corbeille'),
+                  ),
+                  AdminFilterOption(
+                    value: 'tous',
+                    label: 'Toutes',
+                    count: _countFor('tous'),
+                  ),
+                ],
+              ),
+            ),
+            content,
+          ],
+        ),
+      );
+    } catch (e, stack) {
+      print('❌❌❌ CRASH dans build(): $e');
+      print('📋 Stack: $stack');
+      return Scaffold(
+        body: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                const SizedBox(height: 16),
+                Text(
+                  'Erreur de rendu',
+                  style: Theme.of(context).textTheme.titleLarge,
+                ),
+                const SizedBox(height: 8),
+                Text(
+                  '$e',
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                const SizedBox(height: 16),
+                ElevatedButton(
+                  onPressed: _loadLocations,
+                  child: const Text('Réessayer'),
                 ),
               ],
             ),
           ),
-          SliverToBoxAdapter(
-            child: AdminSegmentedFilter(
-              selectedValue: _filter,
-              onChanged: (value) => setState(() => _filter = value),
-              options: [
-                AdminFilterOption(
-                  value: 'en_attente',
-                  label: 'En attente',
-                  count: _countFor('en_attente'),
-                ),
-                AdminFilterOption(
-                  value: 'en_cours',
-                  label: 'Actives',
-                  count: _countFor('en_cours'),
-                ),
-                AdminFilterOption(
-                  value: 'corbeille',
-                  label: 'Historique',
-                  count: _countFor('corbeille'),
-                ),
-                AdminFilterOption(
-                  value: 'tous',
-                  label: 'Toutes',
-                  count: _countFor('tous'),
-                ),
-              ],
-            ),
-          ),
-          content,
-        ],
-      ),
-    );
+        ),
+      );
+    }
   }
 }

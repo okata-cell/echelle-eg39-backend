@@ -385,7 +385,13 @@ class ApiService {
 
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
-      return List<Map<String, dynamic>>.from(data['locations']);
+      final locations = List<Map<String, dynamic>>.from(data['locations']);
+      print('📦 Locations parsées: ${locations.length} éléments');
+      for (var i = 0; i < locations.length; i++) {
+        final loc = locations[i];
+        print('  [$i] id=${loc['id']} statut=${loc['statut']} client=${loc['clientNom']} appareil=${loc['appareilNom']}');
+      }
+      return locations;
     } else {
       throw Exception(jsonDecode(response.body)['error'] ?? 'Erreur lors de la récupération des locations');
     }
@@ -1076,4 +1082,3 @@ class ApiService {
       }
     }
   }
-}

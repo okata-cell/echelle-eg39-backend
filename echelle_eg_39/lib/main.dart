@@ -1,4 +1,6 @@
 
+import 'dart:async';
+
 import 'package:echelle_eg_39/login.page.dart';
 import 'package:echelle_eg_39/ventes.dart';
 import 'package:flutter/material.dart';
@@ -19,25 +21,43 @@ bool isFirebaseReady = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
-  // Initialiser Firebase avec timeout
-  try {
-    await Firebase.initializeApp().timeout(
-      const Duration(seconds: 10),
-      onTimeout: () {
-        print('⚠️ Firebase initialization timed out');
-        throw Exception('Firebase timeout');
-      },
-    );
-    isFirebaseReady = true;
-    print('✅ Firebase initialized successfully');
-  } catch (e) {
-    print('❌ Firebase initialization failed: $e');
-    isFirebaseReady = false;
-    // Continuer quand même si Firebase échoue (mode offline)
-  }
-  
-  runApp(const EchelleEG39App());
+
+  // Capture globale des erreurs Flutter (framework, rendu, etc.)
+  FlutterError.onError = (FlutterErrorDetails details) {
+    print('🔥 FlutterError: ${details.exception}');
+    print('🔥 StackTrace: ${details.stack}');
+    if (details.library != null) {
+      print('🔥 Library: ${details.library}');
+    }
+    if (details.context != null) {
+      print('🔥 Context: ${details.context}');
+    }
+  };
+
+  // Capture globale des erreurs asynchrones via runZonedGuarded
+  await runZonedGuarded(() async {
+    // Initialiser Firebase avec timeout
+    try {
+      await Firebase.initializeApp().timeout(
+        const Duration(seconds: 10),
+        onTimeout: () {
+          print('⚠️ Firebase initialization timed out');
+          throw Exception('Firebase timeout');
+        },
+      );
+      isFirebaseReady = true;
+      print('✅ Firebase initialized successfully');
+    } catch (e) {
+      print('❌ Firebase initialization failed: $e');
+      isFirebaseReady = false;
+      // Continuer quand même si Firebase échoue (mode offline)
+    }
+
+    runApp(const EchelleEG39App());
+  }, (error, stack) {
+    print('🔥 AsyncError: $error');
+    print('🔥 StackTrace: $stack');
+  });
 }
 
 class EchelleEG39App extends StatelessWidget {
