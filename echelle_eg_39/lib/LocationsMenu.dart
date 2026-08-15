@@ -23,6 +23,9 @@ class _LocationPageState extends State<LocationPage> {
   String? _errorMessage;
   String _filter = 'en_attente';
   bool _isLoadingLocations = false;
+  String _lastFilter = 'en_attente';
+  List<Map<String, dynamic>> _cachedVisibleLocations = [];
+  final Map<String, int> _countCache = {};
 
   @override
   void initState() {
@@ -112,31 +115,50 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   List<Map<String, dynamic>> get _visibleLocations {
-    switch (_filter) {
-      case 'en_attente':
-        return _locations.where((location) => _status(location) == 'en_attente').toList();
-      case 'en_cours':
-        return _locations.where((location) => _status(location) == 'en_cours').toList();
-      case 'corbeille':
-        return _historyLocations();
-      case 'tous':
-      default:
-        return _locations;
+    if (_cachedVisibleLocations.isEmpty ||
+        _cachedVisibleLocations.length != _locations.length ||
+        _filter != _lastFilter) {
+      _lastFilter = _filter;
+      switch (_filter) {
+        case 'en_attente':
+          _cachedVisibleLocations = _locations.where((location) => _status(location) == 'en_attente').toList();
+          break;
+        case 'en_cours':
+          _cachedVisibleLocations = _locations.where((location) => _status(location) == 'en_cours').toList();
+          break;
+        case 'corbeille':
+          _cachedVisibleLocations = _historyLocations();
+          break;
+        case 'tous':
+        default:
+          _cachedVisibleLocations = List.from(_locations);
+          break;
+      }
     }
+    return _cachedVisibleLocations;
   }
 
   int _countFor(String filter) {
-    switch (filter) {
-      case 'en_attente':
-        return _locations.where((location) => _status(location) == 'en_attente').length;
-      case 'en_cours':
-        return _locations.where((location) => _status(location) == 'en_cours').length;
-      case 'corbeille':
-        return _historyLocations().length;
-      case 'tous':
-      default:
-        return _locations.length;
+    if (!_countCache.containsKey(filter) || _countCache.length != _locations.length) {
+      int count;
+      switch (filter) {
+        case 'en_attente':
+          count = _locations.where((location) => _status(location) == 'en_attente').length;
+          break;
+        case 'en_cours':
+          count = _locations.where((location) => _status(location) == 'en_cours').length;
+          break;
+        case 'corbeille':
+          count = _historyLocations().length;
+          break;
+        case 'tous':
+        default:
+          count = _locations.length;
+          break;
+      }
+      _countCache[filter] = count;
     }
+    return _countCache[filter]!;
   }
 
   Future<void> _approveLocation(int locationId) async {
@@ -408,7 +430,7 @@ class _LocationPageState extends State<LocationPage> {
     }
 
     return AdminWorkItemCard(
-      key: ValueKey('location_$locationId'),
+      key: ValueKey('loc_${location['id']}_$index'),
       status: location['statut'],
       reference: 'Location #$locationId',
       title: equipment,
@@ -581,6 +603,7 @@ class _LocationPageState extends State<LocationPage> {
         onRefresh: _loadLocations,
         color: AdminPalette.blueprintBlue,
         child: CustomScrollView(
+          key: const PageStorageKey<String>('locations_scroll'),
           physics: const AlwaysScrollableScrollPhysics(),
           slivers: [
             SliverToBoxAdapter(
