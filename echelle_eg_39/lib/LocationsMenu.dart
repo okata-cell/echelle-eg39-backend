@@ -430,7 +430,7 @@ class _LocationPageState extends State<LocationPage> {
     }
 
     return AdminWorkItemCard(
-      key: ValueKey('loc_${location['id']}_$index'),
+      key: ValueKey('loc_${location['id']}'),
       status: location['statut'],
       reference: 'Location #$locationId',
       title: equipment,

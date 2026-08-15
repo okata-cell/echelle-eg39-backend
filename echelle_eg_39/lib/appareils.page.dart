@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'admin/admin_components.dart';
+import 'admin/admin_tokens.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
 import 'appareil_images.dart';
@@ -760,42 +762,39 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text(
-          "Gestion des Appareils",
-          style: TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 20,
-          ),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AdminPageHeader(
+          title: 'Appareils',
+          subtitle: 'Gérez le parc matériel, les tarifs et la disponibilité.',
+          icon: Icons.gps_fixed,
+          actions: [
+            IconButton(
+              onPressed: () => _ouvrirFormulaireAjout(context),
+              tooltip: 'Ajouter un appareil',
+              icon: const Icon(Icons.add_circle_outline),
+              color: AdminPalette.blueprintBlue,
+            ),
+            IconButton(
+              onPressed: _loadAppareilsFromBackend,
+              tooltip: 'Actualiser',
+              icon: const Icon(Icons.refresh),
+              color: AdminPalette.blueprintBlue,
+            ),
+          ],
         ),
-        centerTitle: true,
-        backgroundColor: Colors.blue.shade600,
-        foregroundColor: Colors.white,
-        elevation: 8,
-        shadowColor: Colors.blue.withValues(alpha: 0.3),
-        leading: IconButton(
-          icon: const Icon(Icons.add, size: 28),
-          onPressed: () => _ouvrirFormulaireAjout(context),
-          tooltip: "Ajouter un appareil",
-        ),
-        actions: [
-          Container(
-            margin: const EdgeInsets.only(right: 16),
-            child: const Icon(Icons.center_focus_strong, size: 28),
-          ),
-        ],
-      ),
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF8FAFC), Color(0xFFE2E8F0)],
-          ),
-        ),
-        child: ListView.builder(
-          padding: const EdgeInsets.all(16),
+        Expanded(
+          child: _isLoadingAppareils
+              ? const AdminLoadingState(label: 'Chargement du parc matériel…')
+              : _dataManager.appareils.isEmpty
+                  ? const AdminEmptyState(
+                      icon: Icons.devices_other_outlined,
+                      title: 'Aucun appareil enregistré',
+                      message: 'Ajoutez un appareil pour alimenter le catalogue.',
+                    )
+                  : ListView.builder(
+                      padding: const EdgeInsets.fromLTRB(16, 0, 16, 32),
           itemCount: _dataManager.appareils.length,
           itemBuilder: (context, index) {
             final a = _dataManager.appareils[index];
@@ -827,9 +826,9 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                           ),
                         ),
                         // Gradient overlay (ignore pointer to allow tap on image)
-                        IgnorePointer(
-                          ignoring: true,
-                          child: Positioned.fill(
+                        Positioned.fill(
+                          child: IgnorePointer(
+                            ignoring: true,
                             child: Container(
                               decoration: BoxDecoration(
                                 borderRadius: const BorderRadius.vertical(
@@ -1064,9 +1063,10 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                 ),
               ),
             );
-          },
+                    },
+                  ),
         ),
-      ),
+      ],
     );
   }
 
