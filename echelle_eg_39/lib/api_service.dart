@@ -386,6 +386,15 @@ class ApiService {
     if (response.statusCode == 200) {
       final data = jsonDecode(response.body);
       final locations = List<Map<String, dynamic>>.from(data['locations']);
+      
+      // Mapping des champs pour compatibilite backend/frontend
+      for (var loc in locations) {
+        loc['clientNom'] = loc['clientNom'] ?? loc['client'] ?? 'Inconnu';
+        loc['appareilNom'] = loc['appareilNom'] ?? loc['appareil'] ?? 'Appareil inconnu';
+        loc['clientTelephone'] = loc['clientTelephone'] ?? loc['clientPhone'] ?? '';
+        loc['imageUrl'] = loc['imageUrl'] ?? loc['appareilImage'] ?? '';
+      }
+      
       print('📦 Locations parsées: ${locations.length} éléments');
       for (var i = 0; i < locations.length; i++) {
         final loc = locations[i];
