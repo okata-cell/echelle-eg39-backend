@@ -608,102 +608,100 @@ class AdminWorkItemCard extends StatelessWidget {
         boxShadow: const [AdminElevation.card],
       ),
       clipBehavior: Clip.antiAlias,
-      child: IntrinsicHeight(
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Container(width: AdminStroke.pendingAccent, color: accent),
-            Expanded(
-              child: InkWell(
-                onTap: onTap,
-                child: Padding(
-                  padding: const EdgeInsets.all(AdminSpacing.lg),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          if (leading != null) ...[
-                            leading!,
-                            const SizedBox(width: AdminSpacing.md),
-                          ],
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(reference.toUpperCase(), style: adminMonoStyle(context, color: accent, size: 11)),
-                                const SizedBox(height: AdminSpacing.xs),
-                                Text(
-                                  title,
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                                        color: AdminPalette.primaryText,
-                                        fontWeight: FontWeight.w800,
-                                      ),
-                                ),
-                                const SizedBox(height: AdminSpacing.xs),
-                                Text(
-                                  requester,
-                                  maxLines: 1,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                        color: AdminPalette.secondaryText,
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: AdminSpacing.sm),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.end,
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          SizedBox(width: AdminStroke.pendingAccent, child: ColoredBox(color: accent)),
+          Expanded(
+            child: InkWell(
+              onTap: onTap,
+              child: Padding(
+                padding: const EdgeInsets.all(AdminSpacing.lg),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (leading != null) ...[
+                          leading!,
+                          const SizedBox(width: AdminSpacing.md),
+                        ],
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              AdminStatusChip(status: status),
-                              if (amount != null && amount!.isNotEmpty) ...[
-                                const SizedBox(height: AdminSpacing.md),
-                                Text(
-                                  amount!,
-                                  textAlign: TextAlign.end,
-                                  style: adminMonoStyle(
-                                    context,
-                                    color: AdminPalette.primaryText,
-                                    size: 13,
-                                    weight: FontWeight.w800,
-                                  ),
-                                ),
-                              ],
+                              Text(reference.toUpperCase(), style: adminMonoStyle(context, color: accent, size: 11)),
+                              const SizedBox(height: AdminSpacing.xs),
+                              Text(
+                                title,
+                                maxLines: 2,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                      color: AdminPalette.primaryText,
+                                      fontWeight: FontWeight.w800,
+                                    ),
+                              ),
+                              const SizedBox(height: AdminSpacing.xs),
+                              Text(
+                                requester,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                      color: AdminPalette.secondaryText,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                              ),
                             ],
                           ),
-                        ],
-                      ),
-                      if (meta != null && meta!.trim().isNotEmpty) ...[
-                        const SizedBox(height: AdminSpacing.md),
-                        Text(
-                          meta!,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                                color: AdminPalette.secondaryText,
+                        ),
+                        const SizedBox(width: AdminSpacing.sm),
+                        Column(
+                          crossAxisAlignment: CrossAxisAlignment.end,
+                          children: [
+                            AdminStatusChip(status: status),
+                            if (amount != null && amount!.isNotEmpty) ...[
+                              const SizedBox(height: AdminSpacing.md),
+                              Text(
+                                amount!,
+                                textAlign: TextAlign.end,
+                                style: adminMonoStyle(
+                                  context,
+                                  color: AdminPalette.primaryText,
+                                  size: 13,
+                                  weight: FontWeight.w800,
+                                ),
                               ),
+                            ],
+                          ],
                         ),
                       ],
-                      if (details != null) ...[
-                        const SizedBox(height: AdminSpacing.md),
-                        details!,
-                      ],
-                      if (footer != null) ...[
-                        const SizedBox(height: AdminSpacing.lg),
-                        footer!,
-                      ],
+                    ),
+                    if (meta != null && meta!.trim().isNotEmpty) ...[
+                      const SizedBox(height: AdminSpacing.md),
+                      Text(
+                        meta!,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                              color: AdminPalette.secondaryText,
+                            ),
+                      ),
                     ],
-                  ),
+                    if (details != null) ...[
+                      const SizedBox(height: AdminSpacing.md),
+                      details!,
+                    ],
+                    if (footer != null) ...[
+                      const SizedBox(height: AdminSpacing.lg),
+                      footer!,
+                    ],
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
