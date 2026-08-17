@@ -23,7 +23,6 @@ class _LocationPageState extends State<LocationPage> {
   String? _errorMessage;
   String _filter = 'en_attente';
   bool _isLoadingLocations = false;
-  String _lastFilter = 'en_attente';
   List<Map<String, dynamic>> _cachedVisibleLocations = [];
   final Map<String, int> _countCache = {};
 
@@ -72,6 +71,8 @@ class _LocationPageState extends State<LocationPage> {
         _locations = locations;
         _isLoading = false;
         _errorMessage = null;
+        _cachedVisibleLocations = [];
+        _countCache.clear();
       });
       print('✅ UI mise à jour avec ${locations.length} locations');
     } catch (error) {
@@ -114,32 +115,27 @@ class _LocationPageState extends State<LocationPage> {
     }).toList();
   }
 
-  List<Map<String, dynamic>> get _visibleLocations {
-    if (_cachedVisibleLocations.isEmpty ||
-        _cachedVisibleLocations.length != _locations.length ||
-        _filter != _lastFilter) {
-      _lastFilter = _filter;
-      switch (_filter) {
-        case 'en_attente':
-          _cachedVisibleLocations = _locations.where((location) => _status(location) == 'en_attente').toList();
-          break;
-        case 'en_cours':
-          _cachedVisibleLocations = _locations.where((location) => _status(location) == 'en_cours').toList();
-          break;
-        case 'corbeille':
-          _cachedVisibleLocations = _historyLocations();
-          break;
-        case 'tous':
-        default:
-          _cachedVisibleLocations = List.from(_locations);
-          break;
-      }
+  List<Map<String, dynamic>> _getFilteredLocations() {
+    switch (_filter) {
+      case 'en_attente':
+        return _locations.where((location) => _status(location) == 'en_attente').toList();
+      case 'en_cours':
+        return _locations.where((location) => _status(location) == 'en_cours').toList();
+      case 'corbeille':
+        return _historyLocations();
+      case 'tous':
+      default:
+        return List.from(_locations);
     }
+  }
+
+  List<Map<String, dynamic>> get _visibleLocations {
+    _cachedVisibleLocations = _getFilteredLocations();
     return _cachedVisibleLocations;
   }
 
   int _countFor(String filter) {
-    if (!_countCache.containsKey(filter) || _countCache.length != _locations.length) {
+    if (!_countCache.containsKey(filter)) {
       int count;
       switch (filter) {
         case 'en_attente':
@@ -386,7 +382,13 @@ class _LocationPageState extends State<LocationPage> {
 
   Widget _buildLocationItem(Map<String, dynamic> location, int index) {
     try {
-      final locationId = int.tryParse(location['id'].toString());
+      final locationId = (location['id'] is num)
+          ? (location['id'] as num).toInt()
+          : int.tryParse(location['id']?.toString() ?? '');
+      
+      // Debug: afficher le type et la valeur de l'ID
+      print('🔍 location[id] type: ${location['id'].runtimeType}, value: ${location['id']}, parsed: $locationId');
+      
       if (locationId == null) {
         print('⚠️ Location ID invalide à l\'index $index: ${location['id']}');
         return const SizedBox.shrink();
@@ -430,7 +432,7 @@ class _LocationPageState extends State<LocationPage> {
     }
 
     return AdminWorkItemCard(
-      key: ValueKey('loc_${location['id']}'),
+      key: ValueKey('loc_$locationId'),
       status: location['statut'],
       reference: 'Location #$locationId',
       title: equipment,
@@ -554,50 +556,53 @@ class _LocationPageState extends State<LocationPage> {
     print('🏗️ build() appelé - filter=$_filter isLoading=$_isLoading locations=${_locations.length}');
     try {
       final visibleLocations = _visibleLocations;
-      final content = _isLoading && _locations.isEmpty
-          ? const SliverFillRemaining(
-              hasScrollBody: false,
-              child: AdminLoadingState(label: 'Chargement des locations…'),
-            )
-          : _errorMessage != null && _locations.isEmpty
-              ? SliverFillRemaining(
-                  hasScrollBody: false,
-                  child: AdminErrorState(
-                    message: _errorMessage!,
-                    onRetry: _loadLocations,
-                  ),
-                )
-              : visibleLocations.isEmpty
-                  ? SliverFillRemaining(
-                      hasScrollBody: false,
-                      child: AdminEmptyState(
-                        icon: _filter == 'corbeille'
-                            ? Icons.delete_outline
-                            : Icons.inbox_outlined,
-                        title: _filter == 'en_attente'
-                            ? 'Aucune location en attente'
-                            : _filter == 'en_cours'
-                                ? 'Aucune location active'
-                                : _filter == 'corbeille'
-                                    ? 'La corbeille est vide'
-                                    : 'Aucune location enregistrée',
-                        message: _filter == 'en_attente'
-                            ? 'Les nouvelles réservations apparaîtront ici.'
-                            : 'Changez de filtre ou actualisez la file.',
-                      ),
-                    )
-                  : SliverPadding(
-                      padding: const EdgeInsets.fromLTRB(
-                        AdminSpacing.lg,
-                        AdminSpacing.sm,
-                        AdminSpacing.lg,
-                        AdminSpacing.section,
-                      ),
-                      sliver: SliverList.builder(
-                        itemCount: visibleLocations.length,
-                        itemBuilder: (context, index) => _buildLocationItem(visibleLocations[index], index),
-                      ),
-                    );
+      Widget content;
+      if (_isLoading && _locations.isEmpty) {
+        content = SliverFillRemaining(
+          hasScrollBody: false,
+          child: AdminLoadingState(label: 'Chargement des locations…'),
+        );
+      } else if (_errorMessage != null && _locations.isEmpty) {
+        content = SliverFillRemaining(
+          hasScrollBody: false,
+          child: AdminErrorState(
+            message: _errorMessage!,
+            onRetry: _loadLocations,
+          ),
+        );
+      } else if (visibleLocations.isEmpty) {
+        content = SliverFillRemaining(
+          hasScrollBody: false,
+          child: AdminEmptyState(
+            icon: _filter == 'corbeille'
+                ? Icons.delete_outline
+                : Icons.inbox_outlined,
+            title: _filter == 'en_attente'
+                ? 'Aucune location en attente'
+                : _filter == 'en_cours'
+                    ? 'Aucune location active'
+                    : _filter == 'corbeille'
+                        ? 'La corbeille est vide'
+                        : 'Aucune location enregistrée',
+            message: _filter == 'en_attente'
+                ? 'Les nouvelles réservations apparaîtront ici.'
+                : 'Changez de filtre ou actualisez la file.',
+          ),
+        );
+      } else {
+        content = SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            AdminSpacing.lg,
+            AdminSpacing.sm,
+            AdminSpacing.lg,
+            AdminSpacing.section,
+          ),
+          sliver: SliverList.builder(
+            itemCount: visibleLocations.length,
+            itemBuilder: (context, index) => _buildLocationItem(visibleLocations[index], index),
+          ),
+        );
+      }
 
       return RefreshIndicator(
         onRefresh: _loadLocations,
@@ -677,33 +682,59 @@ class _LocationPageState extends State<LocationPage> {
     } catch (e, stack) {
       print('❌❌❌ CRASH dans build(): $e');
       print('📋 Stack: $stack');
-      return Scaffold(
-        body: Center(
-          child: Padding(
-            padding: const EdgeInsets.all(24),
-            child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                const SizedBox(height: 16),
-                Text(
-                  'Erreur de rendu',
-                  style: Theme.of(context).textTheme.titleLarge,
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '$e',
-                  textAlign: TextAlign.center,
-                  style: Theme.of(context).textTheme.bodySmall,
-                ),
-                const SizedBox(height: 16),
-                ElevatedButton(
-                  onPressed: _loadLocations,
-                  child: const Text('Réessayer'),
-                ),
-              ],
+      return RefreshIndicator(
+        onRefresh: _loadLocations,
+        color: AdminPalette.blueprintBlue,
+        child: CustomScrollView(
+          key: const PageStorageKey<String>('locations_scroll_error'),
+          physics: const AlwaysScrollableScrollPhysics(),
+          slivers: [
+            SliverToBoxAdapter(
+              child: AdminPageHeader(
+                title: 'Locations',
+                subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
+                icon: Icons.assignment_outlined,
+                actions: [
+                  IconButton(
+                    onPressed: _loadLocations,
+                    tooltip: 'Actualiser',
+                    icon: const Icon(Icons.refresh),
+                    color: AdminPalette.blueprintBlue,
+                  ),
+                ],
+              ),
             ),
-          ),
+            SliverFillRemaining(
+              hasScrollBody: false,
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                      const SizedBox(height: 16),
+                      Text(
+                        'Erreur de rendu',
+                        style: Theme.of(context).textTheme.titleLarge,
+                      ),
+                      const SizedBox(height: 8),
+                      Text(
+                        '$e',
+                        textAlign: TextAlign.center,
+                        style: Theme.of(context).textTheme.bodySmall,
+                      ),
+                      const SizedBox(height: 16),
+                      ElevatedButton(
+                        onPressed: _loadLocations,
+                        child: const Text('Réessayer'),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ],
         ),
       );
     }
