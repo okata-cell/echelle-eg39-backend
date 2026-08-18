@@ -608,7 +608,12 @@ class _LocationPageState extends State<LocationPage> {
           ),
           sliver: SliverList.builder(
             itemCount: visibleLocations.length,
-            itemBuilder: (context, index) => _buildLocationItem(visibleLocations[index], index),
+            itemBuilder: (context, index) => RepaintBoundary(
+              child: Semantics(
+                excludeSemantics: true,
+                child: _buildLocationItem(visibleLocations[index], index),
+              ),
+            ),
           ),
         );
       }
