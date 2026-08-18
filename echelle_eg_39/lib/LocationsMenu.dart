@@ -25,6 +25,8 @@ class _LocationPageState extends State<LocationPage> {
   bool _isLoadingLocations = false;
   List<Map<String, dynamic>> _cachedVisibleLocations = [];
   final Map<String, int> _countCache = {};
+  int _lastLocationsLength = 0;
+  String _lastFilter = 'en_attente';
 
   @override
   void initState() {
@@ -73,6 +75,7 @@ class _LocationPageState extends State<LocationPage> {
         _errorMessage = null;
         _cachedVisibleLocations = [];
         _countCache.clear();
+        _lastLocationsLength = 0;
       });
       print('✅ UI mise à jour avec ${locations.length} locations');
     } catch (error) {
@@ -130,7 +133,13 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   List<Map<String, dynamic>> get _visibleLocations {
-    _cachedVisibleLocations = _getFilteredLocations();
+    if (_cachedVisibleLocations.isEmpty ||
+        _lastFilter != _filter ||
+        _lastLocationsLength != _locations.length) {
+      _cachedVisibleLocations = _getFilteredLocations();
+      _lastFilter = _filter;
+      _lastLocationsLength = _locations.length;
+    }
     return _cachedVisibleLocations;
   }
 
