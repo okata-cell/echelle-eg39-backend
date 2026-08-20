@@ -7,3 +7,23 @@ services:
     envVars:
       - key: NODE_ENV
         value: production
+      # ⚠️ Ces variables sont configurées manuellement dans le Dashboard Render.
+      # `sync: false` indique à Render de NE PAS écraser les valeurs existantes.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_PHONE
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: AT_API_KEY
+        sync: false
+      - key: AFRICASTALKING_USERNAME
+        sync: false

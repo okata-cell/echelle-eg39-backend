@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: echelle-eg39-backend-1
+    env: node
+    buildCommand: cd backend/echelle_eg_39/backend && npm install
+    startCommand: cd backend/echelle_eg_39/backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        value: "7f3b9c2e5a1d4f8e6b0c3a7d9e2f5b8c1a4d6e9f2b5c8e1a4d7f0b3c6e9f2a5b"
+      - key: ALLOWED_ORIGINS
+        value: "http://localhost:*,https://echelle-eg39.web.app,https://*.onrender.com"

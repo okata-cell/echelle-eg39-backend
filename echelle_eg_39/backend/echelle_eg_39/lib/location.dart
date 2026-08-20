@@ -42,24 +42,15 @@ class _LocationScreenState extends State<LocationScreen> {
 
   final List<String> _categories = [
     'Tous', 'GPS', 'Station totale', 'Niveau', 'Mire',
-    'Trepied', 'Drone', 'Laser', 'Réflecteur'
+    'Trepied', 'Drone', 'Laser', 'Réflecteur', 'Canne',
+    'Antenne', 'Accessoire', 'Scanner 3D'
   ];
-
-  List<Equipment> get _equipments => _dataManager.appareils.map((a) => Equipment(
-    id: int.parse(a.id.substring(4)),
-    name: a.nom,
-    category: a.type,
-    price: a.prixLocation,
-    available: a.disponible,
-    imageUrl: a.imageUrl,
-  )).toList();
 
   @override
   void initState() {
     super.initState();
     _loadCurrentUser();
     _loadAppareilsFromAPI();
-    _dataManager.initialize();
     _dataManager.addListener(_onDataManagerChanged);
   }
 
@@ -69,13 +60,16 @@ class _LocationScreenState extends State<LocationScreen> {
       if (mounted && appareils.isNotEmpty) {
         setState(() {
           _apiAppareils = appareils.map((a) => Equipment(
-            id: a['id'] as int,
-            name: a['nom'] as String,
-            category: a['type'] as String,
-            price: a['prixLocation'] as int,
-            available: a['disponible'] as bool? ?? true,
-            imageUrl: a['imageUrl'] as String? ?? '',
-          )).toList();
+                id: a['id'] as int,
+                name: a['nom'] as String,
+                category: a['type'] as String,
+                price: a['prixLocation'] as int,
+                available: a['disponible'] as bool? ?? true,
+                imageUrl: a['imageUrl'] as String? ??
+                    AppareilImages.getImageUrlForType(
+                      a['type'] as String? ?? '',
+                    ),
+              )).toList();
         });
       }
     } catch (e) {
@@ -104,8 +98,8 @@ class _LocationScreenState extends State<LocationScreen> {
   }
 
   List<Equipment> get _filteredEquipments {
-    // Use API appareils if available, otherwise fallback to local
-    final source = _apiAppareils.isNotEmpty ? _apiAppareils : _equipments;
+    // Use only API appareils (no fallback to local data manager to avoid conflicts)
+    final source = _apiAppareils;
     return source.where((eq) {
       final matchesSearch = eq.name.toLowerCase().contains(_searchQuery.toLowerCase());
       final matchesCategory = _selectedCategory == 'Tous' || eq.category == _selectedCategory;
@@ -200,7 +194,7 @@ class _LocationScreenState extends State<LocationScreen> {
                   userId: _currentUserId,
                   onRefresh: () {
                     _loadCurrentUser();
-                    _dataManager.initialize();
+                    _loadAppareilsFromAPI();
                   },
                 );
               },
@@ -423,11 +417,6 @@ class _EquipmentCardState extends State<_EquipmentCard> {
   }
 
   void _showReservationDialog() async {
-    final prefs = await SharedPreferences.getInstance();
-    final userName  = prefs.getString('userName')  ?? 'Client connecté';
-    final userEmail = prefs.getString('userEmail') ?? 'client@exemple.com';
-    final userPhone = prefs.getString('userPhone') ?? '+228 00 00 00 00';
-
     if (!mounted) return;
 
     DateTime? selectedStartDate;
@@ -510,10 +499,6 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                       ? () async {
                           setDialogState(() => _isSubmitting = true);
                           try {
-                            final days =
-                                selectedEndDate!.difference(selectedStartDate!).inDays + 1;
-                            final total = days * widget.equipment.price;
-
                             // Créer la location → le nom du client est transmis via le token JWT
                             // Le backend joint la table users pour récupérer first_name + last_name
                             final result = await ApiService.createLocation(
@@ -631,9 +616,8 @@ class _EquipmentCardState extends State<_EquipmentCard> {
             width: 128,
             height: 128,
             child: ZoomableImage(
-              imageUrl: equipment.imageUrl.isNotEmpty
-                  ? equipment.imageUrl
-                  : AppareilImages.getImageUrlForType(equipment.name),
+              imageUrl: equipment.imageUrl,
+              fallbackUrl: AppareilImages.getImageUrlForType(equipment.category),
               title: equipment.name,
               width: 128,
               height: 128,

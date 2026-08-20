@@ -311,16 +311,20 @@ class _ModernHomePageState extends State<ModernHomePage> {
                 child: Padding(
                   padding: const EdgeInsets.fromLTRB(20, 16, 20, 8),
                   child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Nos services topographiques',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827),
+                      Expanded(
+                        child: Text(
+                          'Nos services topographiques',
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF111827),
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
                       TextButton.icon(
                         onPressed: () {
                           Navigator.push(
@@ -334,6 +338,8 @@ class _ModernHomePageState extends State<ModernHomePage> {
                         label: const Text('Voir tout'),
                         style: TextButton.styleFrom(
                           foregroundColor: const Color(0xFF2563EB),
+                          padding: const EdgeInsets.symmetric(horizontal: 8),
+                          minimumSize: const Size(0, 40),
                         ),
                       ),
                     ],

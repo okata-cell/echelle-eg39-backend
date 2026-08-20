@@ -46,3 +46,6 @@ app.*.map.json
 
 # Kombai debugging files
 .kombai/
+.env
+backend/.env
+backend/echelle_eg_39/backend/.env

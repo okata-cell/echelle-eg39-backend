@@ -1,535 +1,430 @@
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
-import 'dart:convert';
+
+import 'admin/admin_components.dart';
+import 'admin/admin_tokens.dart';
 import 'api_service.dart';
 
-/// Page admin pour gérer les demandes d'achat (copie de LocationsMenu)
+/// File admin des demandes d’achat.
+///
+/// Le nom historique est conservé car le dashboard et d’autres écrans
+/// l’utilisent déjà comme point d’entrée.
 class AdminVentesPageFixed extends StatefulWidget {
-  const AdminVentesPageFixed({Key? key}) : super(key: key);
+  const AdminVentesPageFixed({super.key});
 
   @override
   State<AdminVentesPageFixed> createState() => _AdminVentesPageFixedState();
 }
 
-class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with SingleTickerProviderStateMixin {
-  late TabController _tabController;
-  List<Map<String, dynamic>> _demandesFromAPI = [];
+class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
+  List<Map<String, dynamic>> _demandes = [];
+  final Set<int> _busyDemandeIds = <int>{};
   bool _isLoading = true;
+  String? _errorMessage;
+  String _filter = 'en_attente';
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 3, vsync: this);
-    _loadDemandesFromAPI();
+    _loadDemandes();
   }
 
-  @override
-  void dispose() {
-    _tabController.dispose();
-    super.dispose();
-  }
+  Future<void> _loadDemandes() async {
+    if (mounted) {
+      setState(() {
+        _isLoading = true;
+        _errorMessage = null;
+      });
+    }
 
-  /// Charger les demandes d'achat depuis l'API
-  Future<void> _loadDemandesFromAPI() async {
-    setState(() => _isLoading = true);
     try {
-      final token = await ApiService.ensureAuthenticated();
-      final response = await http.get(
-        Uri.parse('${ApiService.baseUrl}/demandes'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
+      final demandes = await ApiService.getDemandesAchat();
+      if (!mounted) return;
+      setState(() {
+        _demandes = demandes;
+        _isLoading = false;
+      });
+    } catch (error) {
+      if (!mounted) return;
+      setState(() {
+        _errorMessage = error.toString();
+        _isLoading = false;
+      });
+    }
+  }
+
+  String _status(Map<String, dynamic> demande) {
+    return adminStatusKey(demande['statut']);
+  }
+
+  List<Map<String, dynamic>> _historyDemandes() {
+    return _demandes.where((demande) {
+      final status = _status(demande);
+      return status == 'rejetee' || status == 'termine';
+    }).toList();
+  }
+
+  List<Map<String, dynamic>> get _visibleDemandes {
+    switch (_filter) {
+      case 'en_attente':
+        return _demandes.where((demande) => _status(demande) == 'en_attente').toList();
+      case 'approuvee':
+        return _demandes.where((demande) => _status(demande) == 'approuvee').toList();
+      case 'corbeille':
+        return _historyDemandes();
+      case 'tous':
+      default:
+        return _demandes;
+    }
+  }
+
+  int _countFor(String filter) {
+    switch (filter) {
+      case 'en_attente':
+        return _demandes.where((demande) => _status(demande) == 'en_attente').length;
+      case 'approuvee':
+        return _demandes.where((demande) => _status(demande) == 'approuvee').length;
+      case 'corbeille':
+        return _historyDemandes().length;
+      case 'tous':
+      default:
+        return _demandes.length;
+    }
+  }
+
+  Future<void> _approveDemande(int demandeId) async {
+    if (!_startMutation(demandeId)) return;
+
+    try {
+      await ApiService.updateDemandeAchatStatut(
+        demandeId,
+        'approuvee',
+        commentaire: 'Demande approuvée par l’administration.',
       );
-
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        setState(() {
-          _demandesFromAPI = List<Map<String, dynamic>>.from(data['demandes'] ?? []);
-          _isLoading = false;
-        });
-        print('📡 Admin Demandes Achat: ${_demandesFromAPI.length} demandes chargées');
-      } else {
-        setState(() => _isLoading = false);
-        print('❌ Erreur chargement demandes: ${response.statusCode}');
-      }
-    } catch (e) {
-      setState(() => _isLoading = false);
-      print('❌ Exception chargement demandes: $e');
-    }
-  }
-
-  /// Demandes en attente
-  List<Map<String, dynamic>> _getPendingDemandes() {
-    return _demandesFromAPI.where((d) {
-      final statut = d['statut']?.toString().toLowerCase().trim();
-      return statut == 'en_attente' || statut == 'pending';
-    }).toList();
-  }
-
-  /// Demandes actives/approuvées
-  List<Map<String, dynamic>> _getActiveDemandes() {
-    return _demandesFromAPI.where((d) {
-      final statut = d['statut']?.toString().toLowerCase().trim();
-      return statut == 'approuvee' || statut == 'approuvé' || statut == 'approved';
-    }).toList();
-  }
-
-  /// Demandes terminées/rejetées
-  List<Map<String, dynamic>> _getCompletedDemandes() {
-    return _demandesFromAPI.where((d) {
-      final statut = d['statut']?.toString().toLowerCase().trim();
-      return statut == 'termine' || statut == 'rejetee' || statut == 'rejetée' || statut == 'livree';
-    }).toList();
-  }
-
-  /// Formater une date
-  String _formatDate(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-    } catch (e) {
-      return dateStr;
-    }
-  }
-
-  /// Formater date en français
-  String _formatDateFr(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
-                      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-      return '${date.day} ${months[date.month - 1]} ${date.year}';
-    } catch (e) {
-      return dateStr;
-    }
-  }
-
-  /// Approuver une demande
-  Future<void> _approveDemande(int id) async {
-    try {
-      final token = await ApiService.ensureAuthenticated();
-      final response = await http.patch(
-        Uri.parse('${ApiService.baseUrl}/demandes/$id/statut'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({
-          'statut': 'approuvee',
-          'commentaire_admin': 'Demande approuvée par l\'admin',
-        }),
-      );
-
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Demande approuvée avec succès!'),
-              backgroundColor: Colors.green,
-            ),
-          );
-          _loadDemandesFromAPI();
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('❌ Erreur: ${response.body}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
+        showAdminMessage(
+          context,
+          'Demande #$demandeId approuvée.',
+          backgroundColor: AdminPalette.approvalGreen,
+        );
+        await _loadDemandes();
+      }
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Approbation impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
         );
       }
+    } finally {
+      _finishMutation(demandeId);
     }
   }
 
-  /// Rejeter une demande
-  Future<void> _rejectDemande(int id, String motif) async {
-    try {
-      final token = await ApiService.ensureAuthenticated();
-      final response = await http.patch(
-        Uri.parse('${ApiService.baseUrl}/demandes/$id/statut'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-        body: json.encode({
-          'statut': 'rejetee',
-          'commentaire_admin': motif,
-        }),
-      );
+  Future<void> _rejectDemande(int demandeId) async {
+    if (_busyDemandeIds.contains(demandeId)) return;
 
-      if (response.statusCode == 200) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('✅ Demande rejetée'),
-              backgroundColor: Colors.orange,
-            ),
-          );
-          _loadDemandesFromAPI();
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('❌ Erreur: ${response.body}'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
-      }
-    } catch (e) {
+    final reason = await showAdminRejectionSheet(
+      context,
+      entityLabel: 'la demande #$demandeId',
+    );
+    if (!mounted || reason == null || reason.trim().isEmpty) return;
+    if (!_startMutation(demandeId)) return;
+
+    try {
+      await ApiService.updateDemandeAchatStatut(
+        demandeId,
+        'rejetee',
+        commentaire: reason,
+      );
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
+        showAdminMessage(
+          context,
+          'Demande #$demandeId rejetée.',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+        await _loadDemandes();
+      }
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Rejet impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
         );
       }
+    } finally {
+      _finishMutation(demandeId);
     }
+  }
+
+  Future<void> _deleteDemande(int demandeId) async {
+    if (_busyDemandeIds.contains(demandeId)) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Supprimer la demande ?'),
+        content: Text('La demande #$demandeId sera supprimée définitivement.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: AdminPalette.destructiveRed,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true || !_startMutation(demandeId)) return;
+
+    try {
+      await ApiService.deleteDemande(demandeId);
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Demande #$demandeId supprimée.',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+        await _loadDemandes();
+      }
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Suppression impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+      }
+    } finally {
+      _finishMutation(demandeId);
+    }
+  }
+
+  bool _startMutation(int demandeId) {
+    if (!mounted || _busyDemandeIds.contains(demandeId)) return false;
+    setState(() => _busyDemandeIds.add(demandeId));
+    return true;
+  }
+
+  void _finishMutation(int demandeId) {
+    if (!mounted) return;
+    setState(() => _busyDemandeIds.remove(demandeId));
+  }
+
+  String _display(Object? value, {String fallback = ''}) {
+    final text = value?.toString().trim() ?? '';
+    return text.isEmpty ? fallback : text;
+  }
+
+  Widget _buildDetails(Map<String, dynamic> demande) {
+    final email = _display(demande['clientEmail']);
+    final phone = _display(demande['clientPhone']);
+    final date = formatAdminDate(demande['createdAt']);
+    final note = _display(demande['commentaireAdmin'] ?? demande['commentaire_admin']);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Wrap(
+          spacing: AdminSpacing.lg,
+          runSpacing: AdminSpacing.xs,
+          children: [
+            if (email.isNotEmpty) _buildMeta('✉ $email'),
+            if (phone.isNotEmpty) _buildMeta('☎ $phone'),
+            if (date.isNotEmpty) _buildMeta('Reçu le $date'),
+          ],
+        ),
+        if (note.isNotEmpty) ...[
+          const SizedBox(height: AdminSpacing.md),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AdminSpacing.md),
+            decoration: BoxDecoration(
+              color: AdminPalette.mutedSurface,
+              borderRadius: BorderRadius.circular(AdminRadii.field),
+            ),
+            child: Text(
+              'Note admin : $note',
+              style: const TextStyle(color: AdminPalette.secondaryText, height: 1.35),
+            ),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _buildMeta(String text) {
+    return Text(
+      text,
+      style: const TextStyle(color: AdminPalette.secondaryText, fontSize: 12),
+    );
+  }
+
+  Widget _buildFooter(Map<String, dynamic> demande, int id) {
+    final status = _status(demande);
+    final busy = _busyDemandeIds.contains(id);
+
+    if (status == 'en_attente') {
+      return AdminDecisionBar(
+        isBusy: busy,
+        onApprove: () => _approveDemande(id),
+        onReject: () => _rejectDemande(id),
+      );
+    }
+
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.end,
+      children: [
+        if (status == 'rejetee' || status == 'termine')
+          IconButton(
+            onPressed: busy ? null : () => _deleteDemande(id),
+            tooltip: 'Supprimer',
+            icon: const Icon(Icons.delete_outline),
+            color: AdminPalette.destructiveRed,
+          ),
+      ],
+    );
+  }
+
+  Widget _buildDemandeItem(Map<String, dynamic> demande) {
+    final id = int.tryParse(demande['id'].toString());
+    if (id == null) return const SizedBox.shrink();
+
+    final product = _display(demande['appareilNom'], fallback: 'Appareil non renseigné');
+    final client = _display(demande['clientNom'], fallback: 'Client non renseigné');
+    final quantity = demande['quantite'] ?? 1;
+    final code = _display(demande['code'], fallback: 'DA-$id');
+
+    return AdminWorkItemCard(
+      status: demande['statut'],
+      reference: code,
+      title: '$product  ×$quantity',
+      requester: client,
+      meta: 'Demande d’achat · ${adminStatusLabel(demande['statut'])}',
+      amount: formatAdminAmount(demande['total']),
+      details: _buildDetails(demande),
+      footer: _buildFooter(demande, id),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    final pendingCount = _getPendingDemandes().length;
-    final activeCount = _getActiveDemandes().length;
-    final completedCount = _getCompletedDemandes().length;
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF5F6F8),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFF059669),
-        foregroundColor: Colors.white,
-        title: const Text('Demandes d\'Achat'),
-        elevation: 0,
-        bottom: TabBar(
-          controller: _tabController,
-          indicatorColor: Colors.white,
-          isScrollable: true,
-          labelPadding: const EdgeInsets.symmetric(horizontal: 8),
-          tabs: [
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.pending_actions, size: 16),
-                  const SizedBox(width: 4),
-                  Text('En att. ($pendingCount)', style: const TextStyle(fontSize: 12)),
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.play_circle_outline, size: 16),
-                  const SizedBox(width: 4),
-                  Text('Approuv. ($activeCount)', style: const TextStyle(fontSize: 12)),
-                ],
-              ),
-            ),
-            Tab(
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Icon(Icons.check_circle_outline, size: 16),
-                  const SizedBox(width: 4),
-                  Text('Termin. ($completedCount)', style: const TextStyle(fontSize: 12)),
-                ],
-              ),
-            ),
-          ],
-        ),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            onPressed: _loadDemandesFromAPI,
-            tooltip: 'Actualiser',
-          ),
-        ],
-      ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : TabBarView(
-              controller: _tabController,
-              children: [
-                // En attente
-                _buildDemandesList(_getPendingDemandes(), 'en_attente'),
-                // Approuvées
-                _buildDemandesList(_getActiveDemandes(), 'approuvee'),
-                // Terminées
-                _buildDemandesList(_getCompletedDemandes(), 'termine'),
-              ],
-            ),
-    );
-  }
-
-  Widget _buildDemandesList(List<Map<String, dynamic>> demandes, String type) {
-    if (demandes.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              type == 'en_attente' ? Icons.pending_actions :
-              type == 'approuvee' ? Icons.check_circle : Icons.done_all,
-              size: 64,
-              color: Colors.grey[400],
-            ),
-            const SizedBox(height: 16),
-            Text(
-              type == 'en_attente' ? 'Aucune demande en attente' :
-              type == 'approuvee' ? 'Aucune demande approuvée' : 'Aucune demande terminée',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
-              ),
-            ),
-          ],
-        ),
-      );
-    }
+    final visibleDemandes = _visibleDemandes;
+    final content = _isLoading && _demandes.isEmpty
+        ? const SliverFillRemaining(
+            hasScrollBody: false,
+            child: AdminLoadingState(label: 'Chargement des demandes d’achat…'),
+          )
+        : _errorMessage != null && _demandes.isEmpty
+            ? SliverFillRemaining(
+                hasScrollBody: false,
+                child: AdminErrorState(message: _errorMessage!, onRetry: _loadDemandes),
+              )
+            : visibleDemandes.isEmpty
+                ? SliverFillRemaining(
+                    hasScrollBody: false,
+                    child: AdminEmptyState(
+                      icon: Icons.shopping_cart_outlined,
+                      title: _filter == 'en_attente'
+                          ? 'Aucune demande en attente'
+                          : 'Aucune demande pour ce filtre',
+                      message: _filter == 'en_attente'
+                          ? 'Les nouvelles demandes d’achat apparaîtront ici.'
+                          : 'Changez de filtre ou actualisez la file.',
+                    ),
+                  )
+                : SliverPadding(
+                    padding: const EdgeInsets.fromLTRB(
+                      AdminSpacing.lg,
+                      AdminSpacing.sm,
+                      AdminSpacing.lg,
+                      AdminSpacing.section,
+                    ),
+                    sliver: SliverList.builder(
+                      itemCount: visibleDemandes.length,
+                      itemBuilder: (context, index) => _buildDemandeItem(visibleDemandes[index]),
+                    ),
+                  );
 
     return RefreshIndicator(
-      onRefresh: _loadDemandesFromAPI,
-      child: ListView.builder(
-        padding: const EdgeInsets.all(16),
-        itemCount: demandes.length,
-        itemBuilder: (context, index) => _buildDemandeCard(demandes[index], type),
-      ),
-    );
-  }
-
-  Widget _buildDemandeCard(Map<String, dynamic> demande, String type) {
-    final appareilNom = demande['appareilNom'] ?? 'Produit';
-    final clientNom = demande['clientNom'] ?? 'Client';
-    final total = demande['total'] ?? 0;
-    final quantite = demande['quantite'] ?? 1;
-    final createdAt = demande['createdAt'] ?? '';
-    final code = demande['code'] ?? '';
-
-    Color borderColor;
-    Color statusColor;
-    IconData statusIcon;
-
-    switch (type) {
-      case 'en_attente':
-        borderColor = Colors.orange;
-        statusColor = Colors.orange;
-        statusIcon = Icons.pending_actions;
-        break;
-      case 'approuvee':
-        borderColor = Colors.green;
-        statusColor = Colors.green;
-        statusIcon = Icons.check_circle;
-        break;
-      default:
-        borderColor = Colors.grey;
-        statusColor = Colors.grey;
-        statusIcon = Icons.done_all;
-    }
-
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor.withOpacity(0.3)),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 4,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          // En-tête avec code
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-              color: borderColor.withOpacity(0.1),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
-            ),
-            child: Row(
-              children: [
-                Icon(statusIcon, size: 16, color: statusColor),
-                const SizedBox(width: 8),
-                Text(
-                  code,
-                  style: TextStyle(
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
-                    color: statusColor,
-                  ),
-                ),
-                const Spacer(),
-                Text(
-                  _formatDateFr(createdAt),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
+      onRefresh: _loadDemandes,
+      color: AdminPalette.blueprintBlue,
+      child: CustomScrollView(
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: AdminPageHeader(
+              title: 'Demandes d’achat',
+              subtitle: 'Priorisez les commandes d’équipement et suivez leur traitement.',
+              icon: Icons.shopping_cart_outlined,
+              actions: [
+                IconButton(
+                  onPressed: _isLoading ? null : _loadDemandes,
+                  tooltip: 'Actualiser',
+                  icon: const Icon(Icons.refresh),
+                  color: AdminPalette.blueprintBlue,
                 ),
               ],
             ),
           ),
-          // Corps de la carte
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // Appareil
-                Row(
-                  children: [
-                    Container(
-                      width: 48,
-                      height: 48,
-                      decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      child: const Icon(Icons.shopping_cart, color: Colors.blue),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            '$appareilNom (x$quantite)',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.w600,
-                              fontSize: 14,
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                          const SizedBox(height: 2),
-                          Text(
-                            clientNom,
-                            style: TextStyle(
-                              fontSize: 12,
-                              color: Colors.grey[600],
-                            ),
-                            overflow: TextOverflow.ellipsis,
-                            maxLines: 1,
-                          ),
-                        ],
-                      ),
-                    ),
-                    Column(
-                      crossAxisAlignment: CrossAxisAlignment.end,
-                      children: [
-                        Text(
-                          '$total F',
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 16,
-                            color: Colors.blue,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+          SliverToBoxAdapter(
+            child: AdminMetricCluster(
+              primary: AdminMetric(
+                label: 'Demandes à traiter',
+                value: _countFor('en_attente'),
+                icon: Icons.pending_actions_outlined,
+              ),
+              secondary: [
+                AdminMetric(
+                  label: 'Approuvées',
+                  value: _countFor('approuvee'),
+                  icon: Icons.check_circle_outline,
                 ),
-                // Boutons d'action pour les demandes en attente
-                if (type == 'en_attente') ...[
-                  const SizedBox(height: 12),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _showRejectDialog(demande['id']),
-                          icon: const Icon(Icons.cancel, size: 18),
-                          label: const Text('Rejeter'),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: Colors.red,
-                            side: const BorderSide(color: Colors.red),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _approveDemande(demande['id']),
-                          icon: const Icon(Icons.check, size: 18),
-                          label: const Text('Approuver'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.green,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
+                AdminMetric(
+                  label: 'Historique / rejetées',
+                  value: _countFor('corbeille'),
+                  icon: Icons.history_outlined,
+                ),
               ],
             ),
           ),
-        ],
-      ),
-    );
-  }
-
-  /// Dialogue de rejet
-  void _showRejectDialog(int id) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.cancel, color: Colors.red),
-            SizedBox(width: 12),
-            Text('Rejeter la demande'),
-          ],
-        ),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Motif du rejet',
-            hintText: 'Ex: Stock insuffisant, prix incorrect...',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                _rejectDemande(id, controller.text);
-                Navigator.pop(ctx);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
+          SliverToBoxAdapter(
+            child: AdminSegmentedFilter(
+              selectedValue: _filter,
+              onChanged: (value) => setState(() => _filter = value),
+              options: [
+                AdminFilterOption(
+                  value: 'en_attente',
+                  label: 'En attente',
+                  count: _countFor('en_attente'),
+                ),
+                AdminFilterOption(
+                  value: 'approuvee',
+                  label: 'Approuvées',
+                  count: _countFor('approuvee'),
+                ),
+                AdminFilterOption(
+                  value: 'corbeille',
+                  label: 'Historique',
+                  count: _countFor('corbeille'),
+                ),
+                AdminFilterOption(
+                  value: 'tous',
+                  label: 'Toutes',
+                  count: _countFor('tous'),
+                ),
+              ],
             ),
-            child: const Text('Rejeter'),
           ),
+          content,
         ],
       ),
     );

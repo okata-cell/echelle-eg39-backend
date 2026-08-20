@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'login.page.dart';
 import 'AdminDashBoard.dart';
 import 'main.dart';
 import 'api_service.dart';
@@ -46,45 +45,33 @@ class _RegisterPageState extends State<RegisterPage> {
                    password.toLowerCase().contains("admin") ||
                    phone.toLowerCase().contains("admin");
 
-    // Si ce n'est pas un admin, valider le format de l'email
-    if (!isAdmin) {
-      if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(email)) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("Format d'email invalide. Veuillez entrer une adresse email valide"),
-            backgroundColor: Colors.red,
-          ),
-        );
-        return;
-      }
-    }
-
-    // Validation du mot de passe
-    String pwd = passwordController.text;
-    if (pwd.length < 6) {
+    // Validation du format email pour tous (ex: okataolaniyi@gmail.com)
+    if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(email)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Le mot de passe doit contenir au moins 6 caractères"),
+          content: Text("Format d'email invalide. Veuillez entrer une adresse email valide (ex: okataolaniyi@gmail.com)"),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    if (!RegExp(r'[a-zA-Z]').hasMatch(pwd)) {
+    // Validation du format téléphone Togo : +228990929132
+    if (!RegExp(r'^\+228[0-9]{8,9}$').hasMatch(phone)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Le mot de passe doit contenir au moins une lettre"),
+          content: Text("Le numéro doit être au format +228 suivi de 8 ou 9 chiffres (ex: +228990929132)"),
           backgroundColor: Colors.red,
         ),
       );
       return;
     }
 
-    if (!RegExp(r'[0-9]').hasMatch(pwd)) {
+    // Validation du mot de passe : 4 chiffres + 4 lettres majuscules (ex: 1234AZER)
+    if (!RegExp(r'^\d{4}[A-Z]{4}$').hasMatch(password)) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text("Le mot de passe doit contenir au moins un chiffre"),
+          content: Text("Le mot de passe doit contenir 4 chiffres suivis de 4 lettres majuscules (ex: 1234AZER)"),
           backgroundColor: Colors.red,
         ),
       );
@@ -129,6 +116,16 @@ class _RegisterPageState extends State<RegisterPage> {
         );
       }
 
+      // Sauvegarder l'identifiant (SANS le mot de passe) pour pré-remplir le login
+      // Le token est déjà posé par ApiService.register()
+      final prefsApi = await SharedPreferences.getInstance();
+      await prefsApi.setString('saved_identifier', email);
+      await prefsApi.setBool('saved_isAdmin', result['user']['role'] == 'admin');
+      await prefsApi.setBool('isLoggedIn', true);
+      await prefsApi.setString('userIdentifier', email);
+      await prefsApi.setString('userEmail', email);
+      await prefsApi.setString('userPhone', phone);
+
       // Navigation après inscription réussie
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
@@ -146,12 +143,34 @@ class _RegisterPageState extends State<RegisterPage> {
         }
       });
     } catch (apiError) {
-      // Si l'API échoue, sauvegarder localement
-      print('API register failed, saving locally: $apiError');
-      
+      print('API register error: $apiError');
+      final errorMsg = apiError.toString();
+
+      // Erreur réseau (API injoignable) → on sauvegarde localement pour sync ultérieure
+      final bool isNetworkError = errorMsg.contains('Impossible de contacter le serveur');
+
+      if (!isNetworkError) {
+        // Erreur renvoyée par le serveur (ex: email/téléphone déjà utilisé, validation)
+        // → on affiche le message et on arrête (PAS de fausse inscription réussie)
+        setState(() {
+          isLoading = false;
+        });
+        if (mounted) {
+          final String cleanMsg = errorMsg.replaceFirst('Exception: ', '');
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(cleanMsg.isNotEmpty ? cleanMsg : "Échec de l'inscription. Réessayez."),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+        return;
+      }
+
+      // Sinon (réseau indisponible) → sauvegarde locale
       final prefs = await SharedPreferences.getInstance();
       
-      // Vérifier si l'utilisateur existe déjà
+      // Vérifier si l'utilisateur existe déjà en local
       final registeredUsers = prefs.getStringList('registered_users') ?? [];
       bool userAlreadyExists = false;
       
@@ -197,8 +216,10 @@ class _RegisterPageState extends State<RegisterPage> {
       // Sauvegarder pour synchronisation ultérieure
       await SyncService.saveUserForLaterSync(userData);
       
-      // NOTE: Le token est déjà sauvegardé par ApiService.register()
-      // Ne pas surécrire avec un token fictif ici
+      // Sauvegarder l'identifiant (SANS le mot de passe) pour pré-remplir le login
+      await prefs.setString('saved_identifier', email);
+      await prefs.setBool('saved_isAdmin', isAdminRole);
+      // NOTE: pas de vrai token en mode local (API indisponible)
       await prefs.setBool('isLoggedIn', true);
       await prefs.setBool('isAdmin', isAdminRole);
       await prefs.setString('userIdentifier', email);
@@ -324,7 +345,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     keyboardType: TextInputType.phone,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: "Téléphone",
+                      hintText: "Téléphone (ex: +228990929132)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.15),
@@ -344,7 +365,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     obscureText: _obscurePassword,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: "Mot de passe",
+                      hintText: "Mot de passe (ex: 1234AZER)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.15),
@@ -375,7 +396,7 @@ class _RegisterPageState extends State<RegisterPage> {
                     obscureText: _obscureConfirmPassword,
                     style: const TextStyle(color: Colors.white),
                     decoration: InputDecoration(
-                      hintText: "Confirmer le mot de passe",
+                      hintText: "Confirmer le mot de passe (ex: 1234AZER)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
                       fillColor: Colors.white.withOpacity(0.15),

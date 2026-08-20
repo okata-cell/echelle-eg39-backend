@@ -5,14 +5,13 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'location.dart';
-import 'LocationsMenu.dart';
-import 'admin_ventes_page.dart';
 import 'historique.dart';
 import 'service.dart';
 import 'profile.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'AdminDashBoard.dart';
 import 'sync_service.dart';
+import 'api_service.dart';
 
 // Variable globale pour suivre l'état de Firebase
 bool isFirebaseReady = false;
@@ -139,10 +138,9 @@ class _SplashScreenState extends State<SplashScreen> {
           String password = prefs.getString('userPassword') ?? '';
           bool isAdmin = prefs.getBool('isAdmin') ?? false;
           
-          // Sauvegarder pour restauration permanente
+          // Sauvegarder pour restauration permanente (identifiant uniquement, pas le mot de passe)
           if (prefs.getString('saved_identifier') == null) {
             await prefs.setString('saved_identifier', identifier);
-            await prefs.setString('saved_password', password);
             await prefs.setBool('saved_isAdmin', isAdmin);
           }
           
@@ -173,53 +171,25 @@ class _SplashScreenState extends State<SplashScreen> {
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     bool isAdmin = prefs.getBool('isAdmin') ?? false;
 
-    // Vérifier si l'utilisateur a des identifiants sauvegardés pour récupération après réinstallation
-    final savedIdentifier = prefs.getString('saved_identifier');
-    final savedPassword = prefs.getString('saved_password');
-    final savedIsAdmin = prefs.getBool('saved_isAdmin') ?? false;
+    // Vérifier la présence d'un token JWT valide (on ne stocke plus le mot de passe en local)
+    final token = await ApiService.getToken();
 
     // Attendre un peu pour l'effet visuel minimum
     await Future.delayed(const Duration(milliseconds: 1500));
 
     if (!mounted) return;
 
-    if (isLoggedIn) {
-      // Rediriger vers la page appropriée selon le rôle
+    if (token != null && isLoggedIn) {
+      // Token présent → restaurer la session automatiquement
+      print('✅ Session restaurée via token JWT');
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
           builder: (_) => isAdmin ? const AdminDashBoard() : const MainScreen(),
         ),
       );
-    } else if (savedIdentifier != null && savedPassword != null) {
-      // Utilisateur a des identifiants sauvegardés - restaurer la session automatiquement
-      // et naviguer vers la page appropriée
-      await prefs.setBool('isLoggedIn', true);
-      await prefs.setBool('isAdmin', savedIsAdmin);
-      await prefs.setString('userIdentifier', savedIdentifier);
-      await prefs.setString('userPassword', savedPassword);
-      
-      // Restaurer les infos utilisateur
-      if (RegExp(r'^[0-9]+$').hasMatch(savedIdentifier.replaceAll(' ', ''))) {
-        await prefs.setString('userPhone', savedIdentifier);
-        await prefs.setString('userEmail', '${savedIdentifier}@utilisateur.com');
-        await prefs.setString('userName', 'Utilisateur $savedIdentifier');
-      } else {
-        await prefs.setString('userEmail', savedIdentifier);
-        await prefs.setString('userPhone', '+228 00 00 00 00');
-        await prefs.setString('userName', savedIdentifier.split('@').first);
-      }
-      
-      print('✅ Session restaurée automatiquement pour: $savedIdentifier');
-      
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => savedIsAdmin ? const AdminDashBoard() : const MainScreen(),
-        ),
-      );
     } else {
-      // Pas de session, afficher la page de connexion
+      // Pas de token (ou expiré) → reconnexion manuelle requise
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(builder: (_) => const LoginPage()),
@@ -656,7 +626,6 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
-
 
 
 

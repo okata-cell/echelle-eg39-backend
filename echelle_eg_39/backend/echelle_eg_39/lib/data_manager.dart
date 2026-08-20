@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'models_demande_achat.dart';
+import 'appareil_images.dart';
 
 // Modèle pour un client
 class Client {
@@ -39,6 +40,7 @@ class Client {
 // Modèle pour un appareil
 class Appareil {
   final String id;
+  final int? dbId; // ID de la base de données (pour les opérations PUT/DELETE)
   final String nom;
   final String type;
   final String imageUrl;
@@ -48,6 +50,7 @@ class Appareil {
 
   Appareil({
     required this.id,
+    this.dbId,
     required this.nom,
     required this.type,
     required this.imageUrl,
@@ -78,19 +81,19 @@ class DataManager extends ChangeNotifier {
 
   // Appareils par défaut pour la démo
   final List<Appareil> _defaultAppareils = [
-    Appareil(
-      id: "APP-001",
-      nom: "GPS e-survey E600",
-      type: "GPS",
-      imageUrl: "https://gms.gumtree.co.za/v2/images/za_ads_134213409_260118_696cd9fe200cfa000a9b8d85?size=l",
-      prixLocation: 25000,
-      prixVente: 2500000,
-    ),
+     Appareil(
+        id: "APP-001",
+        nom: "GPS e-survey E600",
+        type: "GPS",
+        imageUrl: AppareilImages.getImageUrlForAppareilId("APP-001"),
+        prixLocation: 25000,
+        prixVente: 2500000,
+      ),
     Appareil(
       id: "APP-002",
       nom: "GPS e-survey E800",
       type: "GPS",
-      imageUrl: "https://rtkvn.vn/wp-content/uploads/2020/12/may-gps-rtk-esurvey-e800-3-e1713953679130.jpg",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-002"),
       prixLocation: 15000,
       prixVente: 1200000,
     ),
@@ -98,7 +101,7 @@ class DataManager extends ChangeNotifier {
       id: "APP-003",
       nom: "Niveau Leica",
       type: "Niveau",
-      imageUrl: "https://m.media-amazon.com/images/I/61RMLIoYh6L._AC_UF894,1000_QL80_.jpg",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-003"),
       prixLocation: 15000,
       prixVente: 1200000,
     ),
@@ -106,39 +109,39 @@ class DataManager extends ChangeNotifier {
       id: "APP-004",
       nom: "Niveau Electronique Leica",
       type: "Niveau",
-      imageUrl: "https://topomaroc.com/wp-content/uploads/2023/01/leica-leica-sprinter-150m-762630-22627509.jpg",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-004"),
       prixLocation: 30000,
       prixVente: 3500000,
     ),
+     Appareil(
+       id: "APP-005",
+       nom: "Theodolite",
+       type: "Station totale",
+       imageUrl: AppareilImages.getImageUrlForAppareilId("APP-005"),
+       prixLocation: 30000,
+       prixVente: 3500000,
+     ),
+     Appareil(
+       id: "APP-006",
+       nom: "Station Totale Leica TS06",
+       type: "Theodolite",
+       imageUrl: AppareilImages.getImageUrlForAppareilId("APP-006"),
+       prixLocation: 30000,
+       prixVente: 3500000,
+     ),
     Appareil(
-      id: "APP-005",
-      nom: "Theodolite",
-      type: "Station totale",
-      imageUrl: "https://lh3.googleusercontent.com/proxy/QENf36FM_QOdPL6EZH4wI_mdJVA-cOVzGoCq9YObvGEWYvpGcaRmBsVgTWI3GLlrkGR7jzkRbtBr7cEDfyyur-jmBzWb6cVX2D7mz65KR8Zxj7Ga5zjz-y-ZC0xjf68PoItOFpCRZW6PjvtgIBQ4tX6Jyg",
-      prixLocation: 30000,
-      prixVente: 3500000,
-    ),
-    Appareil(
-      id: "APP-006",
-      nom: "Station Totale Leica TS06",
-      type: "Theodolite",
-      imageUrl: "https://e-prisme.fr/wp-content/uploads//2024/06/IMG_20240530_163035785-scaled.jpg",
-      prixLocation: 30000,
-      prixVente: 3500000,
-    ),
-    Appareil(
-      id: "APP-007",
-      nom: "GPS e-survey E300",
-      type: "GPS",
-      imageUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTXVhndu87ZoY0ur817KW0AD2_FNPdaaZHzqw&s",
-      prixLocation: 25000,
-      prixVente: 2500000,
-    ),
+        id: "APP-007",
+        nom: "GPS e-survey E300",
+        type: "GPS",
+        imageUrl: AppareilImages.getImageUrlForAppareilId("APP-007"),
+        prixLocation: 25000,
+        prixVente: 2500000,
+      ),
     Appareil(
       id: "APP-008",
       nom: "Trepied Leica",
       type: "Trepied",
-      imageUrl: "https://www.lepont.fr/30189-large_default/trepied-leica-cpt103-cpt104-mi-lourd.jpg",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-008"),
       prixLocation: 15000,
       prixVente: 1200000,
     ),
@@ -146,33 +149,201 @@ class DataManager extends ChangeNotifier {
       id: "APP-009",
       nom: "Mire Stadimetrique",
       type: "Mire",
-      imageUrl: "https://www.scors.fr/medias/photos-catalogue/6/G/G2/MIT.jpg",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-009"),
       prixLocation: 15000,
       prixVente: 1200000,
     ),
     Appareil(
-      id: "APP-011",
-      nom: "Antenne GPS",
+      id: "APP-010",
+      nom: "Antenne GPS RTK",
       type: "Antenne",
-      imageUrl: "https://m.media-amazon.com/images/I/41B4Q7zJuhL._AC_UF894,1000_QL80_.jpg",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-010"),
       prixLocation: 50000,
       prixVente: 5000000,
     ),
     Appareil(
-      id: "APP-012",
+      id: "APP-011",
       nom: "Canne GPS",
       type: "Canne",
-      imageUrl: "https://m.media-amazon.com/images/I/61D+67Fr13L.jpg",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-011"),
       prixLocation: 12000,
       prixVente: 1200000,
     ),
     Appareil(
-      id: "APP-013",
-      nom: "Réflecteur Leica",
-      type: "Réflecteur",
-      imageUrl: "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcTwpQLIsIgCIxYZJ7erX8al95F12_iasdiQ6g&s",
+      id: "APP-012",
+      nom: "Reflecteur Leica",
+      type: "Reflecteur",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-012"),
       prixLocation: 8000,
       prixVente: 800000,
+    ),
+    Appareil(
+      id: "APP-013",
+      nom: "Drone topographique",
+      type: "Drone",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-013"),
+      prixLocation: 100000,
+      prixVente: 10000000,
+    ),
+    Appareil(
+      id: "APP-014",
+      nom: "GPS Trimble R10",
+      type: "GPS",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-014"),
+      prixLocation: 35000,
+      prixVente: 3500000,
+    ),
+    Appareil(
+      id: "APP-015",
+      nom: "GPS Leica GS18 T",
+      type: "GPS",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-015"),
+      prixLocation: 40000,
+      prixVente: 4000000,
+    ),
+    Appareil(
+      id: "APP-016",
+      nom: "GPS Topcon Hiper VR",
+      type: "GPS",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-016"),
+      prixLocation: 38000,
+      prixVente: 3800000,
+    ),
+    Appareil(
+      id: "APP-017",
+      nom: "GPS Spectra SP80",
+      type: "GPS",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-017"),
+      prixLocation: 32000,
+      prixVente: 3200000,
+    ),
+    Appareil(
+      id: "APP-018",
+      nom: "Niveau Automatique Leica NA720",
+      type: "Niveau",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-018"),
+      prixLocation: 18000,
+      prixVente: 1500000,
+    ),
+    Appareil(
+      id: "APP-019",
+      nom: "Niveau Numérique Leica DNA03",
+      type: "Niveau",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-019"),
+      prixLocation: 45000,
+      prixVente: 4500000,
+    ),
+    Appareil(
+      id: "APP-020",
+      nom: "Niveau Topcon AT-B2",
+      type: "Niveau",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-020"),
+      prixLocation: 16000,
+      prixVente: 1400000,
+    ),
+    Appareil(
+      id: "APP-021",
+      nom: "Station Totale Leica TS16",
+      type: "Station totale",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-021"),
+      prixLocation: 80000,
+      prixVente: 8000000,
+    ),
+    Appareil(
+      id: "APP-022",
+      nom: "Station Totale Topcon GT-1200",
+      type: "Station totale",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-022"),
+      prixLocation: 75000,
+      prixVente: 7500000,
+    ),
+    Appareil(
+      id: "APP-023",
+      nom: "Station Totale Sokkia IX-1000",
+      type: "Station totale",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-023"),
+      prixLocation: 70000,
+      prixVente: 7000000,
+    ),
+    Appareil(
+      id: "APP-024",
+      nom: "Théodolite Électronique Leica TPS1200",
+      type: "Théodolite",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-024"),
+      prixLocation: 55000,
+      prixVente: 5500000,
+    ),
+    Appareil(
+      id: "APP-025",
+      nom: "Réflecteur Sphérique Leica GPR121",
+      type: "Réflecteur",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-025"),
+      prixLocation: 15000,
+      prixVente: 1500000,
+    ),
+    Appareil(
+      id: "APP-026",
+      nom: "Mire à Prismes Leica GMP101",
+      type: "Mire",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-026"),
+      prixLocation: 12000,
+      prixVente: 1200000,
+    ),
+    Appareil(
+      id: "APP-027",
+      nom: "Canne Télescopique Leica GLS121",
+      type: "Canne",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-027"),
+      prixLocation: 20000,
+      prixVente: 2000000,
+    ),
+    Appareil(
+      id: "APP-028",
+      nom: "Antenne GPS Externe Leica AX1200G",
+      type: "Antenne",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-028"),
+      prixLocation: 60000,
+      prixVente: 6000000,
+    ),
+    Appareil(
+      id: "APP-029",
+      nom: "Batterie GPS Leica GEV240",
+      type: "Accessoire",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-029"),
+      prixLocation: 5000,
+      prixVente: 500000,
+    ),
+    Appareil(
+      id: "APP-030",
+      nom: "Chargeur GPS Leica GEV242",
+      type: "Accessoire",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-030"),
+      prixLocation: 4000,
+      prixVente: 400000,
+    ),
+    Appareil(
+      id: "APP-031",
+      nom: "Housse de Protection GPS",
+      type: "Accessoire",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-031"),
+      prixLocation: 3000,
+      prixVente: 300000,
+    ),
+    Appareil(
+      id: "APP-032",
+      nom: "Drone DJI Phantom 4 RTK",
+      type: "Drone",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-032"),
+      prixLocation: 120000,
+      prixVente: 12000000,
+    ),
+    Appareil(
+      id: "APP-033",
+      nom: "Drone DJI Matrice 300 RTK",
+      type: "Drone",
+      imageUrl: AppareilImages.getImageUrlForAppareilId("APP-033"),
+      prixLocation: 250000,
+      prixVente: 25000000,
     ),
   ];
 
@@ -238,6 +409,31 @@ class DataManager extends ChangeNotifier {
     } catch (e) {
       return null;
     }
+  }
+
+  // Vider la liste des appareils
+  void clearAppareils() {
+    _appareils.clear();
+    notifyListeners();
+  }
+
+  // Charger les appareils par défaut
+  void loadDefaultAppareils() {
+    _appareils.clear();
+    // Les appareils par défaut n'ont pas de dbId (pas encore sauvegardés en base)
+    for (final appareil in _defaultAppareils) {
+      _appareils.add(Appareil(
+        id: appareil.id,
+        dbId: null,
+        nom: appareil.nom,
+        type: appareil.type,
+        imageUrl: appareil.imageUrl,
+        prixLocation: appareil.prixLocation,
+        prixVente: appareil.prixVente,
+        disponible: appareil.disponible,
+      ));
+    }
+    notifyListeners();
   }
 
   // Ajouter un nouvel appareil

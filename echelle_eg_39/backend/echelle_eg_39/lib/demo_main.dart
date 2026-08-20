@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import 'location.dart';
-import 'ventes.dart';
-import 'service.dart';
 import 'login.page.dart';
 
 class DemoMainScreen extends StatefulWidget {
@@ -14,12 +11,18 @@ class DemoMainScreen extends StatefulWidget {
 class _DemoMainScreenState extends State<DemoMainScreen> {
   int _currentIndex = 0;
 
-  final List<Widget> _screens = [
-    const DemoHomeScreen(),
-    const DemoLocationScreen(),
-    const DemoVenteScreen(),
-    const DemoServiceScreen(),
-  ];
+  void _selectTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
+
+  List<Widget> get _screens => [
+        DemoHomeScreen(onNavigate: _selectTab),
+        const DemoLocationScreen(),
+        const DemoVenteScreen(),
+        const DemoServiceScreen(),
+      ];
 
   @override
   Widget build(BuildContext context) {
@@ -61,7 +64,9 @@ class _DemoMainScreenState extends State<DemoMainScreen> {
 }
 
 class DemoHomeScreen extends StatelessWidget {
-  const DemoHomeScreen({super.key});
+  final ValueChanged<int> onNavigate;
+
+  const DemoHomeScreen({super.key, required this.onNavigate});
 
   @override
   Widget build(BuildContext context) {
@@ -246,11 +251,7 @@ class DemoHomeScreen extends StatelessWidget {
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: InkWell(
         onTap: () {
-          // Naviguer vers l'onglet correspondant
-          final parentState = context.findAncestorStateOfType<_DemoMainScreenState>();
-          parentState?.setState(() {
-            parentState._currentIndex = index;
-          });
+          onNavigate(index);
         },
         borderRadius: BorderRadius.circular(12),
         child: Padding(
@@ -779,4 +780,3 @@ class DemoServiceScreen extends StatelessWidget {
     );
   }
 }
-
