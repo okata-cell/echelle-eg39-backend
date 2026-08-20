@@ -618,138 +618,130 @@ class _LocationPageState extends State<LocationPage> {
         );
       }
 
-      return RefreshIndicator(
-        onRefresh: _loadLocations,
-        color: AdminPalette.blueprintBlue,
-        child: CustomScrollView(
-          key: const PageStorageKey<String>('locations_scroll'),
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: AdminPageHeader(
-                title: 'Locations',
-                subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
-                icon: Icons.assignment_outlined,
-                actions: [
-                  IconButton(
-                    onPressed: _isLoading ? null : _loadLocations,
-                    tooltip: 'Actualiser',
-                    icon: const Icon(Icons.refresh),
-                    color: AdminPalette.blueprintBlue,
-                  ),
-                ],
-              ),
-            ),
-            SliverToBoxAdapter(
-              child: AdminMetricCluster(
-                primary: AdminMetric(
-                  label: 'Réservations à traiter',
-                  value: _countFor('en_attente'),
-                  icon: Icons.pending_actions_outlined,
+      return CustomScrollView(
+        key: const PageStorageKey<String>('locations_scroll'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: AdminPageHeader(
+              title: 'Locations',
+              subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
+              icon: Icons.assignment_outlined,
+              actions: [
+                IconButton(
+                  onPressed: _isLoading ? null : _loadLocations,
+                  tooltip: 'Actualiser',
+                  icon: const Icon(Icons.refresh),
+                  color: AdminPalette.blueprintBlue,
                 ),
-                secondary: [
-                  AdminMetric(
-                    label: 'Locations actives',
-                    value: _countFor('en_cours'),
-                    icon: Icons.play_circle_outline,
-                  ),
-                  AdminMetric(
-                    label: 'Historique / rejetées',
-                    value: _countFor('corbeille'),
-                    icon: Icons.history_outlined,
-                  ),
-                ],
-              ),
+              ],
             ),
-            SliverToBoxAdapter(
-              child: AdminSegmentedFilter(
-                selectedValue: _filter,
-                onChanged: (value) => setState(() => _filter = value),
-                options: [
-                  AdminFilterOption(
-                    value: 'en_attente',
-                    label: 'En attente',
-                    count: _countFor('en_attente'),
-                  ),
-                  AdminFilterOption(
-                    value: 'en_cours',
-                    label: 'Actives',
-                    count: _countFor('en_cours'),
-                  ),
-                  AdminFilterOption(
-                    value: 'corbeille',
-                    label: 'Historique',
-                    count: _countFor('corbeille'),
-                  ),
-                  AdminFilterOption(
-                    value: 'tous',
-                    label: 'Toutes',
-                    count: _countFor('tous'),
-                  ),
-                ],
+          ),
+          SliverToBoxAdapter(
+            child: AdminMetricCluster(
+              primary: AdminMetric(
+                label: 'Réservations à traiter',
+                value: _countFor('en_attente'),
+                icon: Icons.pending_actions_outlined,
               ),
+              secondary: [
+                AdminMetric(
+                  label: 'Locations actives',
+                  value: _countFor('en_cours'),
+                  icon: Icons.play_circle_outline,
+                ),
+                AdminMetric(
+                  label: 'Historique / rejetées',
+                  value: _countFor('corbeille'),
+                  icon: Icons.history_outlined,
+                ),
+              ],
             ),
-            content,
-          ],
-        ),
+          ),
+          SliverToBoxAdapter(
+            child: AdminSegmentedFilter(
+              selectedValue: _filter,
+              onChanged: (value) => setState(() => _filter = value),
+              options: [
+                AdminFilterOption(
+                  value: 'en_attente',
+                  label: 'En attente',
+                  count: _countFor('en_attente'),
+                ),
+                AdminFilterOption(
+                  value: 'en_cours',
+                  label: 'Actives',
+                  count: _countFor('en_cours'),
+                ),
+                AdminFilterOption(
+                  value: 'corbeille',
+                  label: 'Historique',
+                  count: _countFor('corbeille'),
+                ),
+                AdminFilterOption(
+                  value: 'tous',
+                  label: 'Toutes',
+                  count: _countFor('tous'),
+                ),
+              ],
+            ),
+          ),
+          content,
+        ],
       );
     } catch (e, stack) {
       print('❌❌❌ CRASH dans build(): $e');
       print('📋 Stack: $stack');
-      return RefreshIndicator(
-        onRefresh: _loadLocations,
-        color: AdminPalette.blueprintBlue,
-        child: CustomScrollView(
-          key: const PageStorageKey<String>('locations_scroll_error'),
-          physics: const AlwaysScrollableScrollPhysics(),
-          slivers: [
-            SliverToBoxAdapter(
-              child: AdminPageHeader(
-                title: 'Locations',
-                subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
-                icon: Icons.assignment_outlined,
-                actions: [
-                  IconButton(
-                    onPressed: _loadLocations,
-                    tooltip: 'Actualiser',
-                    icon: const Icon(Icons.refresh),
-                    color: AdminPalette.blueprintBlue,
-                  ),
-                ],
-              ),
+      return CustomScrollView(
+        key: const PageStorageKey<String>('locations_scroll_error'),
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(
+            child: AdminPageHeader(
+              title: 'Locations',
+              subtitle: 'Traitez les réservations d’équipement et suivez leur cycle.',
+              icon: Icons.assignment_outlined,
+              actions: [
+                IconButton(
+                  onPressed: _loadLocations,
+                  tooltip: 'Actualiser',
+                  icon: const Icon(Icons.refresh),
+                  color: AdminPalette.blueprintBlue,
+                ),
+              ],
             ),
-            SliverFillRemaining(
-              hasScrollBody: false,
-              child: Center(
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      const Icon(Icons.error_outline, size: 48, color: Colors.red),
-                      const SizedBox(height: 16),
-                      Text(
-                        'Erreur de rendu',
-                        style: Theme.of(context).textTheme.titleLarge,
-                      ),
-                      const SizedBox(height: 8),
-                      Text(
-                        '$e',
-                        textAlign: TextAlign.center,
-                        style: Theme.of(context).textTheme.bodySmall,
-                      ),
-                      const SizedBox(height: 16),
-                      ElevatedButton(
-                        onPressed: _loadLocations,
-                        child: const Text('Réessayer'),
-                      ),
-                    ],
-                  ),
+          ),
+          SliverFillRemaining(
+            hasScrollBody: false,
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(Icons.error_outline, size: 48, color: Colors.red),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Erreur de rendu',
+                      style: Theme.of(context).textTheme.titleLarge,
+                    ),
+                    const SizedBox(height: 8),
+                    Text(
+                      '$e',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _loadLocations,
+                      child: const Text('Réessayer'),
+                    ),
+                  ],
                 ),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       );
     }
   }

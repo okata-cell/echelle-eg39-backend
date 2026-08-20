@@ -609,11 +609,14 @@ class AdminWorkItemCard extends StatelessWidget {
       ),
       clipBehavior: Clip.antiAlias,
       child: Row(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          SizedBox(width: AdminStroke.pendingAccent, child: ColoredBox(color: accent)),
+          SizedBox(
+            width: AdminStroke.pendingAccent,
+            child: ColoredBox(color: accent),
+          ),
           Expanded(
-            child: InkWell(
+            child: GestureDetector(
               onTap: onTap,
               child: Padding(
                 padding: const EdgeInsets.all(AdminSpacing.lg),
