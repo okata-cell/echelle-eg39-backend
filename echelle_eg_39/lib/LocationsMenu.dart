@@ -23,10 +23,6 @@ class _LocationPageState extends State<LocationPage> {
   String? _errorMessage;
   String _filter = 'en_attente';
   bool _isLoadingLocations = false;
-  List<Map<String, dynamic>> _cachedVisibleLocations = [];
-  final Map<String, int> _countCache = {};
-  int _lastLocationsLength = 0;
-  String _lastFilter = 'en_attente';
 
   @override
   void initState() {
@@ -73,9 +69,6 @@ class _LocationPageState extends State<LocationPage> {
         _locations = locations;
         _isLoading = false;
         _errorMessage = null;
-        _cachedVisibleLocations = [];
-        _countCache.clear();
-        _lastLocationsLength = 0;
       });
       print('✅ UI mise à jour avec ${locations.length} locations');
     } catch (error) {
@@ -133,37 +126,28 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   List<Map<String, dynamic>> get _visibleLocations {
-    if (_cachedVisibleLocations.isEmpty ||
-        _lastFilter != _filter ||
-        _lastLocationsLength != _locations.length) {
-      _cachedVisibleLocations = _getFilteredLocations();
-      _lastFilter = _filter;
-      _lastLocationsLength = _locations.length;
-    }
-    return _cachedVisibleLocations;
+    // La liste est petite et vient d'être reçue du serveur. La recalculer à
+    // chaque rendu évite d'afficher une valeur en cache après une mise à jour
+    // de statut ou un rafraîchissement qui conserve le même nombre d'éléments.
+    return _getFilteredLocations();
   }
 
   int _countFor(String filter) {
-    if (!_countCache.containsKey(filter)) {
-      int count;
-      switch (filter) {
-        case 'en_attente':
-          count = _locations.where((location) => _status(location) == 'en_attente').length;
-          break;
-        case 'en_cours':
-          count = _locations.where((location) => _status(location) == 'en_cours').length;
-          break;
-        case 'corbeille':
-          count = _historyLocations().length;
-          break;
-        case 'tous':
-        default:
-          count = _locations.length;
-          break;
-      }
-      _countCache[filter] = count;
+    switch (filter) {
+      case 'en_attente':
+        return _locations
+            .where((location) => _status(location) == 'en_attente')
+            .length;
+      case 'en_cours':
+        return _locations
+            .where((location) => _status(location) == 'en_cours')
+            .length;
+      case 'corbeille':
+        return _historyLocations().length;
+      case 'tous':
+      default:
+        return _locations.length;
     }
-    return _countCache[filter]!;
   }
 
   Future<void> _approveLocation(int locationId) async {
