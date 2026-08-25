@@ -164,52 +164,47 @@ class _AdminBottomNavigation extends StatelessWidget {
                 final module = AdminShell._modules[index];
                 final selected = currentIndex == index;
                 return Expanded(
-                  child: Semantics(
-                    button: true,
-                    selected: selected,
-                    label: module.label,
-                    child: InkWell(
-                      onTap: () => onChanged(index),
-                      child: AnimatedContainer(
-                        duration: const Duration(milliseconds: 160),
-                        decoration: BoxDecoration(
-                          border: Border(
-                            top: BorderSide(
-                              color: selected
-                                  ? AdminPalette.blueprintBlue
-                                  : Colors.transparent,
-                              width: 3,
-                            ),
+                  child: InkWell(
+                    onTap: () => onChanged(index),
+                    child: AnimatedContainer(
+                      duration: const Duration(milliseconds: 160),
+                      decoration: BoxDecoration(
+                        border: Border(
+                          top: BorderSide(
+                            color: selected
+                                ? AdminPalette.blueprintBlue
+                                : Colors.transparent,
+                            width: 3,
                           ),
                         ),
-                        padding: const EdgeInsets.symmetric(vertical: 7),
-                        child: Column(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          children: [
-                            Icon(
-                              module.icon,
-                              size: 21,
-                              color: selected
-                                  ? Colors.white
-                                  : const Color(0xFF94A3B8),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              module.label,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                                    color: selected
-                                        ? const Color(0xFFBAE6FD)
-                                        : const Color(0xFF94A3B8),
-                                    fontSize: 10,
-                                    fontWeight: selected
-                                        ? FontWeight.w800
-                                        : FontWeight.w600,
-                                  ),
-                            ),
-                          ],
-                        ),
+                      ),
+                      padding: const EdgeInsets.symmetric(vertical: 7),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            module.icon,
+                            size: 21,
+                            color: selected
+                                ? Colors.white
+                                : const Color(0xFF94A3B8),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            module.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                                  color: selected
+                                      ? const Color(0xFFBAE6FD)
+                                      : const Color(0xFF94A3B8),
+                                  fontSize: 10,
+                                  fontWeight: selected
+                                      ? FontWeight.w800
+                                      : FontWeight.w600,
+                                ),
+                          ),
+                        ],
                       ),
                     ),
                   ),
