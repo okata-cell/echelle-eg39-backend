@@ -6,8 +6,15 @@ import 'api_service.dart';
 import 'appareil_images.dart';
 import 'widgets/image_zoom_viewer.dart';
 
+typedef AppareilsLoader = Future<List<Map<String, dynamic>>> Function();
+
 class AdminAppareilsPage extends StatefulWidget {
-  const AdminAppareilsPage({super.key});
+  const AdminAppareilsPage({
+    super.key,
+    this.loadAppareils = ApiService.getAppareils,
+  });
+
+  final AppareilsLoader loadAppareils;
 
   @override
   State<AdminAppareilsPage> createState() => _AdminAppareilsPageState();
@@ -15,7 +22,8 @@ class AdminAppareilsPage extends StatefulWidget {
 
 class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
   final _dataManager = DataManager();
-  bool _isLoadingAppareils = false;
+  bool _isLoadingAppareils = true;
+  bool _isFetchingAppareils = false;
 
   @override
   void initState() {
@@ -26,10 +34,13 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
   }
 
   Future<void> _loadAppareilsFromBackend() async {
-    if (_isLoadingAppareils) return;
-    setState(() => _isLoadingAppareils = true);
+    if (_isFetchingAppareils) return;
+    _isFetchingAppareils = true;
+    if (!_isLoadingAppareils && mounted) {
+      setState(() => _isLoadingAppareils = true);
+    }
     try {
-      final appareils = await ApiService.getAppareils();
+      final appareils = await widget.loadAppareils();
       print('📡 Appareils reçus du backend: ${appareils.length}');
       for (final a in appareils) {
         print('  - ${a['code']}: ${a['nom']} | imageUrl: ${a['imageUrl']}');
@@ -64,6 +75,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
         _loadDefaultAppareils();
       }
     } finally {
+      _isFetchingAppareils = false;
       if (mounted) {
         setState(() => _isLoadingAppareils = false);
       }
