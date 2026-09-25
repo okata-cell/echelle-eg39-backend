@@ -20,7 +20,7 @@ class Service {
 }
 
 class ServiceScreen extends StatefulWidget {
-  const ServiceScreen({Key? key}) : super(key: key);
+  const ServiceScreen({super.key});
 
   @override
   State<ServiceScreen> createState() => _ServiceScreenState();
@@ -598,7 +598,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _getCategoryColor(service.category).withOpacity(0.1),
+                    color: _getCategoryColor(service.category).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -725,7 +725,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
     final telephoneCtrl = TextEditingController();
     final emailCtrl = TextEditingController();
     final formKey = GlobalKey<FormState>();
-    bool _isSubmitting = false;
+    bool isSubmitting = false;
 
     showDialog(
       context: context,
@@ -749,7 +749,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                           width: 48,
                           height: 48,
                           decoration: BoxDecoration(
-                            color: _getCategoryColor(service.category).withOpacity(0.1),
+                            color: _getCategoryColor(service.category).withValues(alpha: 0.1),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Icon(
@@ -885,7 +885,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                       children: [
                         Expanded(
                           child: OutlinedButton(
-                            onPressed: _isSubmitting ? null : () => Navigator.pop(context),
+                            onPressed: isSubmitting ? null : () => Navigator.pop(context),
                             style: OutlinedButton.styleFrom(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               side: const BorderSide(color: Color(0xFFD1D5DB)),
@@ -902,11 +902,11 @@ class _ServiceScreenState extends State<ServiceScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton(
-                            onPressed: _isSubmitting
+                            onPressed: isSubmitting
                                 ? null
                                 : () async {
                                     if (formKey.currentState!.validate()) {
-                                      setDialogState(() => _isSubmitting = true);
+                                      setDialogState(() => isSubmitting = true);
                                       try {
                                         await ApiService.createDevis(
                                           serviceId: service.id,
@@ -936,7 +936,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                                         }
                                       } finally {
                                         if (mounted) {
-                                          setDialogState(() => _isSubmitting = false);
+                                          setDialogState(() => isSubmitting = false);
                                         }
                                       }
                                     }
@@ -948,7 +948,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                                 borderRadius: BorderRadius.circular(8),
                               ),
                             ),
-                            child: _isSubmitting
+                            child: isSubmitting
                                 ? const SizedBox(
                                     width: 20,
                                     height: 20,

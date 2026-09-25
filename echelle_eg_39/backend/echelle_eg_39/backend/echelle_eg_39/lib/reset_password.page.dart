@@ -135,7 +135,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
 
           // 🖤 OVERLAY SOMBRE
           Container(
-            color: const Color.fromRGBO(11, 11, 11, 1).withOpacity(0.6),
+            color: const Color.fromRGBO(11, 11, 11, 1).withValues(alpha: 0.6),
           ),
 
           // 📄 CONTENU
@@ -178,9 +178,9 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   Container(
                     padding: const EdgeInsets.all(20),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.1),
+                      color: Colors.white.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withOpacity(0.2)),
+                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
                     ),
                     child: Column(
                       children: [
@@ -221,7 +221,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       hintText: "Nouveau mot de passe",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.lock, color: Colors.white),
                       suffixIcon: IconButton(
                         onPressed: () {
@@ -252,7 +252,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                       hintText: "Confirmer le nouveau mot de passe",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.lock, color: Colors.white),
                       suffixIcon: IconButton(
                         onPressed: () {
@@ -306,7 +306,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
                   Container(
                     padding: const EdgeInsets.all(16),
                     decoration: BoxDecoration(
-                      color: Colors.white.withOpacity(0.05),
+                      color: Colors.white.withValues(alpha: 0.05),
                       borderRadius: BorderRadius.circular(10),
                     ),
                     child: const Column(

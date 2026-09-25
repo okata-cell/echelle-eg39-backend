@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'AdminDashBoard.dart';
 import 'main.dart';
 import 'api_service.dart';
 import 'sync_service.dart';
@@ -41,9 +40,7 @@ class _RegisterPageState extends State<RegisterPage> {
     String password = passwordController.text;
     String phone = phoneController.text.trim();
 
-    bool isAdmin = email.toLowerCase().contains("admin") ||
-                   password.toLowerCase().contains("admin") ||
-                   phone.toLowerCase().contains("admin");
+    // Les comptes créés depuis le formulaire public restent des comptes clients.
 
     // Validation du format email pour tous (ex: okataolaniyi@gmail.com)
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(email)) {
@@ -120,26 +117,20 @@ class _RegisterPageState extends State<RegisterPage> {
       // Le token est déjà posé par ApiService.register()
       final prefsApi = await SharedPreferences.getInstance();
       await prefsApi.setString('saved_identifier', email);
-      await prefsApi.setBool('saved_isAdmin', result['user']['role'] == 'admin');
+      await prefsApi.setBool('saved_isAdmin', false);
+      await prefsApi.setBool('isAdmin', false);
       await prefsApi.setBool('isLoggedIn', true);
       await prefsApi.setString('userIdentifier', email);
       await prefsApi.setString('userEmail', email);
       await prefsApi.setString('userPhone', phone);
 
-      // Navigation après inscription réussie
+      // Les inscriptions depuis le formulaire public ouvrent l'espace client.
       Future.delayed(const Duration(seconds: 2), () {
         if (mounted) {
-          if (result['user']['role'] == 'admin') {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const AdminDashBoard()),
-            );
-          } else {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const MainScreen()),
-            );
-          }
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const MainScreen()),
+          );
         }
       });
     } catch (apiError) {
@@ -201,12 +192,9 @@ class _RegisterPageState extends State<RegisterPage> {
         return;
       }
       
-      // Déterminer le rôle
-      bool isAdminRole = email.toLowerCase().contains("admin") ||
-                     password.toLowerCase().contains("admin") ||
-                     phone.toLowerCase().contains("admin");
-      String role = isAdminRole ? 'admin' : 'user';
-      
+      // Une inscription publique hors ligne reste un compte utilisateur.
+      const role = 'user';
+
       // Sauvegarder l'utilisateur localement
       // Format: email|phone|password|role|firstName|lastName
       String userData = '$email|$phone|$password|$role|Utilisateur|EG39';
@@ -218,10 +206,10 @@ class _RegisterPageState extends State<RegisterPage> {
       
       // Sauvegarder l'identifiant (SANS le mot de passe) pour pré-remplir le login
       await prefs.setString('saved_identifier', email);
-      await prefs.setBool('saved_isAdmin', isAdminRole);
+      await prefs.setBool('saved_isAdmin', false);
       // NOTE: pas de vrai token en mode local (API indisponible)
       await prefs.setBool('isLoggedIn', true);
-      await prefs.setBool('isAdmin', isAdminRole);
+      await prefs.setBool('isAdmin', false);
       await prefs.setString('userIdentifier', email);
       await prefs.setString('userEmail', email);
       await prefs.setString('userPhone', phone);
@@ -233,28 +221,19 @@ class _RegisterPageState extends State<RegisterPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(isAdminRole
-              ? "Inscription réussie ! Bienvenue Admin dans EG39"
-              : "Inscription réussie ! Bienvenue dans EG39"),
+          const SnackBar(
+            content: Text("Inscription réussie ! Bienvenue dans EG39"),
             backgroundColor: Colors.green,
           ),
         );
         
-        // Navigation après inscription
+        // Navigation après inscription hors ligne vers l'espace client.
         Future.delayed(const Duration(seconds: 2), () {
           if (mounted) {
-            if (isAdminRole) {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const AdminDashBoard()),
-              );
-            } else {
-              Navigator.pushReplacement(
-                context,
-                MaterialPageRoute(builder: (_) => const MainScreen()),
-              );
-            }
+            Navigator.pushReplacement(
+              context,
+              MaterialPageRoute(builder: (_) => const MainScreen()),
+            );
           }
         });
       }
@@ -280,7 +259,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
           // 🖤 OVERLAY SOMBRE
           Container(
-            color: const Color.fromRGBO(11, 11, 11, 1).withOpacity(0.6),
+            color: const Color.fromRGBO(11, 11, 11, 1).withValues(alpha: 0.6),
           ),
 
           // 📄 CONTENU
@@ -328,7 +307,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Email (exemple@domaine.com)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.email, color: Colors.white),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -348,7 +327,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Téléphone (ex: +228990929132)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.phone, color: Colors.white),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -368,7 +347,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Mot de passe (ex: 1234AZER)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.lock, color: Colors.white),
                       suffixIcon: IconButton(
                         onPressed: () {
@@ -399,7 +378,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Confirmer le mot de passe (ex: 1234AZER)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.lock, color: Colors.white),
                       suffixIcon: IconButton(
                         onPressed: () {

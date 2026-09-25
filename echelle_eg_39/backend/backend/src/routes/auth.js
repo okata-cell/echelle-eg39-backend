@@ -249,11 +249,9 @@ router.post('/register', [
       return res.status(400).json({ error: 'Email ou téléphone déjà utilisé' });
     }
 
-    const role = (
-      email.includes('admin')
-      || phone.includes('admin')
-      || password.toLowerCase().includes('admin')
-    ) ? 'admin' : 'client';
+    // Les inscriptions publiques créent toujours des comptes clients.
+    // Le compte administrateur est provisionné séparément par la migration.
+    const role = 'client';
     const hashedPassword = await bcrypt.hash(password, 10);
 
     const result = await pool.query(

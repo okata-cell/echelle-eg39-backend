@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AdminVentesPageSimple extends StatelessWidget {
-  const AdminVentesPageSimple({Key? key}) : super(key: key);
+  const AdminVentesPageSimple({super.key});
 
   @override
   Widget build(BuildContext context) {

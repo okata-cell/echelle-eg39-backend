@@ -40,7 +40,7 @@ void main() async {
 }
 
 class EchelleEG39App extends StatelessWidget {
-  const EchelleEG39App({Key? key}) : super(key: key);
+  const EchelleEG39App({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +59,7 @@ class EchelleEG39App extends StatelessWidget {
 
 // Écran de démarrage qui vérifie la session utilisateur
 class SplashScreen extends StatefulWidget {
-  const SplashScreen({Key? key}) : super(key: key);
+  const SplashScreen({super.key});
 
   @override
   State<SplashScreen> createState() => _SplashScreenState();
@@ -248,7 +248,7 @@ class _SplashScreenState extends State<SplashScreen> {
 }
 
 class MainScreen extends StatefulWidget {
-  const MainScreen({Key? key}) : super(key: key);
+  const MainScreen({super.key});
 
   @override
   State<MainScreen> createState() => _MainScreenState();
@@ -319,7 +319,7 @@ class _MainScreenState extends State<MainScreen> {
 }
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({Key? key}) : super(key: key);
+  const HomeScreen({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -383,7 +383,7 @@ class HomeScreen extends StatelessWidget {
                     borderRadius: BorderRadius.circular(12),
                     boxShadow: [
                       BoxShadow(
-                        color: Colors.black.withOpacity(0.1),
+                        color: Colors.black.withValues(alpha: 0.1),
                         blurRadius: 10,
                         offset: const Offset(0, 4),
                       ),

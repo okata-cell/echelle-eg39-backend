@@ -5,7 +5,7 @@ import 'api_service.dart';
 
 /// Page admin pour gérer les demandes d'achat (copie de LocationsMenu)
 class AdminVentesPageFixed extends StatefulWidget {
-  const AdminVentesPageFixed({Key? key}) : super(key: key);
+  const AdminVentesPageFixed({super.key});
 
   @override
   State<AdminVentesPageFixed> createState() => _AdminVentesPageFixedState();
@@ -348,10 +348,10 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: borderColor.withOpacity(0.3)),
+        border: Border.all(color: borderColor.withValues(alpha: 0.3)),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -363,7 +363,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
-              color: borderColor.withOpacity(0.1),
+              color: borderColor.withValues(alpha: 0.1),
               borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
             ),
             child: Row(
@@ -402,7 +402,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
                       width: 48,
                       height: 48,
                       decoration: BoxDecoration(
-                        color: Colors.blue.withOpacity(0.1),
+                        color: Colors.blue.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
                       child: const Icon(Icons.shopping_cart, color: Colors.blue),

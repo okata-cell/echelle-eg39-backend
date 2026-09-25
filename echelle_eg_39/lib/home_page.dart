@@ -9,7 +9,7 @@ import 'profile.dart';
 import 'promotion_popup.dart';
 
 class ModernHomePage extends StatefulWidget {
-  const ModernHomePage({Key? key}) : super(key: key);
+  const ModernHomePage({super.key});
 
   @override
   State<ModernHomePage> createState() => _ModernHomePageState();
@@ -149,7 +149,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
                             width: 44,
                             height: 44,
                             decoration: BoxDecoration(
-                              color: Colors.white.withOpacity(0.2),
+                              color: Colors.white.withValues(alpha: 0.2),
                               borderRadius: BorderRadius.circular(12),
                             ),
                             child: IconButton(
@@ -178,7 +178,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
                           borderRadius: BorderRadius.circular(16),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.08),
+                              color: Colors.black.withValues(alpha: 0.08),
                               blurRadius: 12,
                               offset: const Offset(0, 4),
                             ),
@@ -224,14 +224,18 @@ class _ModernHomePageState extends State<ModernHomePage> {
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text(
-                        'Nos appareils disponibles',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827),
+                      Expanded(
+                        child: Text(
+                          'Nos appareils disponibles',
+                          style: GoogleFonts.poppins(
+                            fontSize: 20,
+                            fontWeight: FontWeight.w700,
+                            color: const Color(0xFF111827),
+                          ),
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
+                      const SizedBox(width: 8),
                       TextButton.icon(
                         onPressed: () {
                           Navigator.push(
@@ -446,7 +450,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -643,7 +647,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.08),
+            color: Colors.black.withValues(alpha: 0.08),
             blurRadius: 16,
             offset: const Offset(0, 4),
           ),
@@ -747,7 +751,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),

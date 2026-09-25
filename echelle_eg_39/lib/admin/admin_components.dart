@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models_anonymized_user.dart';
 import 'admin_tokens.dart';
 
 class AdminPageHeader extends StatelessWidget {
@@ -45,10 +46,10 @@ class AdminPageHeader extends StatelessWidget {
                 Text(
                   title,
                   style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: AdminPalette.primaryText,
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.2,
-                      ),
+                    color: AdminPalette.primaryText,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.2,
+                  ),
                 ),
                 const SizedBox(height: AdminSpacing.xs),
                 Text(
@@ -56,19 +57,16 @@ class AdminPageHeader extends StatelessWidget {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                   style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AdminPalette.secondaryText,
-                        height: 1.35,
-                      ),
+                    color: AdminPalette.secondaryText,
+                    height: 1.35,
+                  ),
                 ),
               ],
             ),
           ),
           if (actions.isNotEmpty) ...[
             const SizedBox(width: AdminSpacing.sm),
-            Wrap(
-              spacing: AdminSpacing.xs,
-              children: actions,
-            ),
+            Wrap(spacing: AdminSpacing.xs, children: actions),
           ],
         ],
       ),
@@ -114,7 +112,8 @@ class AdminMetricCluster extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               for (var index = 0; index < secondary.length; index++) ...[
-                if (index > 0) const Divider(color: Color(0x33475569), height: 20),
+                if (index > 0)
+                  const Divider(color: Color(0x33475569), height: 20),
                 _MiniMetric(metric: secondary[index]),
               ],
             ],
@@ -169,10 +168,10 @@ class _PrimaryMetric extends StatelessWidget {
             Text(
               'PRIORITÉ',
               style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: const Color(0xFFFFD38A),
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: 1.2,
-                  ),
+                color: const Color(0xFFFFD38A),
+                fontWeight: FontWeight.w800,
+                letterSpacing: 1.2,
+              ),
             ),
           ],
         ),
@@ -190,9 +189,9 @@ class _PrimaryMetric extends StatelessWidget {
         Text(
           metric.label,
           style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                color: const Color(0xFFCBD5E1),
-                fontWeight: FontWeight.w600,
-              ),
+            color: const Color(0xFFCBD5E1),
+            fontWeight: FontWeight.w600,
+          ),
         ),
       ],
     );
@@ -213,9 +212,9 @@ class _MiniMetric extends StatelessWidget {
         Expanded(
           child: Text(
             metric.label,
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: const Color(0xFFCBD5E1),
-                ),
+            style: Theme.of(
+              context,
+            ).textTheme.bodySmall?.copyWith(color: const Color(0xFFCBD5E1)),
           ),
         ),
         Text(
@@ -288,12 +287,13 @@ class AdminSegmentedFilter extends StatelessWidget {
                     Text(
                       option.label,
                       style: Theme.of(context).textTheme.labelLarge?.copyWith(
-                            color: selected
-                                ? AdminPalette.deepSlate
-                                : AdminPalette.secondaryText,
-                            fontWeight:
-                                selected ? FontWeight.w800 : FontWeight.w600,
-                          ),
+                        color: selected
+                            ? AdminPalette.deepSlate
+                            : AdminPalette.secondaryText,
+                        fontWeight: selected
+                            ? FontWeight.w800
+                            : FontWeight.w600,
+                      ),
                     ),
                     const SizedBox(width: AdminSpacing.sm),
                     Text(
@@ -335,10 +335,10 @@ class AdminStatusChip extends StatelessWidget {
       child: Text(
         adminStatusLabel(status).toUpperCase(),
         style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: color,
-              fontWeight: FontWeight.w800,
-              letterSpacing: 0.3,
-            ),
+          color: color,
+          fontWeight: FontWeight.w800,
+          letterSpacing: 0.3,
+        ),
       ),
     );
   }
@@ -366,7 +366,10 @@ class AdminLoadingState extends StatelessWidget {
               ),
             ),
             const SizedBox(height: AdminSpacing.md),
-            Text(label, style: const TextStyle(color: AdminPalette.secondaryText)),
+            Text(
+              label,
+              style: const TextStyle(color: AdminPalette.secondaryText),
+            ),
           ],
         ),
       ),
@@ -399,17 +402,17 @@ class AdminEmptyState extends StatelessWidget {
             Text(
               title,
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AdminPalette.primaryText,
-                    fontWeight: FontWeight.w800,
-                  ),
+                color: AdminPalette.primaryText,
+                fontWeight: FontWeight.w800,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AdminSpacing.xs),
             Text(
               message,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AdminPalette.secondaryText,
-                  ),
+                color: AdminPalette.secondaryText,
+              ),
               textAlign: TextAlign.center,
             ),
           ],
@@ -437,22 +440,26 @@ class AdminErrorState extends StatelessWidget {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            const Icon(Icons.cloud_off_outlined, size: 40, color: AdminPalette.destructiveRed),
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 40,
+              color: AdminPalette.destructiveRed,
+            ),
             const SizedBox(height: AdminSpacing.md),
             Text(
               'Impossible de charger les données',
               style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    color: AdminPalette.primaryText,
-                    fontWeight: FontWeight.w800,
-                  ),
+                color: AdminPalette.primaryText,
+                fontWeight: FontWeight.w800,
+              ),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: AdminSpacing.xs),
             Text(
               message,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AdminPalette.secondaryText,
-                  ),
+                color: AdminPalette.secondaryText,
+              ),
               textAlign: TextAlign.center,
               maxLines: 3,
               overflow: TextOverflow.ellipsis,
@@ -483,6 +490,7 @@ class AdminDirectoryRow extends StatelessWidget {
     required this.contacts,
     this.onTap,
     this.actions = const <Widget>[],
+    this.statusIndicator,
   });
 
   final String id;
@@ -490,6 +498,7 @@ class AdminDirectoryRow extends StatelessWidget {
   final List<String> contacts;
   final VoidCallback? onTap;
   final List<Widget> actions;
+  final Widget? statusIndicator;
 
   @override
   Widget build(BuildContext context) {
@@ -510,7 +519,9 @@ class AdminDirectoryRow extends StatelessWidget {
             children: [
               CircleAvatar(
                 radius: 22,
-                backgroundColor: AdminPalette.blueprintBlue.withValues(alpha: 0.12),
+                backgroundColor: AdminPalette.blueprintBlue.withValues(
+                  alpha: 0.12,
+                ),
                 child: Text(
                   initial,
                   style: const TextStyle(
@@ -529,10 +540,14 @@ class AdminDirectoryRow extends StatelessWidget {
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: Theme.of(context).textTheme.titleSmall?.copyWith(
-                            color: AdminPalette.primaryText,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        color: AdminPalette.primaryText,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
+                    if (statusIndicator != null) ...[
+                      const SizedBox(height: AdminSpacing.xs),
+                      statusIndicator!,
+                    ],
                     const SizedBox(height: AdminSpacing.xs),
                     Text(id, style: adminMonoStyle(context, size: 11)),
                     if (contacts.isNotEmpty) ...[
@@ -547,7 +562,8 @@ class AdminDirectoryRow extends StatelessWidget {
                                 contact,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
                                       color: AdminPalette.secondaryText,
                                     ),
                               ),
@@ -566,6 +582,200 @@ class AdminDirectoryRow extends StatelessWidget {
           ),
         ),
       ),
+    );
+  }
+}
+
+class AdminDirectoryManifest extends StatelessWidget {
+  const AdminDirectoryManifest({super.key, required this.users});
+
+  final List<AnonymizedUser> users;
+
+  @override
+  Widget build(BuildContext context) {
+    if (users.isEmpty) return const SizedBox.shrink();
+
+    return Container(
+      decoration: BoxDecoration(
+        color: AdminPalette.surface,
+        borderRadius: BorderRadius.circular(AdminRadii.card),
+        border: Border.all(color: AdminPalette.border),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final wide = constraints.maxWidth >= 560;
+          return Column(
+            children: [
+              if (wide) const _AdminDirectoryHeader(),
+              for (var index = 0; index < users.length; index++)
+                AdminDirectoryRecordRow(
+                  user: users[index],
+                  wide: wide,
+                  showDivider: index < users.length - 1,
+                ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _AdminDirectoryHeader extends StatelessWidget {
+  const _AdminDirectoryHeader();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      color: AdminPalette.mutedSurface,
+      padding: const EdgeInsets.symmetric(
+        horizontal: AdminSpacing.md,
+        vertical: AdminSpacing.sm,
+      ),
+      child: Row(
+        children: [
+          Expanded(flex: 32, child: _headerText(context, 'IDENTIFIANT')),
+          Expanded(flex: 24, child: _headerText(context, 'RÔLE')),
+          Expanded(flex: 44, child: _headerText(context, 'E-MAIL MASQUÉ')),
+        ],
+      ),
+    );
+  }
+
+  Widget _headerText(BuildContext context, String text) {
+    return Text(
+      text,
+      style: Theme.of(context).textTheme.labelSmall?.copyWith(
+        color: AdminPalette.secondaryText,
+        fontWeight: FontWeight.w800,
+        letterSpacing: 0.35,
+      ),
+    );
+  }
+}
+
+class AdminDirectoryRecordRow extends StatelessWidget {
+  const AdminDirectoryRecordRow({
+    super.key,
+    required this.user,
+    required this.wide,
+    required this.showDivider,
+  });
+
+  final AnonymizedUser user;
+  final bool wide;
+  final bool showDivider;
+
+  @override
+  Widget build(BuildContext context) {
+    final semanticLabel =
+        'Identifiant ${user.id}, rôle ${user.role}, e-mail masqué ${user.maskedEmail}';
+
+    return Semantics(
+      container: true,
+      label: semanticLabel,
+      child: ExcludeSemantics(
+        child: Container(
+          constraints: const BoxConstraints(minHeight: 72),
+          decoration: BoxDecoration(
+            border: showDivider
+                ? const Border(bottom: BorderSide(color: AdminPalette.border))
+                : null,
+          ),
+          padding: const EdgeInsets.symmetric(
+            horizontal: AdminSpacing.md,
+            vertical: AdminSpacing.md,
+          ),
+          child: wide ? _buildWide(context) : _buildCompact(context),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildCompact(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Text(
+                user.id,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: adminMonoStyle(
+                  context,
+                  color: AdminPalette.blueprintBlue,
+                  size: 12,
+                ),
+              ),
+            ),
+            const SizedBox(width: AdminSpacing.md),
+            Flexible(
+              child: Text(
+                user.role,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.end,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: AdminPalette.primaryText,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+            ),
+          ],
+        ),
+        const SizedBox(height: AdminSpacing.sm),
+        _maskedEmail(context),
+      ],
+    );
+  }
+
+  Widget _buildWide(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.center,
+      children: [
+        Expanded(
+          flex: 32,
+          child: Text(
+            user.id,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: adminMonoStyle(
+              context,
+              color: AdminPalette.blueprintBlue,
+              size: 12,
+            ),
+          ),
+        ),
+        Expanded(
+          flex: 24,
+          child: Text(
+            user.role,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: AdminPalette.primaryText,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        Expanded(flex: 44, child: _maskedEmail(context)),
+      ],
+    );
+  }
+
+  Widget _maskedEmail(BuildContext context) {
+    return Text(
+      user.maskedEmail,
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
+      style: Theme.of(
+        context,
+      ).textTheme.bodySmall?.copyWith(color: AdminPalette.secondaryText),
     );
   }
 }
@@ -634,13 +844,21 @@ class AdminWorkItemCard extends StatelessWidget {
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
-                              Text(reference.toUpperCase(), style: adminMonoStyle(context, color: accent, size: 11)),
+                              Text(
+                                reference.toUpperCase(),
+                                style: adminMonoStyle(
+                                  context,
+                                  color: accent,
+                                  size: 11,
+                                ),
+                              ),
                               const SizedBox(height: AdminSpacing.xs),
                               Text(
                                 title,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.titleSmall?.copyWith(
+                                style: Theme.of(context).textTheme.titleSmall
+                                    ?.copyWith(
                                       color: AdminPalette.primaryText,
                                       fontWeight: FontWeight.w800,
                                     ),
@@ -650,7 +868,8 @@ class AdminWorkItemCard extends StatelessWidget {
                                 requester,
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
-                                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                                style: Theme.of(context).textTheme.bodySmall
+                                    ?.copyWith(
                                       color: AdminPalette.secondaryText,
                                       fontWeight: FontWeight.w600,
                                     ),
@@ -687,8 +906,8 @@ class AdminWorkItemCard extends StatelessWidget {
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
                         style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                              color: AdminPalette.secondaryText,
-                            ),
+                          color: AdminPalette.secondaryText,
+                        ),
                       ),
                     ],
                     if (details != null) ...[
@@ -769,7 +988,11 @@ class AdminDecisionBar extends StatelessWidget {
         if (compact) {
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [approve, const SizedBox(height: AdminSpacing.sm), reject],
+            children: [
+              approve,
+              const SizedBox(height: AdminSpacing.sm),
+              reject,
+            ],
           );
         }
 
@@ -835,16 +1058,16 @@ Future<String?> showAdminRejectionSheet(
                     Text(
                       'Rejeter $entityLabel',
                       style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                            color: AdminPalette.primaryText,
-                            fontWeight: FontWeight.w800,
-                          ),
+                        color: AdminPalette.primaryText,
+                        fontWeight: FontWeight.w800,
+                      ),
                     ),
                     const SizedBox(height: AdminSpacing.xs),
                     Text(
                       helperText,
                       style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                            color: AdminPalette.secondaryText,
-                          ),
+                        color: AdminPalette.secondaryText,
+                      ),
                     ),
                     const SizedBox(height: AdminSpacing.lg),
                     TextField(
@@ -853,12 +1076,12 @@ Future<String?> showAdminRejectionSheet(
                       minLines: 3,
                       maxLines: 5,
                       maxLength: 1000,
-                      onChanged: (value) => setState(
-                        () => isValid = value.trim().isNotEmpty,
-                      ),
+                      onChanged: (value) =>
+                          setState(() => isValid = value.trim().isNotEmpty),
                       decoration: InputDecoration(
                         labelText: 'Motif du rejet',
-                        hintText: 'Expliquez la décision à conserver dans le dossier…',
+                        hintText:
+                            'Expliquez la décision à conserver dans le dossier…',
                         alignLabelWithHint: true,
                         prefixIcon: const Padding(
                           padding: EdgeInsets.only(bottom: 46),
@@ -868,11 +1091,15 @@ Future<String?> showAdminRejectionSheet(
                         fillColor: AdminPalette.mutedSurface,
                         border: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AdminRadii.field),
-                          borderSide: const BorderSide(color: AdminPalette.border),
+                          borderSide: const BorderSide(
+                            color: AdminPalette.border,
+                          ),
                         ),
                         enabledBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AdminRadii.field),
-                          borderSide: const BorderSide(color: AdminPalette.border),
+                          borderSide: const BorderSide(
+                            color: AdminPalette.border,
+                          ),
                         ),
                         focusedBorder: OutlineInputBorder(
                           borderRadius: BorderRadius.circular(AdminRadii.field),
@@ -889,7 +1116,9 @@ Future<String?> showAdminRejectionSheet(
                         Expanded(
                           child: TextButton(
                             onPressed: () => Navigator.pop(sheetContext),
-                            style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 48),
+                            ),
                             child: const Text('Annuler'),
                           ),
                         ),
@@ -898,9 +1127,9 @@ Future<String?> showAdminRejectionSheet(
                           child: ElevatedButton.icon(
                             onPressed: isValid
                                 ? () => Navigator.pop(
-                                      sheetContext,
-                                      controller.text.trim(),
-                                    )
+                                    sheetContext,
+                                    controller.text.trim(),
+                                  )
                                 : null,
                             icon: const Icon(Icons.close, size: 18),
                             label: const Text('Confirmer'),
@@ -909,7 +1138,9 @@ Future<String?> showAdminRejectionSheet(
                               foregroundColor: Colors.white,
                               minimumSize: const Size(0, 48),
                               shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(AdminRadii.field),
+                                borderRadius: BorderRadius.circular(
+                                  AdminRadii.field,
+                                ),
                               ),
                             ),
                           ),

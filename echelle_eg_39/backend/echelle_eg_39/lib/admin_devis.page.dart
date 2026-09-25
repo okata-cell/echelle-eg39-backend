@@ -261,7 +261,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
                   padding: const EdgeInsets.symmetric(
                       horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: statutColor.withOpacity(0.1),
+                    color: statutColor.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(

@@ -59,7 +59,7 @@ class _CreateTransactionPageState extends State<CreateTransactionPage> {
             // 👤 CHOIX DU CLIENT
             DropdownButtonFormField<Client>(
               hint: const Text("Choisir le client"),
-              value: selectedClient,
+              initialValue: selectedClient,
               items: clients.map((client) {
                 return DropdownMenuItem(
                   value: client,

@@ -31,7 +31,7 @@ class Product {
 }
 
 class VenteScreen extends StatefulWidget {
-  const VenteScreen({Key? key}) : super(key: key);
+  const VenteScreen({super.key});
 
   @override
   State<VenteScreen> createState() => _VenteScreenState();
@@ -275,7 +275,7 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
                       crossAxisCount: 2,
                       crossAxisSpacing: 12,
                       mainAxisSpacing: 12,
-                      childAspectRatio: 0.75,
+                      childAspectRatio: 0.95,
                     ),
                     itemCount: _filteredProducts.length,
                     itemBuilder: (context, index) {
@@ -567,7 +567,7 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -577,56 +577,56 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Image (tappable → zoom plein écran)
-          GestureDetector(
-            onTap: () {
-              openImageZoom(
-                context,
-                imageUrl: product.imageUrl,
-              );
-            },
-            child: ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                topRight: Radius.circular(16),
-              ),
-              child: Image.network(
-                product.imageUrl,
-                width: double.infinity,
-                height: 140,
-                fit: BoxFit.cover,
-                loadingBuilder: (context, child, progress) {
-                  if (progress == null) return child;
-                  return Container(
-                    width: double.infinity,
-                    height: 140,
-                    color: const Color(0xFFF3F4F6),
-                    child: const Center(
-                      child: CircularProgressIndicator(
-                        color: Color(0xFF059669),
-                        strokeWidth: 2,
+          Expanded(
+            child: GestureDetector(
+              onTap: () {
+                openImageZoom(
+                  context,
+                  imageUrl: product.imageUrl,
+                );
+              },
+              child: ClipRRect(
+                borderRadius: const BorderRadius.only(
+                  topLeft: Radius.circular(16),
+                  topRight: Radius.circular(16),
+                ),
+                child: Image.network(
+                  product.imageUrl,
+                  width: double.infinity,
+                  fit: BoxFit.cover,
+                  loadingBuilder: (context, child, progress) {
+                    if (progress == null) return child;
+                    return Container(
+                      width: double.infinity,
+                      color: const Color(0xFFF3F4F6),
+                      child: const Center(
+                        child: CircularProgressIndicator(
+                          color: Color(0xFF059669),
+                          strokeWidth: 2,
+                        ),
                       ),
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: double.infinity,
-                    height: 140,
-                    color: const Color(0xFFF3F4F6),
-                    child: Icon(
-                      Icons.image_not_supported,
-                      size: 32,
-                      color: Colors.grey[400],
-                    ),
-                  );
-                },
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Container(
+                      width: double.infinity,
+                      color: const Color(0xFFF3F4F6),
+                      child: Icon(
+                        Icons.image_not_supported,
+                        size: 32,
+                        color: Colors.grey[400],
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           ),
 
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
             child: Column(
+              mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
@@ -639,7 +639,7 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
                     color: const Color(0xFF111827),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 2),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
@@ -655,7 +655,7 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
                     ),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 4),
                 Text(
                   '${product.price.toString().replaceAllMapped(RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'), (m) => '${m[1]} ')} FCFA',
                   style: GoogleFonts.poppins(
@@ -664,7 +664,7 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
                     color: const Color(0xFF059669),
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: 6),
 
                 // ── Bouton Acheter / En attente / Rupture ──────────────────
                 SizedBox(

@@ -95,7 +95,7 @@ class Transaction {
 }
 
 class HistoriqueScreen extends StatefulWidget {
-  const HistoriqueScreen({Key? key}) : super(key: key);
+  const HistoriqueScreen({super.key});
 
   @override
   State<HistoriqueScreen> createState() => _HistoriqueScreenState();
@@ -125,7 +125,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     // On affiche toutes les transactions retournées par l'API
     List<Transaction> userTransactions = _allTransactions;
     
-    print('🔍 Filtres: ${_selectedFilter}, Transactions total: ${userTransactions.length}');
+    print('🔍 Filtres: $_selectedFilter, Transactions total: ${userTransactions.length}');
     
     // Filtrer par statut uniquement
     if (_selectedFilter == 'Tous') return userTransactions;
@@ -528,7 +528,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 Container(
                   padding: const EdgeInsets.all(6),
                   decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
+                    color: Colors.white.withValues(alpha: 0.2),
                     shape: BoxShape.circle,
                   ),
                   child: const Icon(Icons.warning_rounded,
@@ -657,7 +657,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                 ],
               ),
             );
-          }).toList(),
+          }),
           const SizedBox(height: 4),
         ],
       ),
@@ -2122,7 +2122,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
             isLate ? Border.all(color: Colors.red, width: 2) : null,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),
@@ -2266,8 +2266,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                           const SizedBox(width: 4),
                           // Format: du 24 avril 2026 au 30 avril 2026
                           Text(
-                            'du ${_formatDateFr(transaction.date)}' +
-                            (transaction.dateRetour != null ? ' au ${_formatDateFr(transaction.dateRetour!)}' : ''),
+                            'du ${_formatDateFr(transaction.date)}${transaction.dateRetour != null ? ' au ${_formatDateFr(transaction.dateRetour!)}' : ''}',
                             style: TextStyle(
                               fontSize: 12,
                               color: isLate ? Colors.red : Colors.grey[600],
@@ -2414,7 +2413,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                                     ],
                                   ),
                                 );
-                              }).toList(),
+                              }),
                             ],
                           ),
                         ),
@@ -2569,7 +2568,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
 
 // Placeholder pour DashboardScreen
 class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({Key? key}) : super(key: key);
+  const DashboardScreen({super.key});
   @override
   Widget build(BuildContext context) {
     return const Scaffold(

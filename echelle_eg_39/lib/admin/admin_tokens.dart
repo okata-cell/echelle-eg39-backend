@@ -65,6 +65,13 @@ String adminStatusKey(Object? value) {
     case 'rejetée':
     case 'rejected':
       return 'rejetee';
+    case 'annulee':
+    case 'annulée':
+    case 'annulé':
+    case 'annule':
+    case 'cancelled':
+    case 'canceled':
+      return 'annulee';
     case 'en_cours':
     case 'active':
       return 'en_cours';
@@ -88,6 +95,8 @@ String adminStatusLabel(Object? value) {
       return 'Approuvée';
     case 'rejetee':
       return 'Rejetée';
+    case 'annulee':
+      return 'Annulée';
     case 'en_cours':
       return 'En cours';
     case 'envoye':
@@ -107,6 +116,7 @@ Color adminStatusColor(Object? value) {
     case 'approuvee':
       return AdminPalette.approvalGreen;
     case 'rejetee':
+    case 'annulee':
       return AdminPalette.destructiveRed;
     case 'en_cours':
     case 'envoye':
@@ -152,10 +162,10 @@ TextStyle adminMonoStyle(
   FontWeight weight = FontWeight.w600,
 }) {
   return Theme.of(context).textTheme.labelMedium!.copyWith(
-        color: color,
-        fontSize: size,
-        fontWeight: weight,
-        fontFeatures: const [FontFeature.tabularFigures()],
-        letterSpacing: 0.2,
-      );
+    color: color,
+    fontSize: size,
+    fontWeight: weight,
+    fontFeatures: const [FontFeature.tabularFigures()],
+    letterSpacing: 0.2,
+  );
 }

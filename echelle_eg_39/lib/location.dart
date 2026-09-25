@@ -29,7 +29,7 @@ class Equipment {
 }
 
 class LocationScreen extends StatefulWidget {
-  const LocationScreen({Key? key}) : super(key: key);
+  const LocationScreen({super.key});
 
   @override
   State<LocationScreen> createState() => _LocationScreenState();
@@ -485,7 +485,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),

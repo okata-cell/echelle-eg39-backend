@@ -48,6 +48,7 @@ app.use('/api/devis', require('./routes/devis'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/prolongations', require('./routes/prolongations'));
 app.use('/api/promotions', require('./routes/promotions'));
+app.use('/api/users', require('./routes/users'));
 
 // ---------- ROUTE: Déclencher le rappel manuel ----------
 app.post('/api/admin/trigger-reminder', async (req, res) => {

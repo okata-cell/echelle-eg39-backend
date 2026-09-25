@@ -9,7 +9,7 @@ import 'login.page.dart';
 
 /// Dialog de support chat pour l'assistance rapide
 class ChatSupportDialog extends StatefulWidget {
-  const ChatSupportDialog({Key? key}) : super(key: key);
+  const ChatSupportDialog({super.key});
 
   @override
   State<ChatSupportDialog> createState() => _ChatSupportDialogState();
@@ -242,7 +242,7 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(16),
       ),
-      child: Container(
+      child: SizedBox(
         height: 500,
         width: MediaQuery.of(context).size.width * 0.9,
         child: Column(
@@ -475,7 +475,7 @@ class ChatMessage {
 /// Écran de profil utilisateur
 /// Affiche les informations de l'utilisateur et les options de gestion du compte
 class ProfilScreen extends StatefulWidget {
-  const ProfilScreen({Key? key}) : super(key: key);
+  const ProfilScreen({super.key});
 
   @override
   State<ProfilScreen> createState() => _ProfilScreenState();
@@ -552,7 +552,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
           ),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.1),
+              color: Colors.black.withValues(alpha: 0.1),
               blurRadius: 8,
               offset: const Offset(0, 2),
             ),
@@ -943,7 +943,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),
@@ -1067,7 +1067,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
         borderRadius: BorderRadius.circular(16),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.06),
+            color: Colors.black.withValues(alpha: 0.06),
             blurRadius: 12,
             offset: const Offset(0, 2),
           ),
@@ -1895,7 +1895,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
               Text('Centre d\'aide'),
             ],
           ),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView(
               shrinkWrap: true,
@@ -1991,7 +1991,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('FAQ Dynamique'),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView(
               shrinkWrap: true,
@@ -2034,7 +2034,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Tutoriels Vidéo'),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView(
               shrinkWrap: true,
@@ -2149,7 +2149,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Base de connaissances'),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView(
               shrinkWrap: true,
@@ -2193,7 +2193,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Glossaire'),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: Column(
               mainAxisSize: MainAxisSize.min,
@@ -2207,7 +2207,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   ),
                 ),
                 SizedBox(height: 16),
-                Container(
+                SizedBox(
                   height: 200,
                   child: ListView(
                     shrinkWrap: true,
@@ -2243,7 +2243,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Contact direct'),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView(
               shrinkWrap: true,
@@ -2294,7 +2294,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: Text('Centre de formation'),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView(
               shrinkWrap: true,
@@ -2399,7 +2399,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
               Text('À propos'),
             ],
           ),
-          content: Container(
+          content: SizedBox(
             width: double.maxFinite,
             child: ListView(
               shrinkWrap: true,

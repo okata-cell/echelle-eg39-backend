@@ -4,7 +4,7 @@ import 'models_demande_achat.dart';
 import 'package:intl/intl.dart';
 
 class AdminDemandesAchatPage extends StatefulWidget {
-  const AdminDemandesAchatPage({Key? key}) : super(key: key);
+  const AdminDemandesAchatPage({super.key});
 
   @override
   State<AdminDemandesAchatPage> createState() => _AdminDemandesAchatPageState();
@@ -192,7 +192,7 @@ class _AdminDemandesAchatPageState extends State<AdminDemandesAchatPage> {
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
-                color: isSelected ? Colors.white.withOpacity(0.3) : Colors.white,
+                color: isSelected ? Colors.white.withValues(alpha: 0.3) : Colors.white,
                 borderRadius: BorderRadius.circular(10),
               ),
               child: Text(
@@ -241,7 +241,7 @@ class _AdminDemandesAchatPageState extends State<AdminDemandesAchatPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _getStatutColor(demande.statut).withOpacity(0.1),
+                    color: _getStatutColor(demande.statut).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(

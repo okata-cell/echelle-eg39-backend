@@ -321,12 +321,15 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
     final content = _isLoading && _demandes.isEmpty
         ? const SliverFillRemaining(
             hasScrollBody: false,
-            child: AdminLoadingState(label: 'Chargement des demandes d’achat…'),
+            child: AdminLoadingState(label: 'Chargement des demandes d\'achat…'),
           )
-        : _errorMessage != null && _demandes.isEmpty
+        : _errorMessage != null
             ? SliverFillRemaining(
                 hasScrollBody: false,
-                child: AdminErrorState(message: _errorMessage!, onRetry: _loadDemandes),
+                child: AdminErrorState(
+                  message: _errorMessage!,
+                  onRetry: _loadDemandes,
+                ),
               )
             : visibleDemandes.isEmpty
                 ? SliverFillRemaining(
@@ -337,7 +340,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
                           ? 'Aucune demande en attente'
                           : 'Aucune demande pour ce filtre',
                       message: _filter == 'en_attente'
-                          ? 'Les nouvelles demandes d’achat apparaîtront ici.'
+                          ? 'Les nouvelles demandes d\'achat apparaîtront ici.'
                           : 'Changez de filtre ou actualisez la file.',
                     ),
                   )

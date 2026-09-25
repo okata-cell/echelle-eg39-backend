@@ -24,6 +24,7 @@ app.use('/api/devis', require('./routes/devis'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/prolongations', require('./routes/prolongations'));
 app.use('/api/promotions', require('./routes/promotions'));
+app.use('/api/users', require('./routes/users'));
 
 // Route de santé
 app.get('/health', (req, res) => {
@@ -41,7 +42,9 @@ app.get('/', (req, res) => {
       demandes: '/api/demandes',
       devis: '/api/devis',
       locations: '/api/locations',
-      prolongations: '/api/prolongations'
+      prolongations: '/api/prolongations',
+      users: '/api/users',
+      clients: '/api/users/clients'
     }
   });
 });

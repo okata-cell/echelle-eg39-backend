@@ -280,7 +280,7 @@ class _RegisterPageState extends State<RegisterPage> {
 
           // 🖤 OVERLAY SOMBRE
           Container(
-            color: const Color.fromRGBO(11, 11, 11, 1).withOpacity(0.6),
+            color: const Color.fromRGBO(11, 11, 11, 1).withValues(alpha: 0.6),
           ),
 
           // 📄 CONTENU
@@ -328,7 +328,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Email (exemple@domaine.com)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.email, color: Colors.white),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -348,7 +348,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Téléphone (ex: +228990929132)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.phone, color: Colors.white),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -368,7 +368,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Mot de passe (ex: 1234AZER)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.lock, color: Colors.white),
                       suffixIcon: IconButton(
                         onPressed: () {
@@ -399,7 +399,7 @@ class _RegisterPageState extends State<RegisterPage> {
                       hintText: "Confirmer le mot de passe (ex: 1234AZER)",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.lock, color: Colors.white),
                       suffixIcon: IconButton(
                         onPressed: () {

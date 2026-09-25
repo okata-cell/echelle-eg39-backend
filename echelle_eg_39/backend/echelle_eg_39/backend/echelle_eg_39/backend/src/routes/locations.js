@@ -5,20 +5,42 @@ const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { sendLocationApprovedEmail, sendLocationRejectedEmail } = require('../services/email_sms_service');
 
-// Liste des locations
-router.get('/', authMiddleware, async (req, res) => {
+function mapLocation(location) {
+  return {
+    id: location.id,
+    code: location.code,
+    clientNom: [location.first_name, location.last_name].filter(Boolean).join(' '),
+    clientEmail: location.email,
+    clientPhone: location.phone,
+    clientTelephone: location.phone,
+    appareilId: location.appareil_id,
+    appareilNom: location.appareil_nom,
+    appareilType: location.appareil_type,
+    imageUrl: location.appareil_image_url,
+    dateDebut: location.date_debut,
+    dateFin: location.date_fin,
+    prixJournalier: location.prix_journalier,
+    montantTotal: location.montant_total,
+    statut: location.statut,
+    commentaireAdmin: location.commentaire_admin,
+    createdAt: location.created_at,
+  };
+}
+
+async function listLocations(req, res, { adminOnly = false } = {}) {
   try {
     const { statut } = req.query;
-    
     let query = `
-      SELECT l.*, u.first_name, u.last_name, u.email, u.phone
+      SELECT l.*, u.first_name, u.last_name, u.email, u.phone,
+             a.type AS appareil_type, a.image_url AS appareil_image_url
       FROM locations l
       JOIN users u ON l.user_id = u.id
+      LEFT JOIN appareils a ON l.appareil_id = a.id
     `;
     const params = [];
 
-    // Admin voit tout, client voit seulement ses locations
-    if (req.user.role === 'client') {
+    // Le répertoire admin est complet; tout autre compte reste limité au sien.
+    if (!adminOnly && req.user.role !== 'admin') {
       query += ' WHERE l.user_id = $1';
       params.push(req.user.userId);
     }
@@ -30,40 +52,22 @@ router.get('/', authMiddleware, async (req, res) => {
     }
 
     query += ' ORDER BY l.created_at DESC';
-
-    console.log('📡 GET /locations - User role:', req.user.role, 'User ID:', req.user.userId);
-    console.log('📡 Query:', query);
-    console.log('📡 Params:', params);
-
     const result = await pool.query(query, params);
-
-    console.log('📡 Locations trouvées:', result.rows.length);
-
-    res.json({
-      locations: result.rows.map(l => ({
-        id: l.id,
-        code: l.code,
-        clientNom: `${l.first_name} ${l.last_name}`,
-        client: `${l.first_name} ${l.last_name}`,
-        clientEmail: l.email,
-        clientPhone: l.phone,
-        appareilId: l.appareil_id,
-        appareilNom: l.appareil_nom,
-        appareil: l.appareil_nom,
-        dateDebut: l.date_debut,
-        dateFin: l.date_fin,
-        prixJournalier: l.prix_journalier,
-        montantTotal: l.montant_total,
-        statut: l.statut,
-        commentaireAdmin: l.commentaire_admin,
-        createdAt: l.created_at
-      }))
-    });
+    res.set('Cache-Control', 'no-store');
+    return res.json({ locations: result.rows.map(mapLocation) });
   } catch (error) {
     console.error('Erreur liste locations:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
-});
+}
+
+// Répertoire complet destiné à l’interface admin; les comptes clients sont refusés.
+router.get('/admin', authMiddleware, adminMiddleware, (req, res) =>
+  listLocations(req, res, { adminOnly: true }),
+);
+
+// Les clients ne voient que leurs propres demandes.
+router.get('/', authMiddleware, (req, res) => listLocations(req, res));
 
 // Créer une location (admin ou client)
 router.post('/', authMiddleware, [
@@ -283,7 +287,7 @@ router.patch('/:id/terminer', authMiddleware, adminMiddleware, async (req, res) 
     const result = await pool.query(
       `UPDATE locations
        SET statut = 'termine', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
+       WHERE id = $1 AND statut = 'en_cours'
        RETURNING appareil_id`,
       [id]
     );
@@ -322,8 +326,8 @@ router.patch('/reset-statuts', authMiddleware, adminMiddleware, async (req, res)
   }
 });
 
-// Vérifier et expirer les locations automatiquement
-router.get('/check-expired', authMiddleware, async (req, res) => {
+// Vérifier et expirer les locations (admin seulement : cette route modifie les statuts).
+router.get('/check-expired', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const today = new Date().toISOString().split('T')[0];
     
@@ -533,9 +537,9 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     const location = checkResult.rows[0];
     
     // Vérifier le statut - seulement terminé ou rejété peut être supprimé
-    if (location.statut !== 'termine' && location.statut !== 'rejetee') {
-      return res.status(400).json({ 
-        error: 'Seules les locations terminées ou rejétées peuvent être supprimées' 
+    if (!['termine', 'rejetee', 'annulee'].includes(location.statut)) {
+      return res.status(400).json({
+        error: 'Seules les locations terminées, rejetées ou annulées peuvent être supprimées',
       });
     }
     

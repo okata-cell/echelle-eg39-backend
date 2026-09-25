@@ -109,7 +109,7 @@ class _LoginPageState extends State<LoginPage>
     if (RegExp(r'^[0-9]+$').hasMatch(identifier.replaceAll(' ', ''))) {
       // C'est un numéro de téléphone
       await prefs.setString('userPhone', identifier);
-      await prefs.setString('userEmail', '${identifier}@utilisateur.com');
+      await prefs.setString('userEmail', '$identifier@utilisateur.com');
       await prefs.setString('userName', 'Utilisateur $identifier');
     } else {
       // C'est un email
@@ -272,9 +272,9 @@ class _LoginPageState extends State<LoginPage>
                   begin: Alignment.topCenter,
                   end: Alignment.bottomCenter,
                   colors: [
-                    const Color(0xFF0A0E14).withOpacity(0.72),
-                    const Color(0xFF0A0E14).withOpacity(0.55),
-                    const Color(0xFF0A0E14).withOpacity(0.88),
+                    const Color(0xFF0A0E14).withValues(alpha: 0.72),
+                    const Color(0xFF0A0E14).withValues(alpha: 0.55),
+                    const Color(0xFF0A0E14).withValues(alpha: 0.88),
                   ],
                   stops: const [0.0, 0.4, 1.0],
                 ),
@@ -312,7 +312,7 @@ class _LoginPageState extends State<LoginPage>
                             shape: BoxShape.circle,
                             boxShadow: [
                               BoxShadow(
-                                color: const Color(0xFFF5B942).withOpacity(0.4),
+                                color: const Color(0xFFF5B942).withValues(alpha: 0.4),
                                 blurRadius: 28,
                                 spreadRadius: 2,
                               ),
@@ -362,10 +362,10 @@ class _LoginPageState extends State<LoginPage>
                           vertical: 8,
                         ),
                         decoration: BoxDecoration(
-                          color: const Color(0xFFF5B942).withOpacity(0.18),
+                          color: const Color(0xFFF5B942).withValues(alpha: 0.18),
                           borderRadius: BorderRadius.circular(30),
                           border: Border.all(
-                            color: const Color(0xFFF5B942).withOpacity(0.55),
+                            color: const Color(0xFFF5B942).withValues(alpha: 0.55),
                             width: 1.2,
                           ),
                         ),
@@ -400,15 +400,15 @@ class _LoginPageState extends State<LoginPage>
                       Container(
                         padding: const EdgeInsets.all(24),
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.08),
+                          color: Colors.white.withValues(alpha: 0.08),
                           borderRadius: BorderRadius.circular(24),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.18),
+                            color: Colors.white.withValues(alpha: 0.18),
                             width: 1.2,
                           ),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.35),
+                              color: Colors.black.withValues(alpha: 0.35),
                               blurRadius: 30,
                               offset: const Offset(0, 12),
                             ),
@@ -439,7 +439,7 @@ class _LoginPageState extends State<LoginPage>
                                   fontWeight: FontWeight.w400,
                                 ),
                                 filled: true,
-                                fillColor: Colors.white.withOpacity(0.10),
+                                fillColor: Colors.white.withValues(alpha: 0.10),
                                 prefixIcon: const Icon(
                                   Icons.person_outline,
                                   color: Color(0xFFF5B942),
@@ -466,7 +466,7 @@ class _LoginPageState extends State<LoginPage>
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(16),
                                   borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.15),
+                                    color: Colors.white.withValues(alpha: 0.15),
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
@@ -509,7 +509,7 @@ class _LoginPageState extends State<LoginPage>
                                   fontSize: 13,
                                 ),
                                 filled: true,
-                                fillColor: Colors.white.withOpacity(0.10),
+                                fillColor: Colors.white.withValues(alpha: 0.10),
                                 prefixIcon: const Icon(
                                   Icons.lock_outline,
                                   color: Color(0xFFF5B942),
@@ -536,7 +536,7 @@ class _LoginPageState extends State<LoginPage>
                                 enabledBorder: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(16),
                                   borderSide: BorderSide(
-                                    color: Colors.white.withOpacity(0.15),
+                                    color: Colors.white.withValues(alpha: 0.15),
                                   ),
                                 ),
                                 focusedBorder: OutlineInputBorder(
@@ -565,7 +565,7 @@ class _LoginPageState extends State<LoginPage>
                                     BoxShadow(
                                       color: const Color(
                                         0xFFF5B942,
-                                      ).withOpacity(isLoading ? 0.1 : 0.45),
+                                      ).withValues(alpha: isLoading ? 0.1 : 0.45),
                                       blurRadius: 22,
                                       offset: const Offset(0, 8),
                                     ),
@@ -578,7 +578,7 @@ class _LoginPageState extends State<LoginPage>
                                     foregroundColor: const Color(0xFF0A0E14),
                                     disabledBackgroundColor: const Color(
                                       0xFFF5B942,
-                                    ).withOpacity(0.5),
+                                    ).withValues(alpha: 0.5),
                                     shape: RoundedRectangleBorder(
                                       borderRadius: BorderRadius.circular(16),
                                     ),
@@ -633,7 +633,7 @@ class _LoginPageState extends State<LoginPage>
                                 style: OutlinedButton.styleFrom(
                                   foregroundColor: Colors.white,
                                   side: BorderSide(
-                                    color: Colors.white.withOpacity(0.55),
+                                    color: Colors.white.withValues(alpha: 0.55),
                                     width: 1.5,
                                   ),
                                   shape: RoundedRectangleBorder(
@@ -698,7 +698,7 @@ class _LoginPageState extends State<LoginPage>
                                       decoration: TextDecoration.underline,
                                       decorationColor: const Color(
                                         0xFFF5B942,
-                                      ).withOpacity(0.5),
+                                      ).withValues(alpha: 0.5),
                                     ),
                                   ),
                                 ],
@@ -741,10 +741,10 @@ class _LoginPageState extends State<LoginPage>
                           vertical: 12,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.35),
+                          color: Colors.black.withValues(alpha: 0.35),
                           borderRadius: BorderRadius.circular(14),
                           border: Border.all(
-                            color: Colors.white.withOpacity(0.08),
+                            color: Colors.white.withValues(alpha: 0.08),
                           ),
                         ),
                         child: Column(
@@ -774,7 +774,7 @@ class _LoginPageState extends State<LoginPage>
                               "Téléphone au format +228 suivi de 8 chiffres • Mot de passe : 4 chiffres + 4 lettres majuscules (ex: 1234AZER)",
                               textAlign: TextAlign.center,
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.45),
+                                color: Colors.white.withValues(alpha: 0.45),
                                 fontSize: 12,
                                 fontWeight: FontWeight.w500,
                                 height: 1.4,
@@ -793,7 +793,7 @@ class _LoginPageState extends State<LoginPage>
           // ⏳ LOADING PLEIN ÉCRAN (optionnel, gardé subtil)
           if (isLoading)
             Positioned.fill(
-              child: Container(color: Colors.black.withOpacity(0.15)),
+              child: Container(color: Colors.black.withValues(alpha: 0.15)),
             ),
         ],
       ),

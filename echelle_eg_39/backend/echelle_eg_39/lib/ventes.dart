@@ -30,7 +30,7 @@ class Product {
 }
 
 class VenteScreen extends StatefulWidget {
-  const VenteScreen({Key? key}) : super(key: key);
+  const VenteScreen({super.key});
 
   @override
   State<VenteScreen> createState() => _VenteScreenState();
@@ -511,7 +511,7 @@ imageUrl: a['imageUrl'] as String? ?? AppareilImages.getImageUrl(
         borderRadius: BorderRadius.circular(12),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
+            color: Colors.black.withValues(alpha: 0.05),
             blurRadius: 4,
             offset: const Offset(0, 2),
           ),

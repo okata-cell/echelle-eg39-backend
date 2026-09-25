@@ -4,6 +4,8 @@ import 'data_manager.dart' as dm;
 
 
 class ClientsMenuPage extends StatefulWidget {
+  const ClientsMenuPage({super.key});
+
   @override
   _ClientsMenuPageState createState() => _ClientsMenuPageState();
 }

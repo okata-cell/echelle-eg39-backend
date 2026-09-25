@@ -4,7 +4,7 @@ import 'api_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ClientMesDemandesPage extends StatefulWidget {
-  const ClientMesDemandesPage({Key? key}) : super(key: key);
+  const ClientMesDemandesPage({super.key});
 
   @override
   State<ClientMesDemandesPage> createState() => _ClientMesDemandesPageState();
@@ -232,7 +232,7 @@ class _ClientMesDemandesPageState extends State<ClientMesDemandesPage> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: _getStatutColor(statut).withOpacity(0.1),
+                    color: _getStatutColor(statut).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Row(

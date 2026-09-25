@@ -1,15 +1,39 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 
 import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
+import 'admin/location_queue_filter.dart';
 import 'api_service.dart';
 import 'appareil_images.dart';
 
+typedef AdminLocationsLoader = Future<List<Map<String, dynamic>>> Function();
+typedef LocationDecision = Future<Object?> Function(int locationId);
+typedef LocationRejecter =
+    Future<Object?> Function(int locationId, String reason);
+typedef LocationDeleter = Future<void> Function(int locationId);
+typedef LocationExpiryChecker = Future<void> Function();
+
 class LocationPage extends StatefulWidget {
-  const LocationPage({super.key});
+  const LocationPage({
+    super.key,
+    this.loadLocations = ApiService.getAdminLocations,
+    this.approveLocation = ApiService.approveLocation,
+    this.rejectLocation = ApiService.rejectLocation,
+    this.terminateLocation = ApiService.terminateLocation,
+    this.deleteLocation = ApiService.deleteLocation,
+    this.checkExpiredLocations = ApiService.checkExpiredLocations,
+    this.enableAutoRefresh = true,
+  });
+
+  final AdminLocationsLoader loadLocations;
+  final LocationDecision approveLocation;
+  final LocationRejecter rejectLocation;
+  final LocationDecision terminateLocation;
+  final LocationDeleter deleteLocation;
+  final LocationExpiryChecker checkExpiredLocations;
+  final bool enableAutoRefresh;
 
   @override
   State<LocationPage> createState() => _LocationPageState();
@@ -21,7 +45,7 @@ class _LocationPageState extends State<LocationPage> {
   Timer? _autoRefreshTimer;
   bool _isLoading = true;
   String? _errorMessage;
-  String _filter = 'en_attente';
+  LocationQueueFilter _filter = LocationQueueFilter.pending;
   bool _isLoadingLocations = false;
 
   @override
@@ -29,10 +53,12 @@ class _LocationPageState extends State<LocationPage> {
     super.initState();
     print('📱 LocationPage ADMIN - initState()');
     _loadLocations();
-    _autoRefreshTimer = Timer.periodic(
-      const Duration(seconds: 10),
-      (_) => _loadLocations(silent: true),
-    );
+    if (widget.enableAutoRefresh) {
+      _autoRefreshTimer = Timer.periodic(
+        const Duration(seconds: 10),
+        (_) => _loadLocations(silent: true),
+      );
+    }
   }
 
   @override
@@ -57,12 +83,15 @@ class _LocationPageState extends State<LocationPage> {
     }
 
     try {
-      await _checkAndExpireLocations();
-      print('📡 Appel API getLocations...');
-      final locations = await ApiService.getLocations().timeout(
-        const Duration(seconds: 10),
+      try {
+        await widget.checkExpiredLocations();
+      } catch (error) {
+        debugPrint('⚠️ Vérification expiration locations : $error');
+      }
+
+      final locations = await widget.loadLocations().timeout(
+        const Duration(seconds: 15),
       );
-      print('✅ API getLocations OK: ${locations.length} locations reçues');
 
       if (!mounted) return;
       setState(() {
@@ -84,83 +113,17 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
-  Future<void> _checkAndExpireLocations() async {
-    try {
-      final token = await ApiService.getToken();
-      if (token == null) return;
-      await http
-          .get(
-            Uri.parse('${ApiService.baseUrl}/locations/check-expired'),
-            headers: {
-              'Content-Type': 'application/json',
-              'Authorization': 'Bearer $token',
-            },
-          )
-          .timeout(const Duration(seconds: 3));
-    } catch (error) {
-      debugPrint('⚠️ Vérification expiration locations : $error');
-    }
-  }
+  List<Map<String, dynamic>> get _visibleLocations =>
+      filterLocationsForQueue(_locations, _filter);
 
-  String _status(Map<String, dynamic> location) {
-    return adminStatusKey(location['statut']);
-  }
-
-  List<Map<String, dynamic>> _historyLocations() {
-    return _locations.where((location) {
-      final status = _status(location);
-      return status == 'termine' || status == 'rejetee';
-    }).toList();
-  }
-
-  List<Map<String, dynamic>> _getFilteredLocations() {
-    switch (_filter) {
-      case 'en_attente':
-        return _locations
-            .where((location) => _status(location) == 'en_attente')
-            .toList();
-      case 'en_cours':
-        return _locations
-            .where((location) => _status(location) == 'en_cours')
-            .toList();
-      case 'corbeille':
-        return _historyLocations();
-      case 'tous':
-      default:
-        return List.from(_locations);
-    }
-  }
-
-  List<Map<String, dynamic>> get _visibleLocations {
-    // La liste est petite et vient d'être reçue du serveur. La recalculer à
-    // chaque rendu évite d'afficher une valeur en cache après une mise à jour
-    // de statut ou un rafraîchissement qui conserve le même nombre d'éléments.
-    return _getFilteredLocations();
-  }
-
-  int _countFor(String filter) {
-    switch (filter) {
-      case 'en_attente':
-        return _locations
-            .where((location) => _status(location) == 'en_attente')
-            .length;
-      case 'en_cours':
-        return _locations
-            .where((location) => _status(location) == 'en_cours')
-            .length;
-      case 'corbeille':
-        return _historyLocations().length;
-      case 'tous':
-      default:
-        return _locations.length;
-    }
-  }
+  int _countFor(LocationQueueFilter filter) =>
+      countLocationsForQueue(_locations, filter);
 
   Future<void> _approveLocation(int locationId) async {
     if (!_startMutation(locationId)) return;
 
     try {
-      await ApiService.approveLocation(locationId);
+      await widget.approveLocation(locationId);
       if (mounted) {
         showAdminMessage(
           context,
@@ -193,7 +156,7 @@ class _LocationPageState extends State<LocationPage> {
     if (!_startMutation(locationId)) return;
 
     try {
-      await ApiService.rejectLocation(locationId, reason);
+      await widget.rejectLocation(locationId, reason);
       if (mounted) {
         showAdminMessage(
           context,
@@ -215,15 +178,67 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
+  Future<void> _completeLocation(int locationId) async {
+    if (_busyLocationIds.contains(locationId)) return;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Terminer cette location ?'),
+        content: Text(
+          'La location #$locationId passera dans les locations terminées et l’appareil sera libéré.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Continuer la location'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            style: FilledButton.styleFrom(
+              backgroundColor: AdminPalette.approvalGreen,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Terminer'),
+          ),
+        ],
+      ),
+    );
+
+    if (!mounted || confirmed != true || !_startMutation(locationId)) return;
+
+    try {
+      await widget.terminateLocation(locationId);
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Location #$locationId terminée.',
+          backgroundColor: AdminPalette.approvalGreen,
+        );
+        await _loadLocations();
+      }
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Impossible de terminer la location : $error',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+      }
+    } finally {
+      _finishMutation(locationId);
+    }
+  }
+
   Future<void> _deleteLocation(int locationId) async {
     if (_busyLocationIds.contains(locationId)) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Supprimer de la corbeille ?'),
+        title: const Text('Supprimer cette location ?'),
         content: Text(
-          'La location #$locationId sera supprimée définitivement.',
+          'La location #$locationId sera supprimée définitivement de l’historique.',
         ),
         actions: [
           TextButton(
@@ -245,7 +260,7 @@ class _LocationPageState extends State<LocationPage> {
     if (!mounted || confirmed != true || !_startMutation(locationId)) return;
 
     try {
-      await ApiService.deleteLocation(locationId);
+      await widget.deleteLocation(locationId);
       if (mounted) {
         showAdminMessage(
           context,
@@ -325,7 +340,7 @@ class _LocationPageState extends State<LocationPage> {
           imageUrl == null || imageUrl.isEmpty ? fallbackUrl : imageUrl,
           fit: BoxFit.cover,
           errorBuilder: (context, error, stackTrace) => Container(
-            color: AdminPalette.blueprintBlue.withOpacity(0.1),
+            color: AdminPalette.blueprintBlue.withValues(alpha: 0.1),
             child: const Icon(
               Icons.gps_fixed,
               color: AdminPalette.blueprintBlue,
@@ -358,10 +373,10 @@ class _LocationPageState extends State<LocationPage> {
             width: double.infinity,
             padding: const EdgeInsets.all(AdminSpacing.md),
             decoration: BoxDecoration(
-              color: AdminPalette.destructiveRed.withOpacity(0.08),
+              color: AdminPalette.destructiveRed.withValues(alpha: 0.08),
               borderRadius: BorderRadius.circular(AdminRadii.field),
               border: Border.all(
-                color: AdminPalette.destructiveRed.withOpacity(0.22),
+                color: AdminPalette.destructiveRed.withValues(alpha: 0.22),
               ),
             ),
             child: Text(
@@ -409,8 +424,7 @@ class _LocationPageState extends State<LocationPage> {
         location['clientNom'],
         fallback: 'Client non renseigné',
       );
-      final isHistory =
-          _status(location) == 'termine' || _status(location) == 'rejetee';
+      final isTerminal = isLocationStatusDeletable(location['statut']);
       final isBusy = _busyLocationIds.contains(locationId);
 
       Widget footer;
@@ -420,7 +434,7 @@ class _LocationPageState extends State<LocationPage> {
           onApprove: () => _approveLocation(locationId),
           onReject: () => _rejectLocation(locationId),
         );
-      } else if (isHistory) {
+      } else if (isTerminal) {
         footer = Row(
           mainAxisAlignment: MainAxisAlignment.end,
           children: [
@@ -429,6 +443,33 @@ class _LocationPageState extends State<LocationPage> {
               tooltip: 'Supprimer',
               icon: const Icon(Icons.delete_outline),
               color: AdminPalette.destructiveRed,
+            ),
+          ],
+        );
+      } else if (locationQueueBucketKey(location['statut']) ==
+          LocationQueueFilter.inProgress.key) {
+        footer = Wrap(
+          alignment: WrapAlignment.end,
+          spacing: AdminSpacing.sm,
+          runSpacing: AdminSpacing.xs,
+          children: [
+            TextButton.icon(
+              onPressed: () => _showLocationDetails(location),
+              icon: const Icon(Icons.visibility_outlined, size: 18),
+              label: const Text('Détail'),
+              style: TextButton.styleFrom(
+                foregroundColor: AdminPalette.blueprintBlue,
+              ),
+            ),
+            OutlinedButton.icon(
+              onPressed: isBusy ? null : () => _completeLocation(locationId),
+              icon: const Icon(Icons.check_circle_outline, size: 18),
+              label: const Text('Terminer'),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: AdminPalette.approvalGreen,
+                side: const BorderSide(color: AdminPalette.approvalGreen),
+                minimumSize: const Size(0, 44),
+              ),
             ),
           ],
         );
@@ -630,46 +671,42 @@ class _LocationPageState extends State<LocationPage> {
           AdminMetricCluster(
             primary: AdminMetric(
               label: 'Réservations à traiter',
-              value: _countFor('en_attente'),
+              value: _countFor(LocationQueueFilter.pending),
               icon: Icons.pending_actions_outlined,
             ),
             secondary: [
               AdminMetric(
-                label: 'Locations actives',
-                value: _countFor('en_cours'),
+                label: 'Locations en cours',
+                value: _countFor(LocationQueueFilter.inProgress),
                 icon: Icons.play_circle_outline,
               ),
               AdminMetric(
-                label: 'Historique / rejetées',
-                value: _countFor('corbeille'),
+                label: 'Locations terminées',
+                value: _countFor(LocationQueueFilter.completed),
+                icon: Icons.check_circle_outline,
+              ),
+              AdminMetric(
+                label: 'Historique rejeté',
+                value: _countFor(LocationQueueFilter.history),
                 icon: Icons.history_outlined,
               ),
             ],
           ),
           AdminSegmentedFilter(
-            selectedValue: _filter,
-            onChanged: (value) => setState(() => _filter = value),
+            selectedValue: _filter.key,
+            onChanged: (key) {
+              final selected = LocationQueueFilter.values.firstWhere(
+                (filter) => filter.key == key,
+              );
+              setState(() => _filter = selected);
+            },
             options: [
-              AdminFilterOption(
-                value: 'en_attente',
-                label: 'En attente',
-                count: _countFor('en_attente'),
-              ),
-              AdminFilterOption(
-                value: 'en_cours',
-                label: 'Actives',
-                count: _countFor('en_cours'),
-              ),
-              AdminFilterOption(
-                value: 'corbeille',
-                label: 'Historique',
-                count: _countFor('corbeille'),
-              ),
-              AdminFilterOption(
-                value: 'tous',
-                label: 'Toutes',
-                count: _countFor('tous'),
-              ),
+              for (final filter in LocationQueueFilter.values)
+                AdminFilterOption(
+                  value: filter.key,
+                  label: filter.label,
+                  count: _countFor(filter),
+                ),
             ],
           ),
         ],
@@ -708,19 +745,20 @@ class _LocationPageState extends State<LocationPage> {
             header,
             Expanded(
               child: AdminEmptyState(
-                icon: _filter == 'corbeille'
-                    ? Icons.delete_outline
+                icon: _filter == LocationQueueFilter.history
+                    ? Icons.history_outlined
                     : Icons.inbox_outlined,
-                title: _filter == 'en_attente'
-                    ? 'Aucune location en attente'
-                    : _filter == 'en_cours'
-                    ? 'Aucune location active'
-                    : _filter == 'corbeille'
-                    ? 'La corbeille est vide'
-                    : 'Aucune location enregistrée',
-                message: _filter == 'en_attente'
+                title: switch (_filter) {
+                  LocationQueueFilter.pending => 'Aucune location en attente',
+                  LocationQueueFilter.inProgress => 'Aucune location en cours',
+                  LocationQueueFilter.completed => 'Aucune location terminée',
+                  LocationQueueFilter.history =>
+                    'Aucun historique de demandes rejetées ou annulées',
+                  LocationQueueFilter.all => 'Aucune location enregistrée',
+                },
+                message: _filter == LocationQueueFilter.pending
                     ? 'Les nouvelles réservations apparaîtront ici.'
-                    : 'Changez de filtre ou actualisez la file.',
+                    : 'Changez d’onglet ou actualisez la file.',
               ),
             ),
           ],

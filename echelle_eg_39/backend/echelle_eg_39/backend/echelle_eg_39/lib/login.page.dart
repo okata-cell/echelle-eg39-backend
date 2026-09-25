@@ -45,7 +45,7 @@ class _LoginPageState extends State<LoginPage> {
     if (RegExp(r'^[0-9]+$').hasMatch(identifier.replaceAll(' ', ''))) {
       // C'est un numéro de téléphone
       await prefs.setString('userPhone', identifier);
-      await prefs.setString('userEmail', '${identifier}@utilisateur.com');
+      await prefs.setString('userEmail', '$identifier@utilisateur.com');
       await prefs.setString('userName', 'Utilisateur $identifier');
     } else {
       // C'est un email
@@ -308,7 +308,7 @@ class _LoginPageState extends State<LoginPage> {
 
           // 🖤 OVERLAY SOMBRE
           Container(
-            color: const Color.fromRGBO(11, 11, 11, 1).withOpacity(0.6),
+            color: const Color.fromRGBO(11, 11, 11, 1).withValues(alpha: 0.6),
           ),
 
           // 📄 CONTENU
@@ -340,7 +340,7 @@ class _LoginPageState extends State<LoginPage> {
                       hintText: "Téléphone ou Email",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.person, color: Colors.white),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),
@@ -360,7 +360,7 @@ class _LoginPageState extends State<LoginPage> {
                       hintText: "Mot de passe",
                       hintStyle: const TextStyle(color: Colors.white70),
                       filled: true,
-                      fillColor: Colors.white.withOpacity(0.15),
+                      fillColor: Colors.white.withValues(alpha: 0.15),
                       prefixIcon: const Icon(Icons.lock, color: Colors.white),
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(12),

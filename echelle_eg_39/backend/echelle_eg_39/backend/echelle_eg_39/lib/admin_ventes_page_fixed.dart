@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 class AdminVentesPageFixed extends StatefulWidget {
-  const AdminVentesPageFixed({Key? key}) : super(key: key);
+  const AdminVentesPageFixed({super.key});
 
   @override
   State<AdminVentesPageFixed> createState() => _AdminVentesPageFixedState();
@@ -445,9 +445,9 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed>
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.1),
+        color: color.withValues(alpha: 0.1),
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: color.withOpacity(0.3)),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
       ),
       child: Text(
         statut,

@@ -11,7 +11,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:echelle_eg_39/main.dart';
 
 void main() {
-  testWidgets('App builds and displays splash screen', (WidgetTester tester) async {
+  testWidgets('App builds and displays splash screen', (
+    WidgetTester tester,
+  ) async {
     SharedPreferences.setMockInitialValues({});
 
     // Build our app and trigger a frame.
@@ -20,5 +22,9 @@ void main() {
     // Verify that the splash screen is displayed.
     expect(find.text('ÉCHELLE EG39'), findsOneWidget);
     expect(find.text('Topographie - BTP'), findsOneWidget);
+
+    // Let the existing session check finish so its delayed timer is not left
+    // pending when the test tears down the widget tree.
+    await tester.pump(const Duration(seconds: 2));
   });
 }

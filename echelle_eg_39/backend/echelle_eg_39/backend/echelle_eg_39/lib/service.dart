@@ -19,7 +19,7 @@ class Service {
 }
 
 class ServiceScreen extends StatefulWidget {
-  const ServiceScreen({Key? key}) : super(key: key);
+  const ServiceScreen({super.key});
 
   @override
   State<ServiceScreen> createState() => _ServiceScreenState();
@@ -597,7 +597,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: _getCategoryColor(service.category).withOpacity(0.1),
+                    color: _getCategoryColor(service.category).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
@@ -737,7 +737,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                     width: 48,
                     height: 48,
                     decoration: BoxDecoration(
-                      color: _getCategoryColor(service.category).withOpacity(0.1),
+                      color: _getCategoryColor(service.category).withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(12),
                     ),
                     child: Icon(

@@ -422,7 +422,7 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
             hasScrollBody: false,
             child: AdminLoadingState(label: 'Chargement des promotions…'),
           )
-        : _errorMessage != null && _promotions.isEmpty
+        : _errorMessage != null
             ? SliverFillRemaining(
                 hasScrollBody: false,
                 child: AdminErrorState(
