@@ -29,4 +29,21 @@ const adminMiddleware = (req, res, next) => {
   next();
 };
 
-module.exports = { authMiddleware, adminMiddleware };
+// Renseigne req.user si un jeton valide est fourni, sans jamais bloquer la requête.
+// Utilisé sur les routes publiques qui doivent pouvoir rattacher une action à un compte.
+const optionalAuthMiddleware = (req, res, next) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return next();
+
+  const secret = process.env.JWT_SECRET?.trim();
+  if (!secret) return next();
+
+  try {
+    req.user = jwt.verify(token, secret);
+  } catch (error) {
+    // Un jeton invalide est traité comme une requête anonyme.
+  }
+  return next();
+};
+
+module.exports = { authMiddleware, adminMiddleware, optionalAuthMiddleware };

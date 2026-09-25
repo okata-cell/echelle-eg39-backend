@@ -177,6 +177,7 @@ async function migrate() {
     await client.query(`
       CREATE TABLE IF NOT EXISTS devis (
         id SERIAL PRIMARY KEY,
+        user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
         service_id VARCHAR(50),
         service_name VARCHAR(255),
         description TEXT,
@@ -195,6 +196,18 @@ async function migrate() {
     await client.query(
       'ALTER TABLE devis ADD COLUMN IF NOT EXISTS commentaire_admin TEXT',
     );
+    await client.query(
+      'ALTER TABLE devis ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL',
+    );
+    // Rattachement rétroactif des devis anonymes à un compte existant (même email).
+    await client.query(`
+      UPDATE devis d
+      SET user_id = u.id
+      FROM users u
+      WHERE d.user_id IS NULL
+        AND d.email IS NOT NULL
+        AND LOWER(TRIM(d.email)) = LOWER(TRIM(u.email))
+    `);
     await client.query('ALTER TABLE devis DROP CONSTRAINT IF EXISTS devis_statut_check');
     await client.query(
       "UPDATE devis SET statut = 'en_attente' WHERE statut = 'nouveau'",
@@ -206,6 +219,7 @@ async function migrate() {
 
     await client.query('CREATE INDEX IF NOT EXISTS idx_devis_statut ON devis(statut)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_devis_created_at ON devis(created_at)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_devis_user_id ON devis(user_id)');
 
     await client.query('COMMIT');
     console.log('✅ Migration réussie');

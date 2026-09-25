@@ -214,6 +214,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     final createdAt = formatAdminDate(devis['createdAt']);
     final adminNote = _displayValue(devis['commentaireAdmin']);
     final description = _displayValue(devis['description']);
+    final linkedAccount = _buildLinkedAccount(devis);
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -225,6 +226,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
             if (email.isNotEmpty) _buildMeta('✉ $email'),
             if (phone.isNotEmpty) _buildMeta('☎ $phone'),
             if (createdAt.isNotEmpty) _buildMeta('Reçu le $createdAt'),
+            if (linkedAccount != null) _buildMeta(linkedAccount),
           ],
         ),
         if (description.isNotEmpty) ...[
@@ -280,6 +282,17 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
         fontSize: 12,
       ),
     );
+  }
+
+  // Décrit l'origine de la demande : compte connecté ou visiteur anonyme.
+  String? _buildLinkedAccount(Map<String, dynamic> devis) {
+    final userId = devis['userId'];
+    if (userId == null) return 'Visiteur non connecté';
+
+    final clientEmail = _displayValue(devis['clientEmail']);
+    if (clientEmail.isEmpty) return 'Compte lié #$userId';
+
+    return 'Compte lié #$userId · $clientEmail';
   }
 
   Widget _buildFooter(Map<String, dynamic> devis, int devisId) {
@@ -347,7 +360,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
             hasScrollBody: false,
             child: AdminLoadingState(label: 'Chargement des demandes de devis…'),
           )
-        : _errorMessage != null && _devis.isEmpty
+        : _errorMessage != null
             ? SliverFillRemaining(
                 hasScrollBody: false,
                 child: AdminErrorState(

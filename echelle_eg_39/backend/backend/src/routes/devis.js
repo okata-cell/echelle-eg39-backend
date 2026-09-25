@@ -2,7 +2,8 @@ const express = require('express');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
-const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { authMiddleware, adminMiddleware, optionalAuthMiddleware } = require('../middleware/auth');
+const { normalizePhone } = require('../utils/identifiers');
 
 const DEVIS_STATUSES = [
   'en_attente',
@@ -13,9 +14,34 @@ const DEVIS_STATUSES = [
   'termine',
 ];
 
+// Transitions autorisées : clé = statut courant, valeur = statuts atteignables.
+// termines et rejetee sont définitifs.
+const DEVIS_TRANSITIONS = {
+  en_attente: ['approuvee', 'rejetee'],
+  approuvee: ['en_cours', 'envoye', 'termine'],
+  en_cours: ['envoye', 'termine'],
+  envoye: ['termine'],
+  termine: [],
+  rejetee: [],
+};
+
+const SELECT_DEVIS = `
+  SELECT d.*,
+         u.email AS client_email,
+         u.first_name AS client_first_name,
+         u.last_name AS client_last_name
+  FROM devis d
+  LEFT JOIN users u ON u.id = d.user_id
+`;
+
 function mapDevis(devis) {
   return {
     id: devis.id,
+    userId: devis.user_id,
+    clientEmail: devis.client_email,
+    clientNom: devis.client_first_name
+      ? `${devis.client_first_name} ${devis.client_last_name}`.trim()
+      : null,
     serviceId: devis.service_id,
     serviceName: devis.service_name,
     description: devis.description,
@@ -37,8 +63,61 @@ function sendValidationErrors(req, res) {
   return true;
 }
 
-// Soumettre une demande de devis (public).
-router.post('/', [
+function allowedTransitions(statut) {
+  return DEVIS_TRANSITIONS[statut] ?? [];
+}
+
+// Applique une transition de statut en respectant DEVIS_TRANSITIONS.
+// Retourne { error, status } en cas de refus, sinon null.
+async function transitionStatut(devisId, nextStatut, commentaire) {
+  const existing = await pool.query(
+    'SELECT id, statut FROM devis WHERE id = $1',
+    [devisId],
+  );
+
+  if (existing.rows.length === 0) {
+    return { status: 404, error: 'Devis non trouvé' };
+  }
+
+  const currentStatut = existing.rows[0].statut;
+  if (currentStatut === nextStatut) {
+    return { status: 400, error: `Le devis est déjà au statut « ${nextStatut} »` };
+  }
+
+  const allowed = allowedTransitions(currentStatut);
+  if (!allowed.includes(nextStatut)) {
+    return {
+      status: 400,
+      error: allowed.length
+        ? `Transition impossible depuis « ${currentStatut} ». Statuts autorisés : ${allowed.join(', ')}.`
+        : `Transition impossible depuis « ${currentStatut} » : ce devis est clôturé.`,
+    };
+  }
+
+  const result = await pool.query(
+    `UPDATE devis
+     SET statut = $1,
+         commentaire_admin = COALESCE(NULLIF($2, ''), commentaire_admin),
+         updated_at = CURRENT_TIMESTAMP
+     WHERE id = $3 AND statut = $4
+     RETURNING id`,
+    [nextStatut, commentaire || '', devisId, currentStatut],
+  );
+
+  if (result.rows.length === 0) {
+    return {
+      status: 409,
+      error: 'Ce devis a été modifié entre-temps. Actualisez la liste.',
+    };
+  }
+
+  const updated = await pool.query(`${SELECT_DEVIS} WHERE d.id = $1`, [devisId]);
+  return { devis: updated.rows[0] };
+}
+
+// Soumettre une demande de devis.
+// La route reste publique : si un jeton valide est fourni, le devis est rattaché au compte.
+router.post('/', optionalAuthMiddleware, [
   body('serviceId').optional().isString(),
   body('serviceName').optional().isString(),
   body('description').optional().isString(),
@@ -54,9 +133,12 @@ router.post('/', [
 
   try {
     const { serviceId, serviceName, description, nom, telephone, email } = req.body;
+    const userId = req.user?.userId ?? null;
+    const normalizedTelephone = normalizePhone(telephone) || null;
 
     const result = await pool.query(
       `INSERT INTO devis (
+        user_id,
         service_id,
         service_name,
         description,
@@ -66,14 +148,23 @@ router.post('/', [
         statut,
         created_at
       )
-      VALUES ($1, $2, $3, $4, $5, $6, 'en_attente', CURRENT_TIMESTAMP)
+      VALUES ($1, $2, $3, $4, $5, $6, $7, 'en_attente', CURRENT_TIMESTAMP)
       RETURNING *`,
-      [serviceId || null, serviceName || null, description || null, nom, telephone || null, email || null],
+      [
+        userId,
+        serviceId || null,
+        serviceName || null,
+        description || null,
+        nom,
+        normalizedTelephone,
+        email || null,
+      ],
     );
 
     return res.status(201).json({
       message: 'Demande de devis soumise avec succès',
       devis: mapDevis(result.rows[0]),
+      lieAuCompte: Boolean(userId),
     });
   } catch (error) {
     console.error('Erreur soumission devis:', error);
@@ -85,15 +176,25 @@ router.post('/', [
 router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { statut } = req.query;
-    let query = 'SELECT * FROM devis';
     const params = [];
+    let query = SELECT_DEVIS;
 
-    if (statut) {
-      params.push(statut);
-      query += ` WHERE statut = $${params.length}`;
+    const statuts = String(statut || '')
+      .split(',')
+      .map((value) => value.trim())
+      .filter(Boolean);
+
+    if (statuts.length > 0) {
+      const invalides = statuts.filter((value) => !DEVIS_STATUSES.includes(value));
+      if (invalides.length > 0) {
+        return res.status(400).json({ error: `Statut invalide : ${invalides.join(', ')}` });
+      }
+
+      params.push(statuts);
+      query += ` WHERE d.statut = ANY($${params.length}::varchar[])`;
     }
 
-    query += ' ORDER BY created_at DESC';
+    query += ' ORDER BY d.created_at DESC';
 
     const result = await pool.query(query, params);
     return res.json({ devis: result.rows.map(mapDevis) });
@@ -103,35 +204,31 @@ router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   }
 });
 
+// Lister les devis rattachés au compte connecté.
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `${SELECT_DEVIS} WHERE d.user_id = $1 ORDER BY d.created_at DESC`,
+      [req.user.userId],
+    );
+    return res.json({ devis: result.rows.map(mapDevis) });
+  } catch (error) {
+    console.error('Erreur liste devis du client:', error);
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
+});
+
 // Approuver une demande de devis (admin).
 router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const existing = await pool.query(
-      'SELECT id, statut FROM devis WHERE id = $1',
-      [req.params.id],
-    );
-
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'Devis non trouvé' });
+    const outcome = await transitionStatut(req.params.id, 'approuvee', '');
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
     }
-
-    if (!['en_attente', 'nouveau'].includes(existing.rows[0].statut)) {
-      return res.status(400).json({
-        error: 'Cette demande de devis ne peut plus être approuvée',
-      });
-    }
-
-    const result = await pool.query(
-      `UPDATE devis
-       SET statut = 'approuvee', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
-       RETURNING *`,
-      [req.params.id],
-    );
 
     return res.json({
       message: 'Demande de devis approuvée',
-      devis: mapDevis(result.rows[0]),
+      devis: mapDevis(outcome.devis),
     });
   } catch (error) {
     console.error('Erreur approbation devis:', error);
@@ -146,35 +243,15 @@ router.patch('/:id/rejeter', authMiddleware, adminMiddleware, [
   if (sendValidationErrors(req, res)) return;
 
   try {
-    const raison = String(req.body.raison || 'Demande rejetée').trim();
-    const existing = await pool.query(
-      'SELECT id, statut FROM devis WHERE id = $1',
-      [req.params.id],
-    );
-
-    if (existing.rows.length === 0) {
-      return res.status(404).json({ error: 'Devis non trouvé' });
+    const raison = String(req.body.raison || '').trim() || 'Demande rejetée';
+    const outcome = await transitionStatut(req.params.id, 'rejetee', raison);
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
     }
-
-    if (!['en_attente', 'nouveau'].includes(existing.rows[0].statut)) {
-      return res.status(400).json({
-        error: 'Cette demande de devis ne peut plus être rejetée',
-      });
-    }
-
-    const result = await pool.query(
-      `UPDATE devis
-       SET statut = 'rejetee',
-           commentaire_admin = $1,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [raison || 'Demande rejetée', req.params.id],
-    );
 
     return res.json({
       message: 'Demande de devis rejetée',
-      devis: mapDevis(result.rows[0]),
+      devis: mapDevis(outcome.devis),
     });
   } catch (error) {
     console.error('Erreur rejet devis:', error);
@@ -196,23 +273,14 @@ router.patch('/:id/statut', authMiddleware, adminMiddleware, [
       req.body.commentaire ?? req.body.commentaire_admin ?? '',
     ).trim();
 
-    const result = await pool.query(
-      `UPDATE devis
-       SET statut = $1,
-           commentaire_admin = COALESCE(NULLIF($2, ''), commentaire_admin),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $3
-       RETURNING *`,
-      [statut, commentaire, req.params.id],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Devis non trouvé' });
+    const outcome = await transitionStatut(req.params.id, statut, commentaire);
+    if (outcome.error) {
+      return res.status(outcome.status).json({ error: outcome.error });
     }
 
     return res.json({
       message: 'Statut du devis mis à jour',
-      devis: mapDevis(result.rows[0]),
+      devis: mapDevis(outcome.devis),
     });
   } catch (error) {
     console.error('Erreur mise à jour devis:', error);
