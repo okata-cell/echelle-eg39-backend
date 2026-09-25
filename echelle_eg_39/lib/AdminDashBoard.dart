@@ -1,6 +1,5 @@
-
 import 'package:flutter/material.dart';
-import 'ClientMenuPage.dart';
+import 'admin.client.page.dart';
 import 'appareils.page.dart';
 import 'LocationsMenu.dart';
 import 'admin_ventes_page.dart';
@@ -10,8 +9,6 @@ import 'admin/admin_shell.dart';
 
 import 'login.page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
-
 
 class AdminDashBoard extends StatefulWidget {
   const AdminDashBoard({super.key});
@@ -29,9 +26,8 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
     debugPrint('🔧 AdminDashboard loaded - currentIndex: $currentIndex');
   }
 
-
   final List<Widget> pages = [
-    ClientsMenuPage(),
+    const AdminClientsPage(),
     AdminAppareilsPage(),
     const LocationPage(), // ADMIN LOCATIONS ✅
     const AdminVentesPageFixed(),
@@ -56,9 +52,7 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
               Navigator.pop(context);
               logout();
             },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-            ),
+            style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
             child: const Text('Se déconnecter'),
           ),
         ],
@@ -75,7 +69,7 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
     await prefs.remove('userEmail');
     await prefs.remove('userPhone');
     await prefs.remove('userName');
-    
+
     if (mounted) {
       Navigator.of(context).pushAndRemoveUntil(
         MaterialPageRoute(builder: (_) => const LoginPage()),

@@ -18,6 +18,7 @@ app.use(morgan('dev'));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/users/clients', require('./routes/admin_clients'));
 app.use('/api/appareils', require('./routes/appareils'));
 app.use('/api/demandes', require('./routes/demandes'));
 app.use('/api/devis', require('./routes/devis'));
@@ -36,6 +37,8 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
+      users: '/api/users',
+      clients: '/api/users/clients',
       appareils: '/api/appareils',
       demandes: '/api/demandes',
       devis: '/api/devis',

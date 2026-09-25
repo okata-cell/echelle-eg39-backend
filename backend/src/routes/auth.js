@@ -34,12 +34,9 @@ router.post('/register', [
       return res.status(400).json({ error: 'Email ou téléphone déjà utilisé' });
     }
 
-    // Déterminer le rôle (admin si email/phone/password contient "admin")
-    const role = (
-      email.toLowerCase().includes('admin') || 
-      phone.toLowerCase().includes('admin') ||
-      password.toLowerCase().includes('admin')
-    ) ? 'admin' : 'client';
+    // Les inscriptions publiques créent uniquement des comptes clients.
+    // Le compte administrateur est provisionné séparément.
+    const role = 'client';
 
     // Hasher le mot de passe
     const hashedPassword = await bcrypt.hash(password, 10);
