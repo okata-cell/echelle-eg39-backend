@@ -3,6 +3,7 @@ const cors = require('cors');
 const helmet = require('helmet');
 const morgan = require('morgan');
 require('dotenv').config();
+const pool = require('./config/database');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -59,9 +60,21 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Erreur serveur interne' });
 });
 
-// Démarrage du serveur
-app.listen(PORT, () => {
-  console.log(`
+// Le schéma est mis à niveau avant d'accepter les requêtes, sans supprimer d'historique.
+async function startServer() {
+  try {
+    await pool.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE',
+    );
+  } catch (error) {
+    console.error('Impossible de préparer le schéma des comptes clients:', error);
+    await pool.end();
+    process.exitCode = 1;
+    return;
+  }
+
+  app.listen(PORT, () => {
+    console.log(`
   ╔═══════════════════════════════════════════════════════════╗
   ║                                                           ║
   ║         🚀 ÉCHELLE EG39 API - DÉMARRÉ                    ║
@@ -72,7 +85,11 @@ app.listen(PORT, () => {
   ║                                                           ║
   ╚═══════════════════════════════════════════════════════════╝
   `);
-});
+  });
+}
 
+if (require.main === module) {
+  startServer();
+}
 
 module.exports = app;

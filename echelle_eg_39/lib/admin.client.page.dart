@@ -8,6 +8,16 @@ import 'login.page.dart';
 import 'models_admin_client.dart';
 
 typedef AdminClientsLoader = Future<List<AdminClient>> Function();
+typedef AdminClientUpdater =
+    Future<AdminClient> Function({
+      required String id,
+      required String firstName,
+      required String lastName,
+      required String email,
+      required String phone,
+    });
+typedef AdminClientStatusUpdater =
+    Future<AdminClient> Function({required String id, required bool isActive});
 
 Future<List<AdminClient>> loadOfflineAdminClients() async {
   final prefs = await SharedPreferences.getInstance();
@@ -27,10 +37,14 @@ class AdminClientsPage extends StatefulWidget {
     super.key,
     this.loadClients = AdminClientsService.loadClients,
     this.loadLocalClients = loadOfflineAdminClients,
+    this.updateClient = AdminClientsService.updateClient,
+    this.updateClientStatus = AdminClientsService.setClientActive,
   });
 
   final AdminClientsLoader loadClients;
   final AdminClientsLoader loadLocalClients;
+  final AdminClientUpdater updateClient;
+  final AdminClientStatusUpdater updateClientStatus;
 
   @override
   State<AdminClientsPage> createState() => _AdminClientsPageState();
@@ -42,6 +56,7 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
   String _searchQuery = '';
   String? _errorMessage;
   String? _offlineMessage;
+  final Set<String> _mutatingClientIds = <String>{};
   bool _isLoading = true;
 
   @override
@@ -116,16 +131,119 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
         error.message.contains('reconnect');
   }
 
+  Future<void> _editClient(AdminClient client) async {
+    final values = await showDialog<_ClientFormValues>(
+      context: context,
+      builder: (_) => _EditAdminClientDialog(client: client),
+    );
+    if (values == null || !mounted) return;
+
+    await _runClientMutation(
+      client.id,
+      () => widget.updateClient(
+        id: client.id,
+        firstName: values.firstName,
+        lastName: values.lastName,
+        email: values.email,
+        phone: values.phone,
+      ),
+      successMessage: 'Les coordonnées du client ont été mises à jour.',
+    );
+  }
+
+  Future<void> _changeClientStatus(AdminClient client) async {
+    final activate = !client.isActive;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(
+          activate ? 'Réactiver ce compte ?' : 'Désactiver ce compte ?',
+        ),
+        content: Text(
+          activate
+              ? 'Le client pourra de nouveau se connecter. Son historique est conservé.'
+              : 'Le client ne pourra plus se connecter. Son compte et son historique seront conservés.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: activate
+                  ? AdminPalette.blueprintBlue
+                  : AdminPalette.destructiveRed,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: Text(activate ? 'Réactiver' : 'Désactiver'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    await _runClientMutation(
+      client.id,
+      () => widget.updateClientStatus(id: client.id, isActive: activate),
+      successMessage: activate
+          ? 'Le compte client a été réactivé.'
+          : 'Le compte client a été désactivé. Son historique est conservé.',
+    );
+  }
+
+  Future<void> _runClientMutation(
+    String clientId,
+    Future<AdminClient> Function() update, {
+    required String successMessage,
+  }) async {
+    setState(() => _mutatingClientIds.add(clientId));
+    try {
+      final updatedClient = await update();
+      if (!mounted) return;
+      setState(() {
+        _clients = _clients
+            .map(
+              (client) =>
+                  client.id == updatedClient.id ? updatedClient : client,
+            )
+            .toList(growable: false);
+      });
+      showAdminMessage(context, successMessage);
+    } catch (error) {
+      if (!mounted) return;
+      if (_isSessionError(error)) {
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (_) => const LoginPage()),
+          (route) => false,
+        );
+        return;
+      }
+      showAdminMessage(
+        context,
+        error is AdminClientsException
+            ? error.message
+            : 'Impossible de mettre à jour ce compte. Réessaie.',
+        backgroundColor: AdminPalette.destructiveRed,
+      );
+    } finally {
+      if (mounted) setState(() => _mutatingClientIds.remove(clientId));
+    }
+  }
+
   List<AdminClient> get _visibleClients {
     final query = _searchQuery.toLowerCase();
     if (query.isEmpty) return _clients;
 
-    return _clients.where((client) {
-      return client.fullName.toLowerCase().contains(query) ||
-          client.email.toLowerCase().contains(query) ||
-          client.phone.toLowerCase().contains(query) ||
-          client.id.toLowerCase().contains(query);
-    }).toList(growable: false);
+    return _clients
+        .where((client) {
+          return client.fullName.toLowerCase().contains(query) ||
+              client.email.toLowerCase().contains(query) ||
+              client.phone.toLowerCase().contains(query) ||
+              client.id.toLowerCase().contains(query);
+        })
+        .toList(growable: false);
   }
 
   @override
@@ -141,8 +259,7 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
           const SliverToBoxAdapter(
             child: AdminPageHeader(
               title: 'Gestion des clients',
-              subtitle:
-                  'Retrouvez les comptes inscrits et leurs coordonnées.',
+              subtitle: 'Retrouvez les comptes inscrits et leurs coordonnées.',
               icon: Icons.people_alt_outlined,
             ),
           ),
@@ -315,11 +432,15 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
         itemBuilder: (context, index) {
           final client = clients[index];
           final contacts = <String>[
+            if (!client.isLocalRegistration && !client.isActive)
+              'Compte désactivé',
             if (client.email.isNotEmpty) client.email,
             if (client.phone.isNotEmpty) 'Tél. ${client.phone}',
             if (client.createdAt != null && client.createdAt!.isNotEmpty)
               'Inscrit le ${formatAdminDate(client.createdAt)}',
           ];
+
+          final isMutating = _mutatingClientIds.contains(client.id);
 
           return AdminDirectoryRow(
             id: client.isLocalRegistration ? 'HORS LIGNE' : 'ID ${client.id}',
@@ -345,10 +466,269 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
                       ),
                     ),
                   ]
-                : const [],
+                : [
+                    PopupMenuButton<_AdminClientAction>(
+                      tooltip: 'Actions pour ${client.fullName}',
+                      enabled: !isMutating,
+                      onSelected: (action) {
+                        if (action == _AdminClientAction.edit) {
+                          _editClient(client);
+                        } else {
+                          _changeClientStatus(client);
+                        }
+                      },
+                      itemBuilder: (context) => [
+                        const PopupMenuItem(
+                          value: _AdminClientAction.edit,
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.edit_outlined),
+                            title: Text('Modifier'),
+                          ),
+                        ),
+                        PopupMenuItem(
+                          value: _AdminClientAction.toggleStatus,
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(
+                              client.isActive
+                                  ? Icons.block_outlined
+                                  : Icons.check_circle_outline,
+                              color: client.isActive
+                                  ? AdminPalette.destructiveRed
+                                  : AdminPalette.approvalGreen,
+                            ),
+                            title: Text(
+                              client.isActive ? 'Désactiver' : 'Réactiver',
+                              style: TextStyle(
+                                color: client.isActive
+                                    ? AdminPalette.destructiveRed
+                                    : AdminPalette.approvalGreen,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                      icon: isMutating
+                          ? const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            )
+                          : const Icon(Icons.more_vert),
+                    ),
+                  ],
           );
         },
       ),
+    );
+  }
+
+  Widget _buildInactiveBadge(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(
+        horizontal: AdminSpacing.sm,
+        vertical: AdminSpacing.xs,
+      ),
+      decoration: BoxDecoration(
+        color: AdminPalette.destructiveRed.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(
+          color: AdminPalette.destructiveRed.withValues(alpha: 0.25),
+        ),
+      ),
+      child: Text(
+        'Compte désactivé',
+        style: Theme.of(context).textTheme.labelSmall?.copyWith(
+          color: AdminPalette.destructiveRed,
+          fontWeight: FontWeight.w800,
+        ),
+      ),
+    );
+  }
+}
+
+enum _AdminClientAction { edit, toggleStatus }
+
+class _ClientFormValues {
+  const _ClientFormValues({
+    required this.firstName,
+    required this.lastName,
+    required this.email,
+    required this.phone,
+  });
+
+  final String firstName;
+  final String lastName;
+  final String email;
+  final String phone;
+}
+
+class _EditAdminClientDialog extends StatefulWidget {
+  const _EditAdminClientDialog({required this.client});
+
+  final AdminClient client;
+
+  @override
+  State<_EditAdminClientDialog> createState() => _EditAdminClientDialogState();
+}
+
+class _EditAdminClientDialogState extends State<_EditAdminClientDialog> {
+  final _formKey = GlobalKey<FormState>();
+  late final TextEditingController _firstNameController;
+  late final TextEditingController _lastNameController;
+  late final TextEditingController _emailController;
+  late final TextEditingController _phoneController;
+
+  @override
+  void initState() {
+    super.initState();
+    _firstNameController = TextEditingController(text: widget.client.firstName);
+    _lastNameController = TextEditingController(text: widget.client.lastName);
+    _emailController = TextEditingController(text: widget.client.email);
+    _phoneController = TextEditingController(text: widget.client.phone);
+  }
+
+  @override
+  void dispose() {
+    _firstNameController.dispose();
+    _lastNameController.dispose();
+    _emailController.dispose();
+    _phoneController.dispose();
+    super.dispose();
+  }
+
+  void _save() {
+    if (!_formKey.currentState!.validate()) return;
+    Navigator.pop(
+      context,
+      _ClientFormValues(
+        firstName: _firstNameController.text.trim(),
+        lastName: _lastNameController.text.trim(),
+        email: _emailController.text.trim(),
+        phone: _phoneController.text.trim(),
+      ),
+    );
+  }
+
+  String? _requiredField(String? value, String label) {
+    if (value == null || value.trim().isEmpty) return '$label requis.';
+    return null;
+  }
+
+  InputDecoration _fieldDecoration(String label, IconData icon) {
+    return InputDecoration(
+      labelText: label,
+      prefixIcon: Icon(icon),
+      filled: true,
+      fillColor: AdminPalette.mutedSurface,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AdminRadii.field),
+        borderSide: const BorderSide(color: AdminPalette.border),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AdminRadii.field),
+        borderSide: const BorderSide(color: AdminPalette.border),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(AdminRadii.field),
+        borderSide: const BorderSide(
+          color: AdminPalette.blueprintBlue,
+          width: 2,
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      scrollable: true,
+      title: const Text('Modifier le client'),
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 420),
+        child: Form(
+          key: _formKey,
+          autovalidateMode: AutovalidateMode.onUserInteraction,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextFormField(
+                controller: _firstNameController,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                maxLength: 100,
+                decoration: _fieldDecoration('Prénom', Icons.person_outline),
+                validator: (value) => _requiredField(value, 'Prénom'),
+              ),
+              const SizedBox(height: AdminSpacing.sm),
+              TextFormField(
+                controller: _lastNameController,
+                textCapitalization: TextCapitalization.words,
+                textInputAction: TextInputAction.next,
+                maxLength: 100,
+                decoration: _fieldDecoration('Nom', Icons.person_outline),
+                validator: (value) => _requiredField(value, 'Nom'),
+              ),
+              const SizedBox(height: AdminSpacing.sm),
+              TextFormField(
+                controller: _emailController,
+                keyboardType: TextInputType.emailAddress,
+                textInputAction: TextInputAction.next,
+                maxLength: 255,
+                decoration: _fieldDecoration('E-mail', Icons.email_outlined),
+                validator: (value) {
+                  final requiredError = _requiredField(value, 'E-mail');
+                  if (requiredError != null) return requiredError;
+                  if (!RegExp(
+                    r'^[^\s@]+@[^\s@]+\.[^\s@]+$',
+                  ).hasMatch(value!.trim())) {
+                    return 'Adresse e-mail invalide.';
+                  }
+                  return null;
+                },
+              ),
+              const SizedBox(height: AdminSpacing.sm),
+              TextFormField(
+                controller: _phoneController,
+                keyboardType: TextInputType.phone,
+                textInputAction: TextInputAction.done,
+                maxLength: 20,
+                decoration: _fieldDecoration('Téléphone', Icons.phone_outlined),
+                validator: (value) {
+                  final requiredError = _requiredField(value, 'Téléphone');
+                  if (requiredError != null) return requiredError;
+                  final phone = value!.trim();
+                  if (phone.length < 8 || phone.length > 20) {
+                    return 'Le téléphone doit contenir entre 8 et 20 caractères.';
+                  }
+                  return null;
+                },
+                onFieldSubmitted: (_) => _save(),
+              ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+          child: const Text('Annuler'),
+        ),
+        FilledButton.icon(
+          onPressed: _save,
+          icon: const Icon(Icons.save_outlined),
+          label: const Text('Enregistrer'),
+          style: FilledButton.styleFrom(
+            backgroundColor: AdminPalette.blueprintBlue,
+            foregroundColor: Colors.white,
+            minimumSize: const Size(0, 48),
+          ),
+        ),
+      ],
     );
   }
 }

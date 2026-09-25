@@ -17,10 +17,14 @@ async function migrate() {
         phone VARCHAR(20) UNIQUE NOT NULL,
         password_hash TEXT NOT NULL,
         role VARCHAR(20) DEFAULT 'client' CHECK (role IN ('client', 'admin')),
+        is_active BOOLEAN NOT NULL DEFAULT TRUE,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE',
+    );
 
     // Table: appareils
     await client.query(`

@@ -8,6 +8,7 @@ class AdminClient {
     required this.role,
     this.createdAt,
     this.isLocalRegistration = false,
+    this.isActive = true,
   });
 
   final String id;
@@ -18,6 +19,27 @@ class AdminClient {
   final String role;
   final String? createdAt;
   final bool isLocalRegistration;
+  final bool isActive;
+
+  AdminClient copyWith({
+    String? firstName,
+    String? lastName,
+    String? email,
+    String? phone,
+    bool? isActive,
+  }) {
+    return AdminClient(
+      id: id,
+      firstName: firstName ?? this.firstName,
+      lastName: lastName ?? this.lastName,
+      email: email ?? this.email,
+      phone: phone ?? this.phone,
+      role: role,
+      createdAt: createdAt,
+      isLocalRegistration: isLocalRegistration,
+      isActive: isActive ?? this.isActive,
+    );
+  }
 
   String get fullName {
     final name = '$firstName $lastName'.trim();
@@ -35,6 +57,7 @@ class AdminClient {
       phone: json['phone']?.toString().trim() ?? '',
       role: _normalizeRole(json['role']?.toString() ?? ''),
       createdAt: json['createdAt']?.toString(),
+      isActive: json['isActive'] != false,
     );
   }
 

@@ -83,5 +83,115 @@ void main() {
     expect(find.text('Kodjo Mensah'), findsOneWidget);
     expect(find.text('À synchroniser'), findsOneWidget);
     expect(find.text('2 clients'), findsOneWidget);
+    expect(find.byTooltip('Actions pour Afi Koffi'), findsOneWidget);
+    expect(find.byTooltip('Actions pour Kodjo Mensah'), findsNothing);
+  });
+
+  testWidgets('un admin peut modifier les coordonnées d’un client serveur', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminClientsPage(
+            loadClients: () async => const [serverClient],
+            loadLocalClients: () async => const [],
+            updateClient:
+                ({
+                  required id,
+                  required firstName,
+                  required lastName,
+                  required email,
+                  required phone,
+                }) async => serverClient.copyWith(email: email, phone: phone),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Actions pour Afi Koffi'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Modifier').last);
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byType(TextFormField).at(2),
+      'afi.updated@example.com',
+    );
+    await tester.tap(find.text('Enregistrer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('afi.updated@example.com'), findsOneWidget);
+    expect(
+      find.text('Les coordonnées du client ont été mises à jour.'),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('la désactivation affiche un badge et permet la réactivation', (
+    tester,
+  ) async {
+    var savedStatus = true;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminClientsPage(
+            loadClients: () async => [
+              serverClient.copyWith(isActive: savedStatus),
+            ],
+            loadLocalClients: () async => const [],
+            updateClientStatus: ({required id, required isActive}) async {
+              savedStatus = isActive;
+              return serverClient.copyWith(isActive: isActive);
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.byTooltip('Actions pour Afi Koffi'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Désactiver').last);
+    await tester.pumpAndSettle();
+    expect(find.text('Désactiver ce compte ?'), findsOneWidget);
+    await tester.tap(find.text('Désactiver').last);
+    await tester.pumpAndSettle();
+
+    expect(savedStatus, isFalse);
+    expect(find.text('Compte désactivé'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Actions pour Afi Koffi'));
+    await tester.pumpAndSettle();
+    expect(find.text('Réactiver'), findsOneWidget);
+  });
+
+  testWidgets('le formulaire reste utilisable sur un petit écran', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(360, 740);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: AdminClientsPage(
+            loadClients: () async => const [serverClient],
+            loadLocalClients: () async => const [],
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('Actions pour Afi Koffi'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Modifier').last);
+    await tester.pumpAndSettle();
+
+    expect(find.byType(TextFormField), findsNWidgets(4));
+    expect(tester.takeException(), isNull);
   });
 }
