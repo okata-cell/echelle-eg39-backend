@@ -1,0 +1,180 @@
+const assert = require('node:assert/strict');
+const http = require('node:http');
+const express = require('express');
+const jwt = require('jsonwebtoken');
+const { after, before, test } = require('node:test');
+
+process.env.JWT_SECRET = 'test-only-location-route-secret';
+
+const pool = require('../src/config/database');
+const locationsRouter = require('../src/routes/locations');
+
+const app = express();
+app.use(express.json());
+app.use('/api/locations', locationsRouter);
+
+let server;
+let originalQuery;
+let baseUrl;
+let insertedLocation;
+
+before(async () => {
+  originalQuery = pool.query;
+  server = http.createServer(app);
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  baseUrl = `http://127.0.0.1:${server.address().port}/api/locations`;
+});
+
+after(async () => {
+  pool.query = originalQuery;
+  if (server) await new Promise((resolve) => server.close(resolve));
+  await pool.end();
+});
+
+function tokenFor(role, userId = 1) {
+  return jwt.sign({ userId, role }, process.env.JWT_SECRET);
+}
+
+function persistedLocation(overrides = {}) {
+  return {
+    id: 901,
+    code: 'LOC-TEST-901',
+    user_id: 42,
+    appareil_id: 2039,
+    appareil_nom: 'GPS de test',
+    date_debut: '2026-10-01',
+    date_fin: '2026-10-03',
+    prix_journalier: 25000,
+    montant_total: 75000,
+    statut: 'en_attente',
+    commentaire_admin: null,
+    created_at: '2026-09-25T10:00:00.000Z',
+    first_name: 'Afi',
+    last_name: 'Koffi',
+    email: 'afi@example.com',
+    phone: '+22890000000',
+    appareil_type: 'GPS',
+    appareil_image_url: 'https://example.com/gps.jpg',
+    ...overrides,
+  };
+}
+
+test('une demande client apparaît dans le répertoire Locations de l’admin', async () => {
+  insertedLocation = null;
+  pool.query = async (query, values) => {
+    if (query.includes('SELECT * FROM appareils WHERE id = $1')) {
+      assert.deepEqual(values, [2039]);
+      return {
+        rows: [
+          {
+            id: 2039,
+            nom: 'GPS de test',
+            prix_location: 25000,
+            disponible: true,
+          },
+        ],
+      };
+    }
+
+    if (query.includes('INSERT INTO locations')) {
+      assert.equal(values[1], 42, 'la demande appartient à l’utilisateur connecté');
+      insertedLocation = persistedLocation({ user_id: values[1] });
+      return { rows: [insertedLocation] };
+    }
+
+    if (query.includes('FROM locations l')) {
+      assert.match(query, /JOIN users u ON l\.user_id = u\.id/);
+      assert.match(query, /LEFT JOIN appareils a ON l\.appareil_id = a\.id/);
+      assert.doesNotMatch(query, /WHERE l\.user_id/);
+      return { rows: insertedLocation ? [insertedLocation] : [] };
+    }
+
+    throw new Error(`Requête DB inattendue: ${query}`);
+  };
+
+  const created = await fetch(baseUrl, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${tokenFor('client', 42)}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      appareilId: 2039,
+      dateDebut: '2026-10-01',
+      dateFin: '2026-10-03',
+    }),
+  });
+  assert.equal(created.status, 201);
+  assert.equal((await created.json()).location.statut, 'en_attente');
+
+  const response = await fetch(`${baseUrl}/admin`, {
+    headers: { Authorization: `Bearer ${tokenFor('admin', 7)}` },
+  });
+  assert.equal(response.status, 200);
+  assert.equal(response.headers.get('cache-control'), 'no-store');
+  assert.deepEqual(await response.json(), {
+    locations: [
+      {
+        id: 901,
+        code: 'LOC-TEST-901',
+        clientNom: 'Afi Koffi',
+        clientEmail: 'afi@example.com',
+        clientPhone: '+22890000000',
+        clientTelephone: '+22890000000',
+        appareilId: 2039,
+        appareilNom: 'GPS de test',
+        appareilType: 'GPS',
+        imageUrl: 'https://example.com/gps.jpg',
+        dateDebut: '2026-10-01',
+        dateFin: '2026-10-03',
+        prixJournalier: 25000,
+        montantTotal: 75000,
+        statut: 'en_attente',
+        commentaireAdmin: null,
+        createdAt: '2026-09-25T10:00:00.000Z',
+      },
+    ],
+  });
+});
+
+test('un administrateur termine une location active et libère l’appareil', async () => {
+  const queries = [];
+  pool.query = async (query, values) => {
+    queries.push(query);
+    if (query.includes('UPDATE locations')) {
+      assert.match(query, /statut IN \('en_cours', 'approuvee', 'en_retard'\)/);
+      assert.deepEqual(values, ['901']);
+      return { rows: [{ appareil_id: 2039 }] };
+    }
+    if (query.includes('UPDATE appareils')) {
+      assert.deepEqual(values, [2039]);
+      return { rows: [] };
+    }
+    throw new Error(`Requête DB inattendue: ${query}`);
+  };
+
+  const response = await fetch(`${baseUrl}/901/terminer`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${tokenFor('admin', 7)}` },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(queries.length, 2);
+  assert.deepEqual(await response.json(), { message: 'Location terminée' });
+});
+
+test('les routes de lecture admin sont interdites aux clients', async () => {
+  pool.query = async () => {
+    throw new Error('La base ne doit pas être appelée');
+  };
+
+  const directory = await fetch(`${baseUrl}/admin`, {
+    headers: { Authorization: `Bearer ${tokenFor('client', 42)}` },
+  });
+  const expiration = await fetch(`${baseUrl}/check-expired`, {
+    headers: { Authorization: `Bearer ${tokenFor('client', 42)}` },
+  });
+
+  assert.equal(directory.status, 403);
+  assert.equal(expiration.status, 403);
+});

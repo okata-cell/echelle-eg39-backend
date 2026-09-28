@@ -11,6 +11,7 @@ function mapLocation(location) {
     clientNom: `${location.first_name} ${location.last_name}`,
     clientEmail: location.email,
     clientPhone: location.phone,
+    clientTelephone: location.phone,
     appareilId: location.appareil_id,
     appareilNom: location.appareil_nom,
     appareilType: location.appareil_type,
@@ -25,8 +26,7 @@ function mapLocation(location) {
   };
 }
 
-// Liste des locations.
-router.get('/', authMiddleware, async (req, res) => {
+async function listLocations(req, res, { adminOnly = false } = {}) {
   try {
     const { statut } = req.query;
     let query = `
@@ -38,7 +38,7 @@ router.get('/', authMiddleware, async (req, res) => {
     `;
     const params = [];
 
-    if (req.user.role === 'client') {
+    if (!adminOnly && req.user.role !== 'admin') {
       query += ' WHERE l.user_id = $1';
       params.push(req.user.userId);
     }
@@ -51,12 +51,50 @@ router.get('/', authMiddleware, async (req, res) => {
 
     query += ' ORDER BY l.created_at DESC';
     const result = await pool.query(query, params);
+    res.set('Cache-Control', 'no-store');
     return res.json({ locations: result.rows.map(mapLocation) });
   } catch (error) {
     console.error('Erreur liste locations:', error);
     return res.status(500).json({ error: 'Erreur serveur' });
   }
+}
+
+// Le répertoire complet est exclusivement réservé à l’espace administrateur.
+router.get('/admin', authMiddleware, adminMiddleware, (req, res) =>
+  listLocations(req, res, { adminOnly: true }),
+);
+
+// Cette vérification modifie les statuts; elle est donc limitée à l’admin.
+router.get('/check-expired', authMiddleware, adminMiddleware, async (req, res) => {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const result = await pool.query(
+      `UPDATE locations
+       SET statut = 'termine', updated_at = CURRENT_TIMESTAMP
+       WHERE statut = 'en_cours' AND date_fin <= $1
+       RETURNING id, code, appareil_id, date_fin`,
+      [today],
+    );
+
+    const appareilIds = result.rows
+      .map((location) => location.appareil_id)
+      .filter((id) => id != null);
+    if (appareilIds.length > 0) {
+      await pool.query(
+        'UPDATE appareils SET disponible = true WHERE id = ANY($1::int[])',
+        [appareilIds],
+      );
+    }
+
+    return res.json({ expired: result.rows });
+  } catch (error) {
+    console.error('Erreur vérification locations expirées:', error);
+    return res.status(500).json({ error: 'Erreur serveur' });
+  }
 });
+
+// Les clients ne voient que leurs propres réservations.
+router.get('/', authMiddleware, (req, res) => listLocations(req, res));
 
 // Créer une demande de location en attente de validation admin.
 router.post('/', authMiddleware, [
@@ -142,7 +180,7 @@ router.patch('/:id/terminer', authMiddleware, adminMiddleware, async (req, res) 
     const result = await pool.query(
       `UPDATE locations
        SET statut = 'termine', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
+       WHERE id = $1 AND statut IN ('en_cours', 'approuvee', 'en_retard')
        RETURNING appareil_id`,
       [req.params.id],
     );
@@ -271,7 +309,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
     if (req.user.role !== 'admin' && !isOwner) {
       return res.status(403).json({ error: 'Non autorisé' });
     }
-    if (!['termine', 'rejetee'].includes(location.statut)) {
+    if (!['termine', 'rejetee', 'annulee'].includes(location.statut)) {
       return res.status(400).json({
         error: 'Impossible de supprimer une location en cours ou en attente',
       });

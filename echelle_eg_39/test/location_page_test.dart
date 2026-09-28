@@ -78,6 +78,46 @@ void main() {
       await tester.pumpWidget(const SizedBox.shrink());
     },
   );
+
+  testWidgets('une location en cours peut être terminée par un admin', (
+    tester,
+  ) async {
+    var status = 'en_cours';
+    var terminatedId = 0;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationPage(
+            loadLocations: () async => [_location(8, status)],
+            checkExpiredLocations: () async {},
+            terminateLocation: (locationId) async {
+              terminatedId = locationId;
+              status = 'termine';
+            },
+            enableAutoRefresh: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('En cours'));
+    await tester.pumpAndSettle();
+    expect(find.text('LOCATION #8'), findsOneWidget);
+
+    await tester.tap(find.widgetWithText(OutlinedButton, 'Terminer'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.widgetWithText(FilledButton, 'Terminer'));
+    await tester.pumpAndSettle();
+
+    expect(terminatedId, 8);
+    await tester.tap(find.text('Terminées'));
+    await tester.pumpAndSettle();
+    expect(find.text('LOCATION #8'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
 }
 
 Map<String, dynamic> _location(int id, String status) => {

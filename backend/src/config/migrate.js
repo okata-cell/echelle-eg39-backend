@@ -70,7 +70,7 @@ async function migrate() {
         prix_journalier INTEGER NOT NULL,
         montant_total INTEGER NOT NULL,
         statut VARCHAR(20) DEFAULT 'en_attente'
-          CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard')),
+          CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard', 'annulee')),
         commentaire_admin TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -84,7 +84,7 @@ async function migrate() {
     await client.query('ALTER TABLE locations DROP CONSTRAINT IF EXISTS locations_statut_check');
     await client.query(`
       ALTER TABLE locations ADD CONSTRAINT locations_statut_check
-      CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard'))
+      CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard', 'annulee'))
     `);
     await client.query('ALTER TABLE demandes_achat DROP CONSTRAINT IF EXISTS demandes_achat_statut_check');
     await client.query(`
