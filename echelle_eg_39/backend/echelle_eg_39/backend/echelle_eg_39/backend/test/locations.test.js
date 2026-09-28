@@ -158,6 +158,32 @@ test('une demande client est visible dans le répertoire admin', async () => {
   });
 });
 
+test('un administrateur termine une location active et libère l’appareil', async () => {
+  const queries = [];
+  pool.query = async (query, values) => {
+    queries.push(query);
+    if (query.includes('UPDATE locations')) {
+      assert.match(query, /statut IN \('en_cours', 'approuvee', 'en_retard'\)/);
+      assert.deepEqual(values, ['901']);
+      return { rows: [{ appareil_id: 2039 }] };
+    }
+    if (query.includes('UPDATE appareils')) {
+      assert.deepEqual(values, [2039]);
+      return { rows: [] };
+    }
+    throw new Error(`Requête DB inattendue: ${query}`);
+  };
+
+  const response = await fetch(`${baseUrl}/901/terminer`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${tokenFor('admin', 7)}` },
+  });
+
+  assert.equal(response.status, 200);
+  assert.equal(queries.length, 2);
+  assert.deepEqual(await response.json(), { message: 'Location terminée' });
+});
+
 test('le répertoire complet est réservé aux administrateurs', async () => {
   pool.query = async () => {
     throw new Error('La base ne doit pas être appelée');

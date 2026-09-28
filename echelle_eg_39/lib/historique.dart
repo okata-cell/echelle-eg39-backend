@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pdf/pdf.dart';
 import 'appareil_images.dart';
+import 'location_status.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -96,17 +97,31 @@ class Transaction {
   }
 }
 
+typedef HistoriqueDataLoader = Future<List<Map<String, dynamic>>> Function();
+
 class HistoriqueScreen extends StatefulWidget {
-  const HistoriqueScreen({super.key});
+  const HistoriqueScreen({
+    super.key,
+    this.loadLocations,
+    this.loadPurchases,
+    this.refreshInterval = const Duration(seconds: 30),
+  });
+
+  final HistoriqueDataLoader? loadLocations;
+  final HistoriqueDataLoader? loadPurchases;
+  final Duration? refreshInterval;
 
   @override
   State<HistoriqueScreen> createState() => _HistoriqueScreenState();
 }
 
-class _HistoriqueScreenState extends State<HistoriqueScreen> {
+class _HistoriqueScreenState extends State<HistoriqueScreen>
+    with WidgetsBindingObserver {
   String _selectedFilter = 'Tous';
   bool _isLoading = true;
+  bool _isFetching = false;
   String? _errorMessage;
+  Timer? _statusRefreshTimer;
 
   final ExtensionsManager _extensionsManager = ExtensionsManager();
   final DataManager _dataManager = DataManager();
@@ -123,22 +138,25 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   // ── Filtres ───────────────────────────────────────────────────────────────
 
   List<Transaction> get _filteredTransactions {
-    // Pas de filtrage par email - le backend gère déjà le filtrage par utilisateur
-    // On affiche toutes les transactions retournées par l'API
-    List<Transaction> userTransactions = _allTransactions;
-    
-    print('🔍 Filtres: $_selectedFilter, Transactions total: ${userTransactions.length}');
-    
-    // Filtrer par statut uniquement
-    if (_selectedFilter == 'Tous') return userTransactions;
-    return userTransactions.where((t) {
-      if (_selectedFilter == 'En cours') {
-        return t.status == 'en-cours';
+    if (_selectedFilter == 'Tous') return _allTransactions;
+
+    return _allTransactions.where((transaction) {
+      switch (_selectedFilter) {
+        case 'En cours':
+          return transaction.status == 'approuvee' ||
+              transaction.status == 'en-cours' ||
+              transaction.status == 'en-retard';
+        case 'Terminés':
+          return transaction.status == 'termine';
+        case 'En attente':
+          return transaction.status == 'en-attente';
+        case 'Refusées / annulées':
+          return transaction.status == 'rejetee' ||
+              transaction.status == 'annulee';
+        default:
+          return true;
       }
-      if (_selectedFilter == 'Terminés') return t.status == 'termine' || t.status == 'rejetee';
-      if (_selectedFilter == 'En attente') return t.status == 'en-attente';
-      return true;
-    }).toList();
+    }).toList(growable: false);
   }
 
   /// Locations actives en retard
@@ -151,14 +169,14 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _loadCurrentUser();
     _dataManager.initialize();
-    _dataManager.addListener(() {
-      if (mounted) setState(() {});
-    });
+    _dataManager.addListener(_onDataManagerChanged);
 
-    // Charger les données depuis le backend
-    _loadTransactionsFromBackend();
+    // Charger les données depuis le backend.
+    unawaited(_loadTransactionsFromBackend());
+    _startStatusRefreshTimer();
 
     if (kDemoPaymentsEnabled) {
       _extSub = _extensionsManager.events.listen((event) {
@@ -181,6 +199,31 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     }
   }
 
+  void _startStatusRefreshTimer() {
+    final interval = widget.refreshInterval;
+    if (interval == null || interval.inMicroseconds <= 0) return;
+
+    _statusRefreshTimer?.cancel();
+    _statusRefreshTimer = Timer.periodic(interval, (_) {
+      unawaited(_loadTransactionsFromBackend(silent: true));
+    });
+  }
+
+  void _onDataManagerChanged() {
+    if (mounted) setState(() {});
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      unawaited(_loadTransactionsFromBackend(silent: true));
+      _startStatusRefreshTimer();
+    } else {
+      _statusRefreshTimer?.cancel();
+      _statusRefreshTimer = null;
+    }
+  }
+
   Future<void> _loadCurrentUser() async {
     final prefs = await SharedPreferences.getInstance();
     final name = prefs.getString('userName') ?? '';
@@ -193,57 +236,59 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     }
   }
 
-  /// Charger les locations et demandes d'achat depuis le backend
-  Future<void> _loadTransactionsFromBackend() async {
-    setState(() {
-      _isLoading = true;
-      _errorMessage = null;
-    });
+  /// Recharge les locations et les demandes d'achat depuis leurs sources réelles.
+  Future<void> _loadTransactionsFromBackend({bool silent = false}) async {
+    if (_isFetching || !mounted) return;
+    _isFetching = true;
+
+    if (!silent && mounted) {
+      setState(() {
+        _isLoading = _allTransactions.isEmpty;
+        _errorMessage = null;
+      });
+    }
 
     try {
-      // Charger les locations
-      final locations = await ApiService.getLocations();
-      print('📡 Locations reçues: ${locations.length}');
-      
-      // Charger les demandes d'achat
-      final demandes = await ApiService.getDemandesAchat();
-      print('📡 Demandes d\'achat reçues: ${demandes.length}');
+      final loadLocations = widget.loadLocations ?? ApiService.getLocations;
+      final loadPurchases = widget.loadPurchases ?? ApiService.getDemandesAchat;
+      final results = await Future.wait<List<Map<String, dynamic>>>([
+        loadLocations(),
+        loadPurchases(),
+      ]);
+      final locations = results[0];
+      final demandes = results[1];
+      final transactions = <Transaction>[];
 
-      // Convertir en transactions
-      final List<Transaction> transactions = [];
-
-      // Ajouter les locations
-      for (final loc in locations) {
+      for (final location in locations) {
         transactions.add(Transaction(
-          id: loc['id'] as int,
+          id: int.tryParse(location['id']?.toString() ?? '') ?? 0,
           type: 'location',
-          title: loc['appareilNom'] as String? ?? 'Appareil',
-          date: _formatDateForApi(loc['dateDebut'] as String?),
-          dateRetour: _formatDateForApi(loc['dateFin'] as String?),
-          amount: loc['montantTotal'] as int? ?? 0,
-          status: _convertStatut(loc['statut'] as String? ?? 'en-attente'),
-          isPaid: loc['montantTotal'] != null,
-          dailyRate: loc['prixJournalier'] as int? ?? 0,
-          invoiceNumber: loc['code'] as String?,
-          adminComment: loc['commentaireAdmin'] as String?,
-          clientEmail: loc['clientEmail'] as String?,
-          imageUrl: loc['imageUrl'] as String?,
+          title: location['appareilNom']?.toString() ?? 'Appareil',
+          date: _formatDateForApi(location['dateDebut']?.toString()),
+          dateRetour: _formatDateForApi(location['dateFin']?.toString()),
+          amount: (location['montantTotal'] as num?)?.toInt() ?? 0,
+          status: normalizeLocationStatus(location['statut']),
+          isPaid: location['montantTotal'] != null,
+          dailyRate: (location['prixJournalier'] as num?)?.toInt() ?? 0,
+          invoiceNumber: location['code']?.toString(),
+          adminComment: location['commentaireAdmin']?.toString(),
+          clientEmail: location['clientEmail']?.toString(),
+          imageUrl: location['imageUrl']?.toString(),
         ));
       }
 
-      // Ajouter les demandes d'achat
       for (final demande in demandes) {
         transactions.add(Transaction(
-          id: demande['id'] as int,
+          id: int.tryParse(demande['id']?.toString() ?? '') ?? 0,
           type: 'achat',
-          title: '${demande['appareilNom'] as String? ?? 'Appareil'} (x${demande['quantite'] ?? 1})',
-          date: _formatDateForApi(demande['createdAt'] as String?),
-          amount: demande['total'] as int? ?? 0,
-          status: _convertStatut(demande['statut'] as String? ?? 'en-attente'),
+          title: '${demande['appareilNom'] ?? 'Appareil'} (x${demande['quantite'] ?? 1})',
+          date: _formatDateForApi(demande['createdAt']?.toString()),
+          amount: (demande['total'] as num?)?.toInt() ?? 0,
+          status: _convertStatut(demande['statut']?.toString() ?? 'en-attente'),
           isPaid: false,
-          invoiceNumber: demande['code'] as String?,
-          adminComment: demande['commentaireAdmin'] as String?,
-          clientEmail: demande['clientEmail'] as String?,
+          invoiceNumber: demande['code']?.toString(),
+          adminComment: demande['commentaireAdmin']?.toString(),
+          clientEmail: demande['clientEmail']?.toString(),
         ));
       }
 
@@ -251,36 +296,39 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
         setState(() {
           _allTransactions = transactions;
           _isLoading = false;
+          _errorMessage = null;
         });
-        print('✅ Transactions mises à jour: ${transactions.length}');
       }
-    } catch (e) {
-      String errorMsg = 'Erreur de chargement';
-      
-      // Analyser le type d'erreur pour un message plus clair
-      final errorStr = e.toString().toLowerCase();
-      
-      if (errorStr.contains('not authenticated') || errorStr.contains('token')) {
-        // Vérifier si c'est un token demo
-        errorMsg = 'Session expirée ou invalide. Veuillez vous reconnecter.';
-      } else if (errorStr.contains('socketexception') || errorStr.contains('connection')) {
-        errorMsg = 'Connexion internet impossible. Vérifiez votre connexion.';
-      } else if (errorStr.contains('500') || errorStr.contains('serveur')) {
-        errorMsg = 'Serveur temporairement indisponible. Réessayez plus tard.';
-      } else if (errorStr.contains('invalid') || errorStr.contains('token invalide')) {
-        errorMsg = 'Session expirée. Veuillez vous reconnecter.';
-      } else {
-        errorMsg = 'Une erreur est survenue. Veuillez réessayer.';
-      }
-      
+    } catch (error) {
       if (mounted) {
         setState(() {
           _isLoading = false;
-          _errorMessage = errorMsg;
+          if (_allTransactions.isEmpty) {
+            _errorMessage = _messageForHistoryError(error);
+          }
         });
       }
-      print('Erreur chargement historique: $e');
+      debugPrint('Erreur chargement historique: $error');
+    } finally {
+      _isFetching = false;
     }
+  }
+
+  String _messageForHistoryError(Object error) {
+    final errorStr = error.toString().toLowerCase();
+    if (errorStr.contains('not authenticated') || errorStr.contains('token')) {
+      return 'Session expirée ou invalide. Veuillez vous reconnecter.';
+    }
+    if (errorStr.contains('socketexception') || errorStr.contains('connection')) {
+      return 'Connexion internet impossible. Vérifiez votre connexion.';
+    }
+    if (errorStr.contains('500') || errorStr.contains('serveur')) {
+      return 'Serveur temporairement indisponible. Réessayez plus tard.';
+    }
+    if (errorStr.contains('invalid')) {
+      return 'Session expirée. Veuillez vous reconnecter.';
+    }
+    return 'Une erreur est survenue. Veuillez réessayer.';
   }
 
   /// Convertir le format de date du backend
@@ -294,23 +342,21 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
     }
   }
 
-  /// Convertir le statut du backend vers le format de l'app
+  /// Convertit les anciens statuts des demandes d'achat.
+  /// Les locations utilisent leur normaliseur dédié à la source des données.
   String _convertStatut(String backendStatut) {
-    // Gérer les underscore (en_cours -> en-cours, en_attente -> en-attente)
-    final statut = backendStatut.replaceAll('_', '-');
-    
-    switch (statut) {
+    switch (normalizeLocationStatus(backendStatut)) {
       case 'en-cours':
-        return 'en-cours';
       case 'approuvee':
         return 'en-cours';
       case 'termine':
-      case 'livree':
         return 'termine';
       case 'en-attente':
         return 'en-attente';
       case 'rejetee':
         return 'rejetee';
+      case 'annulee':
+        return 'annulee';
       default:
         return 'en-attente';
     }
@@ -318,8 +364,10 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
 
   @override
   void dispose() {
+    _statusRefreshTimer?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
     _extSub?.cancel();
-    _dataManager.removeListener(() => setState(() {}));
+    _dataManager.removeListener(_onDataManagerChanged);
     super.dispose();
   }
 
@@ -475,7 +523,13 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
-                children: ['Tous', 'En cours', 'Terminés', 'En attente'].map((filter) {
+                children: [
+                  'Tous',
+                  'En attente',
+                  'En cours',
+                  'Terminés',
+                  'Refusées / annulées',
+                ].map((filter) {
                   final isSelected = _selectedFilter == filter;
                   return Padding(
                     padding: const EdgeInsets.only(right: 8),
@@ -514,17 +568,31 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   )
                 : _errorMessage != null
                     ? _buildErrorState()
-                    : _filteredTransactions.isEmpty
-                        ? _buildEmptyState()
-                        : ListView.builder(
-                            padding: const EdgeInsets.all(16),
-                            itemCount: _filteredTransactions.length,
-                            itemBuilder: (context, index) {
-                              final transaction = _filteredTransactions[index];
-                              print('🎫 Affichage transaction: ${transaction.type} - ${transaction.title}');
-                              return _buildEnhancedTransactionCard(transaction);
-                            },
-                          ),
+                    : RefreshIndicator(
+                        onRefresh: _loadTransactionsFromBackend,
+                        child: _filteredTransactions.isEmpty
+                            ? ListView(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                children: [
+                                  SizedBox(
+                                    height: MediaQuery.sizeOf(context).height * 0.65,
+                                    child: _buildEmptyState(),
+                                  ),
+                                ],
+                              )
+                            : ListView.builder(
+                                physics: const AlwaysScrollableScrollPhysics(),
+                                padding: const EdgeInsets.all(16),
+                                itemCount: _filteredTransactions.length,
+                                itemBuilder: (context, index) {
+                                  final transaction =
+                                      _filteredTransactions[index];
+                                  return _buildEnhancedTransactionCard(
+                                    transaction,
+                                  );
+                                },
+                              ),
+                      ),
           ),
         ],
       ),
@@ -838,27 +906,6 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
 
   Map<String, dynamic> _getStatusConfig(String status) {
     switch (status) {
-      case 'en-cours':
-        return {
-          'bgColor': const Color(0xFFDBEAFE),
-          'icon': Icons.access_time,
-          'textColor': const Color(0xFF2563EB),
-          'label': 'En cours',
-        };
-      case 'approuvee':
-        return {
-          'bgColor': const Color(0xFFDBEAFE),
-          'icon': Icons.access_time,
-          'textColor': const Color(0xFF2563EB),
-          'label': 'Approuvé',
-        };
-      case 'termine':
-        return {
-          'bgColor': const Color(0xFFF0FDF4),
-          'icon': Icons.check_circle,
-          'textColor': const Color(0xFF059669),
-          'label': 'Terminé',
-        };
       case 'en-attente':
         return {
           'bgColor': const Color(0xFFFEF3C7),
@@ -866,20 +913,55 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
           'textColor': const Color(0xFFD97706),
           'label': 'En attente',
         };
+      case 'approuvee':
+        return {
+          'bgColor': const Color(0xFFD1FAE5),
+          'icon': Icons.thumb_up_outlined,
+          'textColor': const Color(0xFF059669),
+          'label': 'Acceptée',
+        };
+      case 'en-cours':
+        return {
+          'bgColor': const Color(0xFFDBEAFE),
+          'icon': Icons.autorenew,
+          'textColor': const Color(0xFF2563EB),
+          'label': 'En cours',
+        };
+      case 'en-retard':
+        return {
+          'bgColor': const Color(0xFFFEE2E2),
+          'icon': Icons.warning_amber_rounded,
+          'textColor': const Color(0xFFDC2626),
+          'label': 'En retard',
+        };
+      case 'termine':
+        return {
+          'bgColor': const Color(0xFFF0FDF4),
+          'icon': Icons.check_circle,
+          'textColor': const Color(0xFF059669),
+          'label': 'Terminée',
+        };
       case 'rejetee':
         return {
           'bgColor': const Color(0xFFFEE2E2),
           'icon': Icons.cancel,
           'textColor': const Color(0xFFDC2626),
-          'label': 'Rejeté',
+          'label': 'Refusée',
           'showDetails': true,
+        };
+      case 'annulee':
+        return {
+          'bgColor': const Color(0xFFF3F4F6),
+          'icon': Icons.block_outlined,
+          'textColor': const Color(0xFF6B7280),
+          'label': 'Annulée',
         };
       default:
         return {
           'bgColor': const Color(0xFFF3F4F6),
-          'icon': Icons.help,
+          'icon': Icons.help_outline,
           'textColor': const Color(0xFF6B7280),
-          'label': 'Inconnu',
+          'label': 'Statut inconnu',
         };
     }
   }
@@ -887,13 +969,19 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
   // ── P2 : Calcul pénalité corrigé ──────────────────────────────────────────
   // Formule : tarif journalier × 1,5 × jours de retard
   Map<String, dynamic> _getLateInfo(Transaction transaction) {
-    if (transaction.dateRetour == null || transaction.status != 'en-cours') {
+    if (transaction.dateRetour == null ||
+        !['en-cours', 'en-retard'].contains(transaction.status)) {
       return {'isLate': false, 'daysLate': 0, 'penalty': 0};
     }
-    final returnDate = DateTime.parse(transaction.dateRetour!);
+
+    final returnDate = DateTime.tryParse(transaction.dateRetour!);
+    if (returnDate == null) {
+      return {'isLate': transaction.status == 'en-retard', 'daysLate': 0, 'penalty': 0};
+    }
+
     final now = DateTime.now();
-    if (now.isAfter(returnDate)) {
-      final daysLate = now.difference(returnDate).inDays;
+    if (transaction.status == 'en-retard' || now.isAfter(returnDate)) {
+      final daysLate = now.difference(returnDate).inDays.clamp(0, 100000);
       // Pénalité = tarif journalier majoré de 50 % × jours de retard
       final penalty = (transaction.dailyRate * 1.5 * daysLate).round();
       return {'isLate': true, 'daysLate': daysLate, 'penalty': penalty};
@@ -2548,11 +2636,11 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
               runSpacing: 8,
               alignment: WrapAlignment.start,
               children: [
-                if (transaction.status != 'rejetee')
+                if (!['rejetee', 'annulee'].contains(transaction.status))
                   _buildActionButton('Facture', Icons.receipt_long,
                       const Color(0xFF2563EB),
                       () => _downloadInvoice(transaction)),
-                if (transaction.status == 'en-cours' &&
+                if (['en-cours', 'en-retard'].contains(transaction.status) &&
                     transaction.type == 'location')
                   _buildActionButton('Prolonger', Icons.update,
                       const Color(0xFF059669),
@@ -2565,7 +2653,8 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   _buildActionButton('Évaluer', Icons.star_outline,
                       const Color(0xFFEA580C),
                       () => _evaluerService(transaction)),
-                if (!transaction.isPaid && transaction.status != 'rejetee')
+                if (!transaction.isPaid &&
+                    !['rejetee', 'annulee'].contains(transaction.status))
                   _buildActionButton(
                       'Payer', Icons.payment, Colors.red,
                       () => _payerFacture(transaction)),
@@ -2573,9 +2662,9 @@ class _HistoriqueScreenState extends State<HistoriqueScreen> {
                   _buildActionButton('Payer prolong.',
                       Icons.payment, Colors.orange,
                       () => _payerExtension(transaction)),
-                // Supprimer pour terminée ou rejétée
-                if (transaction.status == 'termine' ||
-                    transaction.status == 'rejetee')
+                // Supprimer pour terminée, rejetée ou annulée.
+                if (['termine', 'rejetee', 'annulee']
+                    .contains(transaction.status))
                   _buildActionButton('Supprimer', Icons.delete_outline,
                       const Color(0xFFDC2626),
                       () => _supprimerLocation(transaction)),

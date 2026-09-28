@@ -269,7 +269,7 @@ router.get('/fix-constraint', authMiddleware, adminMiddleware, async (req, res) 
     await pool.query('ALTER TABLE locations DROP CONSTRAINT IF EXISTS locations_statut_check');
     // Recréer avec 'en_attente' inclus
     await pool.query(
-      "ALTER TABLE locations ADD CONSTRAINT locations_statut_check CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard'))"
+      "ALTER TABLE locations ADD CONSTRAINT locations_statut_check CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard', 'annulee'))"
     );
     console.log('✅ CHECK constraint recréée avec en_attente');
     res.json({ message: 'Constraint corrigée' });
@@ -287,7 +287,7 @@ router.patch('/:id/terminer', authMiddleware, adminMiddleware, async (req, res) 
     const result = await pool.query(
       `UPDATE locations
        SET statut = 'termine', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND statut = 'en_cours'
+       WHERE id = $1 AND statut IN ('en_cours', 'approuvee', 'en_retard')
        RETURNING appareil_id`,
       [id]
     );
@@ -563,7 +563,7 @@ router.delete('/:id', authMiddleware, async (req, res) => {
 module.exports = router;
 
 // Route supprimer terminees - AVEC gestion erreurs complete
-router.delete('/terminate-all', async (req, res) => {
+router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     // Compter avant
     const avant = await pool.query("SELECT COUNT(*) FROM locations WHERE statut = 'termine'");
