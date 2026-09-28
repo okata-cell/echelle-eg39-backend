@@ -1,0 +1,31 @@
+services:
+  - type: web
+    name: echelle-eg39-backend-1
+    env: node
+    # Le service Render est rattaché à la racine du dépôt : le backend
+    # réellement déployé est backend/. Les copies imbriquées sous
+    # echelle_eg_39/ sont des duplications obsolètes.
+    buildCommand: cd backend && npm install
+    startCommand: cd backend && npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      # Ces variables sont configurées manuellement dans le Dashboard Render.
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: ADMIN_PHONE
+        sync: false
+      - key: SENDGRID_API_KEY
+        sync: false
+      - key: AT_API_KEY
+        sync: false
+      - key: AFRICASTALKING_USERNAME
+        sync: false

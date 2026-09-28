@@ -24,6 +24,9 @@ app.use('/api/devis', require('./routes/devis'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/prolongations', require('./routes/prolongations'));
 app.use('/api/promotions', require('./routes/promotions'));
+// La gestion des comptes clients (édition, activation) doit être déclarée
+// avant le routeur /api/users pour que ses PATCH ne soient pas masqués.
+app.use('/api/users/clients', require('./routes/admin_clients'));
 app.use('/api/users', require('./routes/users'));
 
 // Route de santé

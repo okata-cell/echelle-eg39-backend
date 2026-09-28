@@ -21,6 +21,10 @@ async function migrate() {
       )
     `);
 
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true',
+    );
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS appareils (
         id SERIAL PRIMARY KEY,
