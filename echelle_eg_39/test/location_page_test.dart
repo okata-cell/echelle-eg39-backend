@@ -35,6 +35,8 @@ void main() {
       expect(find.text('Historique'), findsOneWidget);
       expect(find.text('Toutes'), findsOneWidget);
       expect(find.text('LOCATION #1'), findsOneWidget);
+      expect(find.text('Approuver'), findsOneWidget);
+      expect(find.text('Rejeter'), findsOneWidget);
       expect(find.text('LOCATION #3'), findsNothing);
 
       await tester.tap(find.text('Terminées'));
@@ -79,6 +81,44 @@ void main() {
     },
   );
 
+  testWidgets('une demande reste visible même si son identifiant est absent', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationPage(
+            loadLocations: () async => [
+              {
+                'code': 'LOC-SANS-ID',
+                'clientNom': 'Client test',
+                'appareilNom': 'GPS test',
+                'appareilType': 'GPS',
+                'dateDebut': '2026-10-01',
+                'dateFin': '2026-10-03',
+                'montantTotal': 75000,
+                'statut': 'en_attente',
+              },
+            ],
+            checkExpiredLocations: () async {},
+            enableAutoRefresh: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('Réservations à traiter'), findsOneWidget);
+    expect(find.text('1'), findsNWidgets(3));
+    expect(find.text('GPS test'), findsOneWidget);
+    expect(find.text('LOC-SANS-ID'), findsOneWidget);
+    expect(find.textContaining('identifiant de réservation manquant'), findsOneWidget);
+    expect(find.text('Approuver'), findsNothing);
+    expect(find.text('Rejeter'), findsNothing);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('une location en cours peut être terminée par un admin', (
     tester,
   ) async {
@@ -94,6 +134,7 @@ void main() {
             terminateLocation: (locationId) async {
               terminatedId = locationId;
               status = 'termine';
+              return null;
             },
             enableAutoRefresh: false,
           ),

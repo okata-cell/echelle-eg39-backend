@@ -399,11 +399,20 @@ class _LocationPageState extends State<LocationPage> {
     );
   }
 
+  int? _parseLocationId(Map<String, dynamic> location) {
+    final rawId =
+        location['id'] ?? location['locationId'] ?? location['location_id'];
+    if (rawId is num) return rawId.toInt();
+    return int.tryParse(rawId?.toString().trim() ?? '');
+  }
+
   Widget _buildLocationItem(Map<String, dynamic> location, int index) {
     try {
-      final locationId = (location['id'] is num)
-          ? (location['id'] as num).toInt()
-          : int.tryParse(location['id']?.toString() ?? '');
+      final locationId = _parseLocationId(location);
+      final locationCode = _display(
+        location['code'],
+        fallback: 'Demande sans référence',
+      );
 
       // Debug: afficher le type et la valeur de l'ID
       print(
@@ -412,7 +421,6 @@ class _LocationPageState extends State<LocationPage> {
 
       if (locationId == null) {
         print('⚠️ Location ID invalide à l\'index $index: ${location['id']}');
-        return const SizedBox.shrink();
       }
 
       final amount = formatAdminAmount(location['montantTotal']);
@@ -428,7 +436,15 @@ class _LocationPageState extends State<LocationPage> {
       final isBusy = _busyLocationIds.contains(locationId);
 
       Widget footer;
-      if (isAdminPending(location['statut'])) {
+      if (locationId == null) {
+        footer = const Text(
+          'Actions indisponibles : identifiant de réservation manquant.',
+          style: TextStyle(
+            color: AdminPalette.destructiveRed,
+            fontWeight: FontWeight.w600,
+          ),
+        );
+      } else if (isAdminPending(location['statut'])) {
         footer = AdminDecisionBar(
           isBusy: isBusy,
           onApprove: () => _approveLocation(locationId),
@@ -487,12 +503,18 @@ class _LocationPageState extends State<LocationPage> {
         );
       }
 
-      print('🏗️ Construction AdminWorkItemCard pour location #$locationId');
-      print('🏗️ Construction AdminWorkItemCard pour #$locationId');
+      final locationReference = locationId == null
+          ? locationCode
+          : 'Location #$locationId';
+      final locationKey = locationId == null
+          ? 'loc_${_display(location['code'], fallback: 'unknown_$index')}'
+          : 'loc_$locationId';
+
+      print('🏗️ Construction AdminWorkItemCard pour $locationReference');
       return AdminWorkItemCard(
-        key: ValueKey('loc_$locationId'),
+        key: ValueKey(locationKey),
         status: location['statut'],
-        reference: 'Location #$locationId',
+        reference: locationReference,
         title: equipment,
         requester: client,
         meta: 'Réservation d’équipement',
@@ -525,7 +547,10 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   void _showLocationDetails(Map<String, dynamic> location) {
-    final locationId = location['id']?.toString() ?? '';
+    final locationId = _display(
+      location['id'] ?? location['locationId'] ?? location['location_id'],
+      fallback: _display(location['code'], fallback: 'inconnue'),
+    );
     final equipment = _display(
       location['appareilNom'],
       fallback: 'Appareil non renseigné',
