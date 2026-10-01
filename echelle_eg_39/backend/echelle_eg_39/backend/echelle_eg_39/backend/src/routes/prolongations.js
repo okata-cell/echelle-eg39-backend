@@ -3,153 +3,201 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const {
+  businessToday,
+  findBlockingLocation,
+  inclusiveRentalDays,
+  isDateOnly,
+} = require('../utils/rental_dates');
 
-// Liste des prolongations
 router.get('/', authMiddleware, async (req, res) => {
   try {
     let query = `
       SELECT p.*, l.appareil_nom, l.user_id, u.first_name, u.last_name
-      FROM prolongations p
-      JOIN locations l ON p.location_id = l.id
-      JOIN users u ON l.user_id = u.id
+        FROM prolongations p
+        JOIN locations l ON p.location_id = l.id
+        JOIN users u ON l.user_id = u.id
     `;
     const params = [];
-
-    // Client voit seulement ses prolongations
     if (req.user.role === 'client') {
       query += ' WHERE l.user_id = $1';
       params.push(req.user.userId);
     }
-
     query += ' ORDER BY p.created_at DESC';
 
     const result = await pool.query(query, params);
-
-    res.json({
-      prolongations: result.rows.map(p => ({
-        id: p.id,
-        code: p.code,
-        locationId: p.location_id,
-        appareilNom: p.appareil_nom,
-        clientNom: `${p.first_name} ${p.last_name}`,
-        ancienneDateFin: p.ancienne_date_fin,
-        nouvelleDateFin: p.nouvelle_date_fin,
-        joursSupplementaires: p.jours_supplementaires,
-        coutSupplementaire: p.cout_supplementaire,
-        factureNumero: p.facture_numero,
-        estPaye: p.est_paye,
-        datePaiement: p.date_paiement,
-        createdAt: p.created_at
-      }))
+    return res.json({
+      prolongations: result.rows.map((item) => ({
+        id: item.id,
+        code: item.code,
+        locationId: item.location_id,
+        appareilNom: item.appareil_nom,
+        clientNom: `${item.first_name} ${item.last_name}`,
+        ancienneDateFin: item.ancienne_date_fin,
+        nouvelleDateFin: item.nouvelle_date_fin,
+        joursSupplementaires: item.jours_supplementaires,
+        coutSupplementaire: item.cout_supplementaire,
+        factureNumero: item.facture_numero,
+        estPaye: item.est_paye,
+        datePaiement: item.date_paiement,
+        createdAt: item.created_at,
+      })),
     });
   } catch (error) {
     console.error('Erreur liste prolongations:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Créer une prolongation (client)
-router.post('/', authMiddleware, [
-  body('locationId').isInt().withMessage('ID location requis'),
-  body('nouvelleDateFin').isISO8601().toDate().withMessage('Date fin invalide'),
-], async (req, res) => {
-  try {
+router.post(
+  '/',
+  authMiddleware,
+  [
+    body('locationId').isInt({ min: 1 }).withMessage('ID location requis'),
+    body('nouvelleDateFin').custom(isDateOnly).withMessage('Date fin invalide (AAAA-MM-JJ)'),
+  ],
+  async (req, res) => {
     const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-      return res.status(400).json({ errors: errors.array() });
-    }
+    if (!errors.isEmpty()) return res.status(400).json({ errors: errors.array() });
 
-    const { locationId, nouvelleDateFin } = req.body;
+    const client = await pool.connect();
+    let transactionOpen = false;
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
 
-    // Récupérer la location
-    const locationResult = await pool.query(
-      'SELECT * FROM locations WHERE id = $1 AND user_id = $2',
-      [locationId, req.user.userId]
-    );
-
-    if (locationResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Location non trouvée' });
-    }
-
-    const location = locationResult.rows[0];
-
-    // Vérifier le nombre de prolongations existantes
-    const countResult = await pool.query(
-      'SELECT COUNT(*) as count FROM prolongations WHERE location_id = $1',
-      [locationId]
-    );
-
-    if (parseInt(countResult.rows[0].count) >= 3) {
-      return res.status(400).json({ error: 'Maximum 3 prolongations atteintes' });
-    }
-
-    // Calculer les détails
-    const ancienneFin = new Date(location.date_fin);
-    const nouvelleFin = new Date(nouvelleDateFin);
-    const joursSupplementaires = Math.ceil((nouvelleFin - ancienneFin) / (1000 * 60 * 60 * 24));
-    
-    if (joursSupplementaires <= 0 || joursSupplementaires > 30) {
-      return res.status(400).json({ error: 'Prolongation invalide (max 30 jours)' });
-    }
-
-    const coutSupplementaire = location.prix_journalier * joursSupplementaires;
-    const code = `EXT-${Date.now()}`;
-    const factureNumero = `INV-EXT-${locationId}-${parseInt(countResult.rows[0].count) + 1}`;
-
-    const result = await pool.query(
-      `INSERT INTO prolongations (code, location_id, ancienne_date_fin, nouvelle_date_fin, jours_supplementaires, cout_supplementaire, facture_numero)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING *`,
-      [code, locationId, location.date_fin, nouvelleDateFin, joursSupplementaires, coutSupplementaire, factureNumero]
-    );
-
-    // Mettre à jour la location
-    const nouveauTotal = location.montant_total + coutSupplementaire;
-    await pool.query(
-      'UPDATE locations SET date_fin = $1, montant_total = $2, updated_at = CURRENT_TIMESTAMP WHERE id = $3',
-      [nouvelleDateFin, nouveauTotal, locationId]
-    );
-
-    const prolongation = result.rows[0];
-
-    res.status(201).json({
-      message: 'Prolongation créée',
-      prolongation: {
-        id: prolongation.id,
-        code: prolongation.code,
-        joursSupplementaires: prolongation.jours_supplementaires,
-        coutSupplementaire: prolongation.cout_supplementaire,
-        nouvelleDateFin: prolongation.nouvelle_date_fin,
-        factureNumero: prolongation.facture_numero
+      const locationResult = await client.query(
+        `SELECT * FROM locations
+          WHERE id = $1 AND user_id = $2
+          FOR UPDATE`,
+        [req.body.locationId, req.user.userId],
+      );
+      if (locationResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(404).json({ error: 'Location introuvable.' });
       }
-    });
-  } catch (error) {
-    console.error('Erreur création prolongation:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
+      const location = locationResult.rows[0];
+      if (!['en_cours', 'en_retard'].includes(location.statut)) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(409).json({ error: 'Seule une location en cours peut être prolongée.' });
+      }
 
-// Marquer une prolongation comme payée (admin)
+      const deviceResult = await client.query(
+        'SELECT id FROM appareils WHERE id = $1 FOR UPDATE',
+        [location.appareil_id],
+      );
+      if (deviceResult.rows.length === 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(409).json({ error: 'L’appareil lié à cette location est introuvable.' });
+      }
+
+      const oldEnd = String(location.date_fin).slice(0, 10);
+      const newEnd = req.body.nouvelleDateFin;
+      const extraDays = inclusiveRentalDays(oldEnd, newEnd) - 1;
+      if (extraDays <= 0 || extraDays > 30) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(400).json({ error: 'Prolongation invalide (maximum 30 jours).' });
+      }
+
+      const conflict = await findBlockingLocation(client, {
+        appareilId: location.appareil_id,
+        dateDebut: String(location.date_debut).slice(0, 10),
+        dateFin: newEnd,
+        today: businessToday(),
+        excludeLocationId: location.id,
+      });
+      if (conflict) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(409).json({
+          code: 'PERIODE_INDISPONIBLE',
+          error: 'La prolongation chevauche une autre réservation de cet appareil.',
+        });
+      }
+
+      const countResult = await client.query(
+        'SELECT COUNT(*) AS count FROM prolongations WHERE location_id = $1',
+        [location.id],
+      );
+      const extensionCount = Number.parseInt(countResult.rows[0].count, 10);
+      if (extensionCount >= 3) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(400).json({ error: 'Maximum 3 prolongations atteintes.' });
+      }
+
+      const extraCost = Number(location.prix_journalier) * extraDays;
+      const newTotal = Number(location.montant_total) + extraCost;
+      const extensionCode = `EXT-${Date.now()}`;
+      const invoiceNumber = `INV-EXT-${location.id}-${extensionCount + 1}`;
+      const inserted = await client.query(
+        `INSERT INTO prolongations
+           (code, location_id, ancienne_date_fin, nouvelle_date_fin,
+            jours_supplementaires, cout_supplementaire, facture_numero)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
+         RETURNING *`,
+        [extensionCode, location.id, oldEnd, newEnd, extraDays, extraCost, invoiceNumber],
+      );
+      const nextStatus = newEnd < businessToday() ? 'en_retard' : 'en_cours';
+      await client.query(
+        `UPDATE locations
+            SET date_fin = $1,
+                montant_total = $2,
+                statut = $3,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = $4`,
+        [newEnd, newTotal, nextStatus, location.id],
+      );
+
+      await client.query('COMMIT');
+      transactionOpen = false;
+      return res.status(201).json({
+        message: 'Prolongation créée.',
+        prolongation: {
+          id: inserted.rows[0].id,
+          code: inserted.rows[0].code,
+          joursSupplementaires: inserted.rows[0].jours_supplementaires,
+          coutSupplementaire: inserted.rows[0].cout_supplementaire,
+          nouvelleDateFin: inserted.rows[0].nouvelle_date_fin,
+          factureNumero: inserted.rows[0].facture_numero,
+        },
+      });
+    } catch (error) {
+      if (transactionOpen) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('Erreur rollback prolongation:', rollbackError);
+        }
+      }
+      console.error('Erreur création prolongation:', error);
+      return res.status(500).json({ error: 'Erreur serveur' });
+    } finally {
+      client.release();
+    }
+  },
+);
+
 router.patch('/:id/payer', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { id } = req.params;
-
     const result = await pool.query(
       `UPDATE prolongations
-       SET est_paye = true, date_paiement = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
-       RETURNING *`,
-      [id]
+          SET est_paye = true,
+              date_paiement = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+        RETURNING *`,
+      [req.params.id],
     );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Prolongation non trouvée' });
-    }
-
-    res.json({ message: 'Prolongation marquée comme payée' });
+    if (result.rows.length === 0) return res.status(404).json({ error: 'Prolongation introuvable.' });
+    return res.json({ message: 'Prolongation marquée comme payée.' });
   } catch (error) {
     console.error('Erreur paiement prolongation:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 

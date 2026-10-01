@@ -41,6 +41,7 @@ router.get('/', async (req, res) => {
         prixLocation: a.prix_location,
         prixVente: a.prix_vente,
         disponible: a.disponible,
+        horsService: a.hors_service ?? !a.disponible,
         createdAt: a.created_at
       }))
     });
@@ -85,7 +86,8 @@ router.post('/', authMiddleware, adminMiddleware, [
         imageUrl: appareil.image_url,
         prixLocation: appareil.prix_location,
         prixVente: appareil.prix_vente,
-        disponible: appareil.disponible
+        disponible: appareil.disponible,
+        horsService: appareil.hors_service ?? !appareil.disponible
       }
     });
   } catch (error) {
@@ -99,6 +101,23 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
     const { nom, type, imageUrl, prixLocation, prixVente, disponible } = req.body;
+    if (disponible != null && typeof disponible !== 'boolean') {
+      return res.status(400).json({ error: 'Le champ disponible doit être booléen.' });
+    }
+    if (disponible === true) {
+      const activeRental = await pool.query(
+        `SELECT id FROM locations
+          WHERE appareil_id = $1
+            AND statut IN ('approuvee', 'en_cours', 'en_retard')
+          LIMIT 1`,
+        [id],
+      );
+      if (activeRental.rows.length > 0) {
+        return res.status(409).json({
+          error: 'Le retour physique doit être confirmé avant de remettre cet appareil en vente.',
+        });
+      }
+    }
 
     const result = await pool.query(
       `UPDATE appareils 
@@ -108,10 +127,14 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
            prix_location = COALESCE($4, prix_location),
            prix_vente = COALESCE($5, prix_vente),
            disponible = COALESCE($6, disponible),
+           hors_service = CASE
+             WHEN $6::boolean IS NULL THEN hors_service
+             ELSE NOT $6::boolean
+           END,
            updated_at = CURRENT_TIMESTAMP
        WHERE id = $7
        RETURNING *`,
-      [nom, type, imageUrl, prixLocation, prixVente, disponible, id]
+      [nom, type, imageUrl, prixLocation, prixVente, disponible ?? null, id]
     );
 
     if (result.rows.length === 0) {
@@ -130,7 +153,8 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
         imageUrl: appareil.image_url,
         prixLocation: appareil.prix_location,
         prixVente: appareil.prix_vente,
-        disponible: appareil.disponible
+        disponible: appareil.disponible,
+        horsService: appareil.hors_service ?? !appareil.disponible
       }
     });
   } catch (error) {

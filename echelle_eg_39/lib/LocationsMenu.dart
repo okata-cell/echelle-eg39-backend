@@ -1,5 +1,3 @@
-import 'dart:async';
-
 import 'package:flutter/material.dart';
 
 import 'admin/admin_components.dart';
@@ -13,7 +11,7 @@ typedef LocationDecision = Future<Object?> Function(int locationId);
 typedef LocationRejecter =
     Future<Object?> Function(int locationId, String reason);
 typedef LocationDeleter = Future<void> Function(int locationId);
-typedef LocationExpiryChecker = Future<void> Function();
+typedef AdminClock = DateTime Function();
 
 class LocationPage extends StatefulWidget {
   const LocationPage({
@@ -22,18 +20,18 @@ class LocationPage extends StatefulWidget {
     this.approveLocation = ApiService.approveLocation,
     this.rejectLocation = ApiService.rejectLocation,
     this.terminateLocation = ApiService.terminateLocation,
+    this.markLocationOverdue = ApiService.markLocationOverdue,
     this.deleteLocation = ApiService.deleteLocation,
-    this.checkExpiredLocations = ApiService.checkExpiredLocations,
-    this.enableAutoRefresh = true,
+    this.today = DateTime.now,
   });
 
   final AdminLocationsLoader loadLocations;
   final LocationDecision approveLocation;
   final LocationRejecter rejectLocation;
   final LocationDecision terminateLocation;
+  final LocationDecision markLocationOverdue;
   final LocationDeleter deleteLocation;
-  final LocationExpiryChecker checkExpiredLocations;
-  final bool enableAutoRefresh;
+  final AdminClock today;
 
   @override
   State<LocationPage> createState() => _LocationPageState();
@@ -42,8 +40,9 @@ class LocationPage extends StatefulWidget {
 class _LocationPageState extends State<LocationPage> {
   List<Map<String, dynamic>> _locations = [];
   final Set<int> _busyLocationIds = <int>{};
-  Timer? _autoRefreshTimer;
+  final ScrollController _locationsScrollController = ScrollController();
   bool _isLoading = true;
+  bool _hasLoadedLocations = false;
   String? _errorMessage;
   LocationQueueFilter _filter = LocationQueueFilter.pending;
   bool _isLoadingLocations = false;
@@ -53,29 +52,23 @@ class _LocationPageState extends State<LocationPage> {
     super.initState();
     print('📱 LocationPage ADMIN - initState()');
     _loadLocations();
-    if (widget.enableAutoRefresh) {
-      _autoRefreshTimer = Timer.periodic(
-        const Duration(seconds: 10),
-        (_) => _loadLocations(silent: true),
-      );
-    }
   }
 
   @override
   void dispose() {
-    _autoRefreshTimer?.cancel();
+    _locationsScrollController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadLocations({bool silent = false}) async {
+  Future<void> _loadLocations() async {
     if (_isLoadingLocations) {
       print('⏳ _loadLocations ignoré (déjà en cours)');
       return;
     }
     _isLoadingLocations = true;
-    print('🔄 _loadLocations démarré (silent=$silent)');
+    print('🔄 _loadLocations démarré');
 
-    if (!silent && mounted) {
+    if (mounted) {
       setState(() {
         _isLoading = true;
         _errorMessage = null;
@@ -83,21 +76,56 @@ class _LocationPageState extends State<LocationPage> {
     }
 
     try {
-      try {
-        await widget.checkExpiredLocations();
-      } catch (error) {
-        debugPrint('⚠️ Vérification expiration locations : $error');
-      }
-
       final locations = await widget.loadLocations().timeout(
         const Duration(seconds: 15),
       );
+      final previousPendingKeys = _locations
+          .where(
+            (location) =>
+                locationQueueBucketKey(location['statut']) ==
+                LocationQueueFilter.pending.key,
+          )
+          .map(_locationIdentityKey)
+          .whereType<String>()
+          .toSet();
+      final newPendingLocations = _hasLoadedLocations
+          ? locations
+                .where((location) {
+                  final identityKey = _locationIdentityKey(location);
+                  return identityKey != null &&
+                      locationQueueBucketKey(location['statut']) ==
+                          LocationQueueFilter.pending.key &&
+                      !previousPendingKeys.contains(identityKey);
+                })
+                .toList(growable: false)
+          : const <Map<String, dynamic>>[];
 
       if (!mounted) return;
       setState(() {
         _locations = locations;
         _isLoading = false;
         _errorMessage = null;
+        if (newPendingLocations.isNotEmpty) {
+          _filter = LocationQueueFilter.pending;
+        }
+      });
+      _hasLoadedLocations = true;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_locationsScrollController.hasClients) {
+          _locationsScrollController.jumpTo(0);
+        }
+        if (newPendingLocations.isEmpty) return;
+
+        final count = newPendingLocations.length;
+        showAdminMessage(
+          context,
+          count == 1
+              ? 'Nouvelle réservation reçue : elle est en haut de la file « En attente ». '
+              : '$count nouvelles réservations reçues : elles sont en haut de la file « En attente ».',
+          backgroundColor: AdminPalette.approvalGreen,
+        );
       });
       print('✅ UI mise à jour avec ${locations.length} locations');
     } catch (error) {
@@ -178,20 +206,55 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
+  Future<void> _markLocationOverdue(int locationId) async {
+    if (!_startMutation(locationId)) return;
+
+    try {
+      await widget.markLocationOverdue(locationId);
+      if (!mounted) return;
+      showAdminMessage(
+        context,
+        'Location #$locationId marquée en retard. L’appareil reste bloqué jusqu’à confirmation du retour.',
+        backgroundColor: AdminPalette.safetyAmber,
+      );
+      await _loadLocations();
+    } catch (error) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Impossible de marquer la location en retard : $error',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+      }
+    } finally {
+      _finishMutation(locationId);
+    }
+  }
+
+  bool _isPastDue(Object? rawDate) {
+    final raw = rawDate?.toString();
+    if (raw == null || raw.isEmpty) return false;
+    final parsed = DateTime.tryParse(raw);
+    if (parsed == null) return false;
+    final dueDay = DateUtils.dateOnly(parsed.toLocal());
+    final today = DateUtils.dateOnly(widget.today());
+    return dueDay.isBefore(today);
+  }
+
   Future<void> _completeLocation(int locationId) async {
     if (_busyLocationIds.contains(locationId)) return;
 
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (dialogContext) => AlertDialog(
-        title: const Text('Terminer cette location ?'),
+        title: const Text('Confirmer le retour physique ?'),
         content: Text(
-          'La location #$locationId passera dans les locations terminées et l’appareil sera libéré.',
+          'Confirme que l’appareil de la location #$locationId a bien été rendu. Cette action terminera la location et libérera son créneau.',
         ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Continuer la location'),
+            child: const Text('Pas encore'),
           ),
           FilledButton(
             onPressed: () => Navigator.pop(dialogContext, true),
@@ -199,7 +262,7 @@ class _LocationPageState extends State<LocationPage> {
               backgroundColor: AdminPalette.approvalGreen,
               foregroundColor: Colors.white,
             ),
-            child: const Text('Terminer'),
+            child: const Text('Confirmer le retour'),
           ),
         ],
       ),
@@ -406,6 +469,25 @@ class _LocationPageState extends State<LocationPage> {
     return int.tryParse(rawId?.toString().trim() ?? '');
   }
 
+  String? _locationIdentityKey(Map<String, dynamic> location) {
+    final locationId = _parseLocationId(location);
+    if (locationId != null) return 'id:$locationId';
+
+    final code = _display(location['code']);
+    if (code.isNotEmpty) return 'code:$code';
+
+    return null;
+  }
+
+  Key _locationItemKey(Map<String, dynamic> location, int index) {
+    final locationId = _parseLocationId(location);
+    return ValueKey<String>(
+      locationId == null
+          ? 'loc_${_display(location['code'], fallback: 'unknown_$index')}'
+          : 'loc_$locationId',
+    );
+  }
+
   Widget _buildLocationItem(Map<String, dynamic> location, int index) {
     try {
       final locationId = _parseLocationId(location);
@@ -464,6 +546,7 @@ class _LocationPageState extends State<LocationPage> {
         );
       } else if (locationQueueBucketKey(location['statut']) ==
           LocationQueueFilter.inProgress.key) {
+        final statusKey = adminStatusKey(location['statut']);
         footer = Wrap(
           alignment: WrapAlignment.end,
           spacing: AdminSpacing.sm,
@@ -477,10 +560,23 @@ class _LocationPageState extends State<LocationPage> {
                 foregroundColor: AdminPalette.blueprintBlue,
               ),
             ),
+            if (statusKey == 'en_cours' && _isPastDue(location['dateFin']))
+              OutlinedButton.icon(
+                onPressed: isBusy
+                    ? null
+                    : () => _markLocationOverdue(locationId),
+                icon: const Icon(Icons.schedule, size: 18),
+                label: const Text('Marquer en retard'),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: AdminPalette.safetyAmber,
+                  side: const BorderSide(color: AdminPalette.safetyAmber),
+                  minimumSize: const Size(0, 44),
+                ),
+              ),
             OutlinedButton.icon(
               onPressed: isBusy ? null : () => _completeLocation(locationId),
               icon: const Icon(Icons.check_circle_outline, size: 18),
-              label: const Text('Terminer'),
+              label: const Text('Confirmer le retour'),
               style: OutlinedButton.styleFrom(
                 foregroundColor: AdminPalette.approvalGreen,
                 side: const BorderSide(color: AdminPalette.approvalGreen),
@@ -506,13 +602,10 @@ class _LocationPageState extends State<LocationPage> {
       final locationReference = locationId == null
           ? locationCode
           : 'Location #$locationId';
-      final locationKey = locationId == null
-          ? 'loc_${_display(location['code'], fallback: 'unknown_$index')}'
-          : 'loc_$locationId';
 
       print('🏗️ Construction AdminWorkItemCard pour $locationReference');
       return AdminWorkItemCard(
-        key: ValueKey(locationKey),
+        key: _locationItemKey(location, index),
         status: location['statut'],
         reference: locationReference,
         title: equipment,
@@ -724,6 +817,11 @@ class _LocationPageState extends State<LocationPage> {
                 (filter) => filter.key == key,
               );
               setState(() => _filter = selected);
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (_locationsScrollController.hasClients) {
+                  _locationsScrollController.jumpTo(0);
+                }
+              });
             },
             options: [
               for (final filter in LocationQueueFilter.values)
@@ -799,10 +897,16 @@ class _LocationPageState extends State<LocationPage> {
           header,
           Expanded(
             child: ListView.builder(
-              key: const PageStorageKey<String>('locations_scroll'),
+              controller: _locationsScrollController,
               physics: const AlwaysScrollableScrollPhysics(),
-              addRepaintBoundaries: false,
-              addSemanticIndexes: false,
+              findChildIndexCallback: (key) {
+                for (var index = 0; index < visibleLocations.length; index++) {
+                  if (_locationItemKey(visibleLocations[index], index) == key) {
+                    return index;
+                  }
+                }
+                return null;
+              },
               padding: const EdgeInsets.fromLTRB(
                 AdminSpacing.lg,
                 AdminSpacing.sm,

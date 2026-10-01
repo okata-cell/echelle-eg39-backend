@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'dart:convert';
+import 'admin_rejection_dialog.dart';
 import 'api_service.dart';
 
 /// Page admin pour gérer les demandes d'achat (copie de LocationsMenu)
@@ -11,7 +12,8 @@ class AdminVentesPageFixed extends StatefulWidget {
   State<AdminVentesPageFixed> createState() => _AdminVentesPageFixedState();
 }
 
-class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with SingleTickerProviderStateMixin {
+class _AdminVentesPageFixedState extends State<AdminVentesPageFixed>
+    with SingleTickerProviderStateMixin {
   late TabController _tabController;
   List<Map<String, dynamic>> _demandesFromAPI = [];
   bool _isLoading = true;
@@ -45,10 +47,14 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
       if (response.statusCode == 200) {
         final data = json.decode(response.body);
         setState(() {
-          _demandesFromAPI = List<Map<String, dynamic>>.from(data['demandes'] ?? []);
+          _demandesFromAPI = List<Map<String, dynamic>>.from(
+            data['demandes'] ?? [],
+          );
           _isLoading = false;
         });
-        print('📡 Admin Demandes Achat: ${_demandesFromAPI.length} demandes chargées');
+        print(
+          '📡 Admin Demandes Achat: ${_demandesFromAPI.length} demandes chargées',
+        );
       } else {
         setState(() => _isLoading = false);
         print('❌ Erreur chargement demandes: ${response.statusCode}');
@@ -71,7 +77,9 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
   List<Map<String, dynamic>> _getActiveDemandes() {
     return _demandesFromAPI.where((d) {
       final statut = d['statut']?.toString().toLowerCase().trim();
-      return statut == 'approuvee' || statut == 'approuvé' || statut == 'approved';
+      return statut == 'approuvee' ||
+          statut == 'approuvé' ||
+          statut == 'approved';
     }).toList();
   }
 
@@ -79,7 +87,10 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
   List<Map<String, dynamic>> _getCompletedDemandes() {
     return _demandesFromAPI.where((d) {
       final statut = d['statut']?.toString().toLowerCase().trim();
-      return statut == 'termine' || statut == 'rejetee' || statut == 'rejetée' || statut == 'livree';
+      return statut == 'termine' ||
+          statut == 'rejetee' ||
+          statut == 'rejetée' ||
+          statut == 'livree';
     }).toList();
   }
 
@@ -99,8 +110,20 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
     if (dateStr == null) return '';
     try {
       final date = DateTime.parse(dateStr);
-      final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
-                      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+      final months = [
+        'janvier',
+        'février',
+        'mars',
+        'avril',
+        'mai',
+        'juin',
+        'juillet',
+        'août',
+        'septembre',
+        'octobre',
+        'novembre',
+        'décembre',
+      ];
       return '${date.day} ${months[date.month - 1]} ${date.year}';
     } catch (e) {
       return dateStr;
@@ -146,10 +169,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -165,10 +185,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
           'Content-Type': 'application/json',
           'Authorization': 'Bearer $token',
         },
-        body: json.encode({
-          'statut': 'rejetee',
-          'commentaire_admin': motif,
-        }),
+        body: json.encode({'statut': 'rejetee', 'commentaire_admin': motif}),
       );
 
       if (response.statusCode == 200) {
@@ -194,10 +211,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -228,7 +242,10 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
                 children: [
                   const Icon(Icons.pending_actions, size: 16),
                   const SizedBox(width: 4),
-                  Text('En att. ($pendingCount)', style: const TextStyle(fontSize: 12)),
+                  Text(
+                    'En att. ($pendingCount)',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ],
               ),
             ),
@@ -238,7 +255,10 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
                 children: [
                   const Icon(Icons.play_circle_outline, size: 16),
                   const SizedBox(width: 4),
-                  Text('Approuv. ($activeCount)', style: const TextStyle(fontSize: 12)),
+                  Text(
+                    'Approuv. ($activeCount)',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ],
               ),
             ),
@@ -248,7 +268,10 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
                 children: [
                   const Icon(Icons.check_circle_outline, size: 16),
                   const SizedBox(width: 4),
-                  Text('Termin. ($completedCount)', style: const TextStyle(fontSize: 12)),
+                  Text(
+                    'Termin. ($completedCount)',
+                    style: const TextStyle(fontSize: 12),
+                  ),
                 ],
               ),
             ),
@@ -285,19 +308,22 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(
-              type == 'en_attente' ? Icons.pending_actions :
-              type == 'approuvee' ? Icons.check_circle : Icons.done_all,
+              type == 'en_attente'
+                  ? Icons.pending_actions
+                  : type == 'approuvee'
+                  ? Icons.check_circle
+                  : Icons.done_all,
               size: 64,
               color: Colors.grey[400],
             ),
             const SizedBox(height: 16),
             Text(
-              type == 'en_attente' ? 'Aucune demande en attente' :
-              type == 'approuvee' ? 'Aucune demande approuvée' : 'Aucune demande terminée',
-              style: TextStyle(
-                fontSize: 16,
-                color: Colors.grey[600],
-              ),
+              type == 'en_attente'
+                  ? 'Aucune demande en attente'
+                  : type == 'approuvee'
+                  ? 'Aucune demande approuvée'
+                  : 'Aucune demande terminée',
+              style: TextStyle(fontSize: 16, color: Colors.grey[600]),
             ),
           ],
         ),
@@ -309,7 +335,8 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
       child: ListView.builder(
         padding: const EdgeInsets.all(16),
         itemCount: demandes.length,
-        itemBuilder: (context, index) => _buildDemandeCard(demandes[index], type),
+        itemBuilder: (context, index) =>
+            _buildDemandeCard(demandes[index], type),
       ),
     );
   }
@@ -364,7 +391,9 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
             decoration: BoxDecoration(
               color: borderColor.withValues(alpha: 0.1),
-              borderRadius: const BorderRadius.vertical(top: Radius.circular(11)),
+              borderRadius: const BorderRadius.vertical(
+                top: Radius.circular(11),
+              ),
             ),
             child: Row(
               children: [
@@ -381,10 +410,7 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
                 const Spacer(),
                 Text(
                   _formatDateFr(createdAt),
-                  style: TextStyle(
-                    fontSize: 11,
-                    color: Colors.grey[600],
-                  ),
+                  style: TextStyle(fontSize: 11, color: Colors.grey[600]),
                 ),
               ],
             ),
@@ -405,7 +431,10 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
                         color: Colors.blue.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(10),
                       ),
-                      child: const Icon(Icons.shopping_cart, color: Colors.blue),
+                      child: const Icon(
+                        Icons.shopping_cart,
+                        color: Colors.blue,
+                      ),
                     ),
                     const SizedBox(width: 12),
                     Expanded(
@@ -491,47 +520,14 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> with Single
   }
 
   /// Dialogue de rejet
-  void _showRejectDialog(int id) {
-    final controller = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Row(
-          children: [
-            Icon(Icons.cancel, color: Colors.red),
-            SizedBox(width: 12),
-            Text('Rejeter la demande'),
-          ],
-        ),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(
-            labelText: 'Motif du rejet',
-            hintText: 'Ex: Stock insuffisant, prix incorrect...',
-            border: OutlineInputBorder(),
-          ),
-          maxLines: 3,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (controller.text.isNotEmpty) {
-                _rejectDemande(id, controller.text);
-                Navigator.pop(ctx);
-              }
-            },
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rejeter'),
-          ),
-        ],
-      ),
+  Future<void> _showRejectDialog(int id) async {
+    final reason = await showAdminRejectionDialog(
+      context,
+      title: 'Rejeter la demande',
+      hintText: 'Ex. : Stock insuffisant, prix incorrect…',
     );
+    if (!mounted || reason == null || reason.trim().isEmpty) return;
+
+    await _rejectDemande(id, reason);
   }
 }

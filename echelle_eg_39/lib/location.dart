@@ -1,11 +1,10 @@
-import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'appareil_images.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'login.page.dart';
+import 'rental_booking_dates.dart';
 import 'widgets/image_zoom_viewer.dart' show openImageZoom;
 
 class Equipment {
@@ -28,8 +27,34 @@ class Equipment {
   });
 }
 
+typedef LocationEquipmentLoader =
+    Future<List<Map<String, dynamic>>> Function({bool? disponible});
+typedef LocationAvailabilityLoader =
+    Future<Map<String, dynamic>> Function({
+      required int appareilId,
+      required String dateDebut,
+      required String dateFin,
+    });
+typedef LocationCreator =
+    Future<Map<String, dynamic>> Function(
+      int appareilId,
+      String dateDebut,
+      String dateFin,
+    );
+
 class LocationScreen extends StatefulWidget {
-  const LocationScreen({super.key});
+  const LocationScreen({
+    super.key,
+    this.loadAppareils = ApiService.getAppareils,
+    this.checkAvailability = ApiService.getLocationAvailability,
+    this.createLocation = ApiService.createLocation,
+    this.today = DateTime.now,
+  });
+
+  final LocationEquipmentLoader loadAppareils;
+  final LocationAvailabilityLoader checkAvailability;
+  final LocationCreator createLocation;
+  final DateTime Function() today;
 
   @override
   State<LocationScreen> createState() => _LocationScreenState();
@@ -41,39 +66,54 @@ class _LocationScreenState extends State<LocationScreen> {
 
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
-  String _currentUserId = '';
 
   final List<String> _categories = [
-    'Tous', 'GPS', 'Station totale', 'Niveau', 'Mire',
-    'Trepied', 'Drone', 'Laser', 'Réflecteur', 'Canne',
-    'Antenne', 'Accessoire', 'Scanner 3D'
+    'Tous',
+    'GPS',
+    'Station totale',
+    'Niveau',
+    'Mire',
+    'Trepied',
+    'Drone',
+    'Laser',
+    'Réflecteur',
+    'Canne',
+    'Antenne',
+    'Accessoire',
+    'Scanner 3D',
   ];
 
   @override
   void initState() {
     super.initState();
-    _loadCurrentUser();
     _loadAppareilsFromAPI();
     _dataManager.addListener(_onDataManagerChanged);
   }
 
   Future<void> _loadAppareilsFromAPI() async {
     try {
-      final appareils = await ApiService.getAppareils();
+      final appareils = await widget.loadAppareils();
       if (mounted && appareils.isNotEmpty) {
         setState(() {
-          _apiAppareils = appareils.map((a) => Equipment(
-                id: a['id'] as int,
-                name: a['nom'] as String,
-                category: a['type'] as String,
-                price: a['prixLocation'] as int,
-                available: a['disponible'] as bool? ?? true,
-                imageUrl: a['imageUrl'] as String? ??
-                    AppareilImages.getImageUrlForType(
-                      a['type'] as String? ?? '',
-                    ),
-                role: _getRoleDescription(a['type'] as String? ?? ''),
-              )).toList();
+          _apiAppareils = appareils
+              .map(
+                (a) => Equipment(
+                  id: a['id'] as int,
+                  name: a['nom'] as String,
+                  category: a['type'] as String,
+                  price: a['prixLocation'] as int,
+                  available: a['horsService'] is bool
+                      ? !(a['horsService'] as bool)
+                      : a['disponible'] as bool? ?? true,
+                  imageUrl:
+                      a['imageUrl'] as String? ??
+                      AppareilImages.getImageUrlForType(
+                        a['type'] as String? ?? '',
+                      ),
+                  role: _getRoleDescription(a['type'] as String? ?? ''),
+                ),
+              )
+              .toList();
         });
       }
     } catch (e) {
@@ -87,14 +127,6 @@ class _LocationScreenState extends State<LocationScreen> {
     }
   }
 
-  Future<void> _loadCurrentUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final email = prefs.getString('userEmail') ?? '';
-    if (mounted) {
-      setState(() => _currentUserId = email);
-    }
-  }
-
   @override
   void dispose() {
     _dataManager.removeListener(_onDataManagerChanged);
@@ -103,8 +135,11 @@ class _LocationScreenState extends State<LocationScreen> {
 
   List<Equipment> get _filteredEquipments {
     return _apiAppareils.where((eq) {
-      final matchesSearch = eq.name.toLowerCase().contains(_searchQuery.toLowerCase());
-      final matchesCategory = _selectedCategory == 'Tous' || eq.category == _selectedCategory;
+      final matchesSearch = eq.name.toLowerCase().contains(
+        _searchQuery.toLowerCase(),
+      );
+      final matchesCategory =
+          _selectedCategory == 'Tous' || eq.category == _selectedCategory;
       return matchesSearch && matchesCategory;
     }).toList();
   }
@@ -182,13 +217,19 @@ class _LocationScreenState extends State<LocationScreen> {
                       color: const Color(0xFF9CA3AF),
                       fontSize: 14,
                     ),
-                    prefixIcon: const Icon(Icons.search, color: Color(0xFF9CA3AF)),
+                    prefixIcon: const Icon(
+                      Icons.search,
+                      color: Color(0xFF9CA3AF),
+                    ),
                     suffixIcon: _searchQuery.isNotEmpty
                         ? IconButton(
                             onPressed: () {
                               setState(() => _searchQuery = '');
                             },
-                            icon: const Icon(Icons.clear, color: Color(0xFF9CA3AF)),
+                            icon: const Icon(
+                              Icons.clear,
+                              color: Color(0xFF9CA3AF),
+                            ),
                           )
                         : null,
                     border: OutlineInputBorder(
@@ -201,11 +242,17 @@ class _LocationScreenState extends State<LocationScreen> {
                     ),
                     focusedBorder: OutlineInputBorder(
                       borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+                      borderSide: const BorderSide(
+                        color: Color(0xFF2563EB),
+                        width: 2,
+                      ),
                     ),
                     filled: true,
                     fillColor: const Color(0xFFF9FAFB),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 12,
+                    ),
                   ),
                 ),
                 const SizedBox(height: 12),
@@ -224,7 +271,9 @@ class _LocationScreenState extends State<LocationScreen> {
                             category,
                             style: GoogleFonts.poppins(
                               fontSize: 12,
-                              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
+                              fontWeight: isSelected
+                                  ? FontWeight.w600
+                                  : FontWeight.w400,
                             ),
                           ),
                           selected: isSelected,
@@ -236,9 +285,14 @@ class _LocationScreenState extends State<LocationScreen> {
                           backgroundColor: const Color(0xFFF3F4F6),
                           selectedColor: const Color(0xFF2563EB),
                           labelStyle: TextStyle(
-                            color: isSelected ? Colors.white : const Color(0xFF374151),
+                            color: isSelected
+                                ? Colors.white
+                                : const Color(0xFF374151),
                           ),
-                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 12,
+                            vertical: 4,
+                          ),
                         ),
                       );
                     },
@@ -258,11 +312,10 @@ class _LocationScreenState extends State<LocationScreen> {
                       return _EquipmentCard(
                         key: ValueKey('card_${equipment.id}'),
                         equipment: equipment,
-                        userId: _currentUserId,
-                        onRefresh: () {
-                          _loadCurrentUser();
-                          _loadAppareilsFromAPI();
-                        },
+                        checkAvailability: widget.checkAvailability,
+                        createLocation: widget.createLocation,
+                        today: widget.today,
+                        onRefresh: _loadAppareilsFromAPI,
                       );
                     },
                   ),
@@ -277,11 +330,7 @@ class _LocationScreenState extends State<LocationScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.search_off,
-            size: 64,
-            color: Colors.grey[300],
-          ),
+          Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
             'Aucun équipement trouvé',
@@ -299,13 +348,17 @@ class _LocationScreenState extends State<LocationScreen> {
 
 class _EquipmentCard extends StatefulWidget {
   final Equipment equipment;
-  final String userId;
+  final LocationAvailabilityLoader checkAvailability;
+  final LocationCreator createLocation;
+  final DateTime Function() today;
   final VoidCallback onRefresh;
 
   const _EquipmentCard({
     super.key,
     required this.equipment,
-    required this.userId,
+    required this.checkAvailability,
+    required this.createLocation,
+    required this.today,
     required this.onRefresh,
   });
 
@@ -314,90 +367,125 @@ class _EquipmentCard extends StatefulWidget {
 }
 
 class _EquipmentCardState extends State<_EquipmentCard> {
-  DateTime? _cooldownUntil;
-  Timer? _timer;
+  late DateTime _dateDebut;
+  DateTime? _dateFin;
+  bool _isLoadingAvailability = false;
+  bool? _isPeriodAvailable;
+  bool _availabilityCheckFailed = false;
+  String? _availabilityMessage;
   bool _isSubmitting = false;
-  bool _hasPendingRequest = false;
-
-  String get _cooldownKey => 'cooldown_${widget.userId}_${widget.equipment.id}';
-  String get _pendingKey => 'pending_${widget.userId}_${widget.equipment.id}';
+  int _availabilityRequestId = 0;
 
   @override
   void initState() {
     super.initState();
-    _loadCooldown();
-    _loadPending();
-    _timer = Timer.periodic(const Duration(seconds: 30), (_) {
-      _loadCooldown();
-    });
-  }
-
-  Future<void> _loadPending() async {
-    if (widget.userId.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _hasPendingRequest = prefs.getBool(_pendingKey) ?? false;
-    });
+    _dateDebut = DateUtils.dateOnly(widget.today());
   }
 
   @override
   void didUpdateWidget(_EquipmentCard oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.userId != widget.userId ||
-        oldWidget.equipment.id != widget.equipment.id) {
-      _loadCooldown();
+    if (oldWidget.equipment.id != widget.equipment.id) {
+      _dateDebut = DateUtils.dateOnly(widget.today());
+      _dateFin = null;
+      _isPeriodAvailable = null;
+      _availabilityCheckFailed = false;
+      _availabilityMessage = null;
+      _isLoadingAvailability = false;
+      _availabilityRequestId++;
     }
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    super.dispose();
+  Future<void> _chooseStartDate() async {
+    final today = DateUtils.dateOnly(widget.today());
+    final initialDate = _dateDebut.isBefore(today) ? today : _dateDebut;
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: initialDate,
+      firstDate: today,
+      lastDate: DateTime(2100, 12, 31),
+      helpText: 'Choisissez la date de début',
+      confirmText: 'Continuer',
+    );
+    if (!mounted || pickedDate == null) return;
+
+    final dateDebut = DateUtils.dateOnly(pickedDate);
+    if (dateDebut == _dateDebut) return;
+
+    setState(() {
+      _dateDebut = dateDebut;
+      _dateFin = null;
+      _isPeriodAvailable = null;
+      _availabilityCheckFailed = false;
+      _availabilityMessage = null;
+      _isLoadingAvailability = false;
+      _availabilityRequestId++;
+    });
   }
 
-  Future<void> _loadCooldown() async {
-    if (widget.userId.isEmpty) {
-      if (mounted) setState(() => _cooldownUntil = null);
-      return;
-    }
-    final prefs = await SharedPreferences.getInstance();
-    final stored = prefs.getString(_cooldownKey);
-    if (stored != null) {
-      final until = DateTime.parse(stored);
-      if (until.isAfter(DateTime.now())) {
-        if (mounted) setState(() => _cooldownUntil = until);
-      } else {
-        await prefs.remove(_cooldownKey);
-        if (mounted) setState(() => _cooldownUntil = null);
+  Future<void> _chooseReturnDate() async {
+    final pickedDate = await showDatePicker(
+      context: context,
+      initialDate: _dateFin ?? _dateDebut,
+      firstDate: _dateDebut,
+      lastDate: DateTime(2100, 12, 31),
+      helpText: 'Choisissez la date de retour',
+      confirmText: 'Continuer',
+    );
+    if (!mounted || pickedDate == null) return;
+
+    final dateFin = DateUtils.dateOnly(pickedDate);
+    final requestId = ++_availabilityRequestId;
+    setState(() {
+      _dateFin = dateFin;
+      _isPeriodAvailable = null;
+      _availabilityCheckFailed = false;
+      _availabilityMessage = null;
+      _isLoadingAvailability = true;
+    });
+
+    try {
+      final availability = await widget.checkAvailability(
+        appareilId: widget.equipment.id,
+        dateDebut: rentalDateIso(_dateDebut),
+        dateFin: rentalDateIso(dateFin),
+      );
+      if (!mounted || requestId != _availabilityRequestId) return;
+      final available = availability['disponible'] == true;
+      setState(() {
+        _isPeriodAvailable = available;
+        _availabilityCheckFailed = false;
+        _availabilityMessage = available
+            ? null
+            : availability['raison'] == 'hors_service'
+            ? 'Cet appareil est temporairement hors service.'
+            : 'Cette période chevauche une autre réservation.';
+      });
+    } catch (error) {
+      if (!mounted || requestId != _availabilityRequestId) return;
+      setState(() {
+        _isPeriodAvailable = null;
+        _availabilityCheckFailed = true;
+        _availabilityMessage =
+            'Vérification indisponible. Envoyez la demande ; la disponibilité sera confirmée par le serveur.';
+      });
+      debugPrint('Échec de vérification du créneau: $error');
+    } finally {
+      if (mounted && requestId == _availabilityRequestId) {
+        setState(() => _isLoadingAvailability = false);
       }
-    } else {
-      if (mounted) setState(() => _cooldownUntil = null);
     }
-  }
-
-  Future<void> _saveCooldown({DateTime? dateDebut, DateTime? dateFin}) async {
-    if (widget.userId.isEmpty) return;
-    final prefs = await SharedPreferences.getInstance();
-    DateTime until;
-    if (dateDebut != null && dateFin != null) {
-      final now = DateTime.now();
-      if (now.isBefore(dateDebut)) {
-        until = dateFin.add(const Duration(days: 1));
-        await prefs.setString('${_cooldownKey}_start', dateDebut.toIso8601String());
-      } else {
-        until = dateFin.add(const Duration(days: 1));
-      }
-    } else if (dateFin != null) {
-      until = dateFin.add(const Duration(days: 1));
-    } else {
-      until = DateTime.now().add(const Duration(hours: 24));
-    }
-    await prefs.setString(_cooldownKey, until.toIso8601String());
-    if (mounted) setState(() => _cooldownUntil = until);
   }
 
   Future<void> _submitLocationRequest() async {
-    if (_isSubmitting) return;
+    final dateFin = _dateFin;
+    if (_isSubmitting ||
+        dateFin == null ||
+        _isLoadingAvailability ||
+        (_isPeriodAvailable != true && !_availabilityCheckFailed) ||
+        !widget.equipment.available) {
+      return;
+    }
     setState(() => _isSubmitting = true);
 
     try {
@@ -407,40 +495,46 @@ class _EquipmentCardState extends State<_EquipmentCard> {
         return;
       }
 
-      final now = DateTime.now();
-      final dateDebut = now.toIso8601String().split('T')[0];
-      final dateFin = now.add(const Duration(days: 7)).toIso8601String().split('T')[0];
-
-      await ApiService.createLocation(
+      await widget.createLocation(
         widget.equipment.id,
-        dateDebut,
-        dateFin,
+        rentalDateIso(_dateDebut),
+        rentalDateIso(dateFin),
       );
 
-      await _saveCooldown(dateDebut: now, dateFin: now.add(const Duration(days: 7)));
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Demande de location envoyée pour ${widget.equipment.name}'),
-            backgroundColor: const Color(0xFF059669),
+      if (!mounted) return;
+      setState(() {
+        _dateFin = null;
+        _isPeriodAvailable = null;
+        _availabilityCheckFailed = false;
+        _availabilityMessage = null;
+      });
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Demande de location envoyée pour ${widget.equipment.name}',
           ),
-        );
-        widget.onRefresh();
-      }
-    } catch (e) {
+          backgroundColor: const Color(0xFF059669),
+        ),
+      );
+      widget.onRefresh();
+    } catch (error) {
       if (mounted) {
+        if (error is ApiException && error.statusCode == 409) {
+          setState(() {
+            _isPeriodAvailable = false;
+            _availabilityCheckFailed = false;
+            _availabilityMessage = error.message;
+          });
+        }
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
+            content: Text(error.toString().replaceFirst('Exception: ', '')),
             backgroundColor: Colors.red,
           ),
         );
       }
     } finally {
-      if (mounted) {
-        setState(() => _isSubmitting = false);
-      }
+      if (mounted) setState(() => _isSubmitting = false);
     }
   }
 
@@ -475,8 +569,32 @@ class _EquipmentCardState extends State<_EquipmentCard> {
 
   @override
   Widget build(BuildContext context) {
-    final isOnCooldown = _cooldownUntil != null && _cooldownUntil!.isAfter(DateTime.now());
-    final isAvailable = widget.equipment.available && !isOnCooldown && !_hasPendingRequest;
+    final isPeriodUnavailable = _dateFin != null && _isPeriodAvailable == false;
+    final isAvailable =
+        widget.equipment.available &&
+        _dateFin != null &&
+        !_isLoadingAvailability &&
+        (_isPeriodAvailable == true || _availabilityCheckFailed) &&
+        !_isSubmitting;
+    final availabilityLabel = !widget.equipment.available
+        ? 'Hors service'
+        : isPeriodUnavailable
+        ? 'Indisponible'
+        : _availabilityCheckFailed
+        ? 'À confirmer'
+        : 'Disponible';
+    final availabilityBadgeColor =
+        !widget.equipment.available || isPeriodUnavailable
+        ? const Color(0xFFFEE2E2)
+        : _availabilityCheckFailed
+        ? const Color(0xFFFEF3C7)
+        : const Color(0xFFD1FAE5);
+    final availabilityTextColor =
+        !widget.equipment.available || isPeriodUnavailable
+        ? const Color(0xFFDC2626)
+        : _availabilityCheckFailed
+        ? const Color(0xFFB45309)
+        : const Color(0xFF059669);
 
     return Container(
       margin: const EdgeInsets.only(bottom: 16),
@@ -496,10 +614,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
           // Image
           GestureDetector(
             onTap: () {
-              openImageZoom(
-                context,
-                imageUrl: widget.equipment.imageUrl,
-              );
+              openImageZoom(context, imageUrl: widget.equipment.imageUrl);
             },
             child: ClipRRect(
               borderRadius: const BorderRadius.only(
@@ -562,21 +677,20 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                         ),
                       ),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 2,
+                        ),
                         decoration: BoxDecoration(
-                          color: isAvailable
-                              ? const Color(0xFFD1FAE5)
-                              : const Color(0xFFFEE2E2),
+                          color: availabilityBadgeColor,
                           borderRadius: BorderRadius.circular(6),
                         ),
                         child: Text(
-                          isAvailable ? 'Disponible' : 'Indisponible',
+                          availabilityLabel,
                           style: GoogleFonts.poppins(
                             fontSize: 10,
                             fontWeight: FontWeight.w600,
-                            color: isAvailable
-                                ? const Color(0xFF059669)
-                                : const Color(0xFFDC2626),
+                            color: availabilityTextColor,
                           ),
                         ),
                       ),
@@ -584,7 +698,10 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                   ),
                   const SizedBox(height: 4),
                   Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 8,
+                      vertical: 2,
+                    ),
                     decoration: BoxDecoration(
                       color: const Color(0xFFDBEAFE),
                       borderRadius: BorderRadius.circular(6),
@@ -609,6 +726,75 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isSubmitting ? null : _chooseStartDate,
+                      icon: const Icon(Icons.event_outlined, size: 16),
+                      label: Text(
+                        'Début : ${rentalDateLabel(_dateDebut)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(fontSize: 11),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF2563EB),
+                        side: const BorderSide(color: Color(0xFF2563EB)),
+                        minimumSize: const Size(0, 38),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      onPressed: _isSubmitting ? null : _chooseReturnDate,
+                      icon: const Icon(Icons.event_outlined, size: 16),
+                      label: Text(
+                        _dateFin == null
+                            ? 'Choisir la date de retour'
+                            : 'Retour : ${rentalDateLabel(_dateFin!)}',
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(fontSize: 11),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: const Color(0xFF2563EB),
+                        side: const BorderSide(color: Color(0xFF2563EB)),
+                        minimumSize: const Size(0, 38),
+                        padding: const EdgeInsets.symmetric(horizontal: 8),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                    ),
+                  ),
+                  if (_isLoadingAvailability) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      'Vérification de la période…',
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: const Color(0xFF6B7280),
+                      ),
+                    ),
+                  ] else if (_availabilityMessage != null) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      _availabilityMessage!,
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: GoogleFonts.poppins(
+                        fontSize: 10,
+                        color: const Color(0xFFDC2626),
+                      ),
                     ),
                   ],
                   const SizedBox(height: 10),
@@ -643,7 +829,10 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                               ? const Color(0xFF2563EB)
                               : const Color(0xFFD1D5DB),
                           foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 8,
+                          ),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(10),
                           ),
@@ -659,11 +848,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
                                 ),
                               )
                             : Text(
-                                isOnCooldown
-                                    ? 'En cours'
-                                    : _hasPendingRequest
-                                        ? 'En attente'
-                                        : 'Louer',
+                                'Louer',
                                 style: GoogleFonts.poppins(
                                   fontSize: 12,
                                   fontWeight: FontWeight.w600,

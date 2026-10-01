@@ -35,10 +35,14 @@ async function migrate() {
         prix_location INTEGER NOT NULL,
         prix_vente INTEGER NOT NULL,
         disponible BOOLEAN DEFAULT true,
+        hors_service BOOLEAN DEFAULT false NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    // Distinguish equipment serviceability from the sales availability flag.
+    await client.query('ALTER TABLE appareils ADD COLUMN IF NOT EXISTS hors_service BOOLEAN');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS demandes_achat (
@@ -76,6 +80,23 @@ async function migrate() {
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
     `);
+
+    await client.query(`
+      UPDATE appareils AS a
+         SET hors_service = CASE
+           WHEN a.disponible = false AND EXISTS (
+             SELECT 1
+               FROM locations AS l
+              WHERE l.appareil_id = a.id
+                AND l.statut IN ('approuvee', 'en_cours', 'en_retard')
+           ) THEN false
+           WHEN a.disponible = false THEN true
+           ELSE false
+         END
+       WHERE a.hors_service IS NULL
+    `);
+    await client.query('ALTER TABLE appareils ALTER COLUMN hors_service SET DEFAULT false');
+    await client.query('ALTER TABLE appareils ALTER COLUMN hors_service SET NOT NULL');
 
     // Mise à niveau idempotente des bases déjà existantes.
     await client.query(
@@ -141,6 +162,9 @@ async function migrate() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_appareils_type ON appareils(type)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_demandes_statut ON demandes_achat(statut)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_locations_statut ON locations(statut)');
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_locations_appareil_dates ON locations(appareil_id, statut, date_debut, date_fin)',
+    );
     await client.query('CREATE INDEX IF NOT EXISTS idx_reset_codes_user ON password_reset_codes(user_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_reset_codes_code ON password_reset_codes(code)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_reset_codes_contact ON password_reset_codes(contact)');

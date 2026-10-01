@@ -44,6 +44,7 @@ async function runMigrations({ closePool = false } = {}) {
         prix_location INTEGER NOT NULL,
         prix_vente INTEGER NOT NULL,
         disponible BOOLEAN DEFAULT true,
+        hors_service BOOLEAN DEFAULT false NOT NULL,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
       )
@@ -90,6 +91,24 @@ async function runMigrations({ closePool = false } = {}) {
       ALTER TABLE locations ADD CONSTRAINT locations_statut_check
       CHECK (statut IN ('en_attente', 'approuvee', 'en_cours', 'termine', 'rejetee', 'en_retard', 'annulee'))
     `);
+
+    await client.query('ALTER TABLE appareils ADD COLUMN IF NOT EXISTS hors_service BOOLEAN');
+    await client.query(`
+      UPDATE appareils AS a
+         SET hors_service = CASE
+           WHEN a.disponible = false AND EXISTS (
+             SELECT 1
+               FROM locations AS l
+              WHERE l.appareil_id = a.id
+                AND l.statut IN ('approuvee', 'en_cours', 'en_retard')
+           ) THEN false
+           WHEN a.disponible = false THEN true
+           ELSE false
+         END
+       WHERE a.hors_service IS NULL
+    `);
+    await client.query('ALTER TABLE appareils ALTER COLUMN hors_service SET DEFAULT false');
+    await client.query('ALTER TABLE appareils ALTER COLUMN hors_service SET NOT NULL');
 
     // Table: prolongations
     await client.query(`
@@ -169,6 +188,9 @@ async function runMigrations({ closePool = false } = {}) {
     await client.query('CREATE INDEX IF NOT EXISTS idx_appareils_type ON appareils(type)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_demandes_statut ON demandes_achat(statut)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_locations_statut ON locations(statut)');
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_locations_appareil_dates ON locations(appareil_id, statut, date_debut, date_fin)',
+    );
 
     // Créer un admin par défaut (idempotent via ON CONFLICT)
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@echelle-eg39.com';
@@ -209,9 +231,8 @@ async function runMigrations({ closePool = false } = {}) {
           type = EXCLUDED.type,
           image_url = EXCLUDED.image_url,
           prix_location = EXCLUDED.prix_location,
-          prix_vente = EXCLUDED.prix_vente,
-          disponible = true
-      `, appareil);
+          prix_vente = EXCLUDED.prix_vente
+       `, appareil);
     }
 
     await client.query('COMMIT');

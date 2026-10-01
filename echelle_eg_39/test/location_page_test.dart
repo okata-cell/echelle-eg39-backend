@@ -18,11 +18,7 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: LocationPage(
-              loadLocations: () async => requests,
-              checkExpiredLocations: () async {},
-              enableAutoRefresh: false,
-            ),
+            body: LocationPage(loadLocations: () async => requests),
           ),
         ),
       );
@@ -81,6 +77,107 @@ void main() {
     },
   );
 
+  testWidgets('ramène en haut la file quand une nouvelle réservation arrive', (
+    tester,
+  ) async {
+    final semantics = tester.ensureSemantics();
+    var requests = List<Map<String, dynamic>>.generate(
+      12,
+      (index) => _location(index + 1, 'en_attente'),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(body: LocationPage(loadLocations: () async => requests)),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.scrollUntilVisible(
+      find.text('LOCATION #12'),
+      300,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .first,
+    );
+    expect(find.text('LOCATION #12'), findsOneWidget);
+
+    requests = [_location(99, 'en_attente'), ...requests];
+    await tester.tap(find.byTooltip('Actualiser'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('LOCATION #99'), findsOneWidget);
+    expect(find.text('13'), findsNWidgets(3));
+    await tester.scrollUntilVisible(
+      find.text('LOCATION #12'),
+      300,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .first,
+    );
+    expect(find.text('LOCATION #12'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    await tester.pumpWidget(const SizedBox.shrink());
+    semantics.dispose();
+  });
+
+  testWidgets('le chargement revient en haut après actualisation manuelle', (
+    tester,
+  ) async {
+    var loadCount = 0;
+    final requests = List<Map<String, dynamic>>.generate(
+      12,
+      (index) => _location(index + 1, 'en_attente'),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationPage(
+            loadLocations: () async {
+              loadCount++;
+              return requests;
+            },
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    expect(loadCount, 1);
+
+    await tester.pump(const Duration(minutes: 1));
+    expect(loadCount, 1, reason: 'aucun rafraîchissement automatique');
+
+    final list = find
+        .byWidgetPredicate(
+          (widget) =>
+              widget is Scrollable &&
+              widget.axisDirection == AxisDirection.down,
+        )
+        .first;
+    await tester.scrollUntilVisible(
+      find.text('LOCATION #12'),
+      300,
+      scrollable: list,
+    );
+    expect(find.text('LOCATION #12'), findsOneWidget);
+
+    await tester.tap(find.byTooltip('Actualiser'));
+    await tester.pumpAndSettle();
+    expect(loadCount, 2);
+    expect(find.text('LOCATION #1'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('une demande reste visible même si son identifiant est absent', (
     tester,
   ) async {
@@ -100,8 +197,6 @@ void main() {
                 'statut': 'en_attente',
               },
             ],
-            checkExpiredLocations: () async {},
-            enableAutoRefresh: false,
           ),
         ),
       ),
@@ -112,7 +207,10 @@ void main() {
     expect(find.text('1'), findsNWidgets(3));
     expect(find.text('GPS test'), findsOneWidget);
     expect(find.text('LOC-SANS-ID'), findsOneWidget);
-    expect(find.textContaining('identifiant de réservation manquant'), findsOneWidget);
+    expect(
+      find.textContaining('identifiant de réservation manquant'),
+      findsOneWidget,
+    );
     expect(find.text('Approuver'), findsNothing);
     expect(find.text('Rejeter'), findsNothing);
 
@@ -130,13 +228,11 @@ void main() {
         home: Scaffold(
           body: LocationPage(
             loadLocations: () async => [_location(8, status)],
-            checkExpiredLocations: () async {},
             terminateLocation: (locationId) async {
               terminatedId = locationId;
               status = 'termine';
               return null;
             },
-            enableAutoRefresh: false,
           ),
         ),
       ),
@@ -147,9 +243,11 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('LOCATION #8'), findsOneWidget);
 
-    await tester.tap(find.widgetWithText(OutlinedButton, 'Terminer'));
+    await tester.tap(
+      find.widgetWithText(OutlinedButton, 'Confirmer le retour'),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.widgetWithText(FilledButton, 'Terminer'));
+    await tester.tap(find.widgetWithText(FilledButton, 'Confirmer le retour'));
     await tester.pumpAndSettle();
 
     expect(terminatedId, 8);
@@ -159,6 +257,68 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets(
+    'un admin marque le retard sans libérer avant le retour physique',
+    (tester) async {
+      var status = 'en_cours';
+      var overdueId = 0;
+      var terminatedId = 0;
+      final today = DateTime(2026, 10, 5);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LocationPage(
+              today: () => today,
+              loadLocations: () async => [_location(9, status)],
+              markLocationOverdue: (id) async {
+                overdueId = id;
+                status = 'en_retard';
+                return null;
+              },
+              terminateLocation: (id) async {
+                terminatedId = id;
+                status = 'termine';
+                return null;
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('En cours'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Marquer en retard'), findsOneWidget);
+      await tester.tap(find.text('Marquer en retard'));
+      await tester.pumpAndSettle();
+
+      expect(overdueId, 9);
+      expect(status, 'en_retard');
+      expect(terminatedId, 0, reason: 'le retard ne confirme pas un retour');
+      expect(find.text('EN RETARD'), findsOneWidget);
+      expect(find.text('Confirmer le retour'), findsOneWidget);
+
+      await tester.tap(find.text('Confirmer le retour'));
+      await tester.pumpAndSettle();
+      expect(terminatedId, 0, reason: 'la boîte doit attendre confirmation');
+      await tester.tap(find.text('Pas encore'));
+      await tester.pumpAndSettle();
+      expect(terminatedId, 0);
+
+      await tester.tap(find.text('Confirmer le retour'));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.widgetWithText(FilledButton, 'Confirmer le retour'),
+      );
+      await tester.pumpAndSettle();
+      expect(terminatedId, 9);
+      expect(status, 'termine');
+
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }
 
 Map<String, dynamic> _location(int id, String status) => {

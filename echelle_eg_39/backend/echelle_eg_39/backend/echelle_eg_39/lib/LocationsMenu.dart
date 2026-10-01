@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
+import 'admin_rejection_dialog.dart';
 
 class LocationPage extends StatefulWidget {
   const LocationPage({super.key});
@@ -14,12 +15,14 @@ class LocationPage extends StatefulWidget {
 
 class _LocationPageState extends State<LocationPage> {
   final DataManager _dataManager = DataManager();
-  
+
   List<Map<String, dynamic>> _locationsFromAPI = [];
   bool _isLoadingLocations = true;
   String? _errorLoadingLocations;
   bool _showTrash = false; // New: track if showing trash bin
-  
+  bool _hasLoadedLocations = false;
+  final ScrollController _locationsScrollController = ScrollController();
+
   Timer? _autoRefreshTimer;
 
   @override
@@ -28,12 +31,16 @@ class _LocationPageState extends State<LocationPage> {
     debugPrint('🚀 LocationPage ADMIN - initState()');
     _dataManager.initialize();
     _loadLocationsFromAPI();
-    _autoRefreshTimer = Timer.periodic(const Duration(seconds: 10), (_) => _loadLocationsFromAPI());
+    _autoRefreshTimer = Timer.periodic(
+      const Duration(seconds: 10),
+      (_) => _loadLocationsFromAPI(),
+    );
   }
 
   @override
   void dispose() {
     _autoRefreshTimer?.cancel();
+    _locationsScrollController.dispose();
     super.dispose();
   }
 
@@ -42,24 +49,71 @@ class _LocationPageState extends State<LocationPage> {
       _isLoadingLocations = true;
       if (retry) _errorLoadingLocations = null;
     });
-    
+
     try {
       // Essayer de vérifier et expirer les locations (avec timeout court)
-      _checkAndExpireLocations().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () => debugPrint('⏱️ Timeout check-expired, on continue...')
-      ).catchError((e) => debugPrint('⚠️ Erreur check-expired: $e'));
-      
+      _checkAndExpireLocations()
+          .timeout(
+            const Duration(seconds: 3),
+            onTimeout: () =>
+                debugPrint('⏱️ Timeout check-expired, on continue...'),
+          )
+          .catchError((e) => debugPrint('⚠️ Erreur check-expired: $e'));
+
       // Ensuite charger les locations avec timeout
-      final locations = await ApiService.getLocations().timeout(const Duration(seconds: 10));
+      final locations = await ApiService.getLocations().timeout(
+        const Duration(seconds: 10),
+      );
+      final previousPendingKeys = _getPendingLocations()
+          .map(_locationIdentityKey)
+          .whereType<String>()
+          .toSet();
+      final newPendingLocations = _hasLoadedLocations
+          ? locations
+                .where((location) {
+                  final key = _locationIdentityKey(location);
+                  return key != null &&
+                      _isPendingLocation(location) &&
+                      !previousPendingKeys.contains(key);
+                })
+                .toList(growable: false)
+          : const <Map<String, dynamic>>[];
+
       // DEBUG: voir exactement ce qui vient du backend
-      debugPrint('🔍 RAW API response: ${locations.map((l) => 'ID=${l['id']} statut=${l['statut']}').toList()}');
+      debugPrint(
+        '🔍 RAW API response: ${locations.map((l) => 'ID=${l['id']} statut=${l['statut']}').toList()}',
+      );
       setState(() {
         _locationsFromAPI = locations;
         _isLoadingLocations = false;
       });
-      debugPrint('📡 Locations admin: ${locations.length} ( ${_getPendingLocations().length} en attente)');
-      debugPrint('📡 Détails locations: ${locations.map((l) => 'ID: ${l['id']}, Statut: ${l['statut']}, Client: ${l['clientNom']}').join(', ')}');
+      _hasLoadedLocations = true;
+
+      if (newPendingLocations.isNotEmpty) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          if (_locationsScrollController.hasClients) {
+            _locationsScrollController.jumpTo(0);
+          }
+          final count = newPendingLocations.length;
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text(
+                count == 1
+                    ? 'Nouvelle réservation reçue : affichée en haut de la liste.'
+                    : '$count nouvelles réservations reçues : affichées en haut de la liste.',
+              ),
+              backgroundColor: Colors.green,
+            ),
+          );
+        });
+      }
+      debugPrint(
+        '📡 Locations admin: ${locations.length} ( ${_getPendingLocations().length} en attente)',
+      );
+      debugPrint(
+        '📡 Détails locations: ${locations.map((l) => 'ID: ${l['id']}, Statut: ${l['statut']}, Client: ${l['clientNom']}').join(', ')}',
+      );
     } catch (e) {
       setState(() {
         _errorLoadingLocations = e.toString();
@@ -73,13 +127,15 @@ class _LocationPageState extends State<LocationPage> {
   Future<void> _checkAndExpireLocations() async {
     try {
       final token = await ApiService.getToken();
-      await http.get(
-        Uri.parse('${ApiService.baseUrl}/locations/check-expired'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 3));
+      await http
+          .get(
+            Uri.parse('${ApiService.baseUrl}/locations/check-expired'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 3));
     } catch (e) {
       // Silencieux - on ne veut pas bloquer le chargement
       debugPrint('⚠️ Erreur expiration: $e');
@@ -97,7 +153,7 @@ class _LocationPageState extends State<LocationPage> {
           'Authorization': 'Bearer $token',
         },
       );
-      
+
       if (response.statusCode == 200) {
         final data = jsonDecode(response.body);
         if (mounted) {
@@ -126,12 +182,18 @@ class _LocationPageState extends State<LocationPage> {
           'Authorization': 'Bearer $token',
         },
       );
-      
+
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(response.statusCode == 200 ? '✅ Contrainte corrigée!' : '❌ Erreur: ${response.body}'),
-            backgroundColor: response.statusCode == 200 ? Colors.green : Colors.red,
+            content: Text(
+              response.statusCode == 200
+                  ? '✅ Contrainte corrigée!'
+                  : '❌ Erreur: ${response.body}',
+            ),
+            backgroundColor: response.statusCode == 200
+                ? Colors.green
+                : Colors.red,
           ),
         );
       }
@@ -140,12 +202,26 @@ class _LocationPageState extends State<LocationPage> {
     }
   }
 
+  bool _isPendingLocation(Map<String, dynamic> location) {
+    final status = location['statut']?.toString().toLowerCase().trim();
+    return status == 'en_attente' || status == 'pending';
+  }
+
+  String? _locationIdentityKey(Map<String, dynamic> location) {
+    final rawId =
+        location['id'] ?? location['locationId'] ?? location['location_id'];
+    final id = int.tryParse(rawId?.toString().trim() ?? '');
+    if (id != null) return 'id:$id';
+
+    final code = location['code']?.toString().trim() ?? '';
+    return code.isEmpty ? null : 'code:$code';
+  }
+
   List<Map<String, dynamic>> _getPendingLocations() {
-    debugPrint('🔍 DEBUG: statuts = ${_locationsFromAPI.map((l) => l['statut']).toSet()}');
-    return _locationsFromAPI.where((loc) {
-      final statut = loc['statut']?.toString().toLowerCase().trim();
-      return statut == 'en_attente' || statut == 'pending';
-    }).toList();
+    debugPrint(
+      '🔍 DEBUG: statuts = ${_locationsFromAPI.map((l) => l['statut']).toSet()}',
+    );
+    return _locationsFromAPI.where(_isPendingLocation).toList();
   }
 
   List<Map<String, dynamic>> _getActiveLocations() {
@@ -167,16 +243,19 @@ class _LocationPageState extends State<LocationPage> {
     return terminated;
   }
 
-@override
+  @override
   Widget build(BuildContext context) {
     debugPrint('🏗️ build() called, _showTrash: $_showTrash');
     final pendingCount = _getPendingLocations().length;
     final activeCount = _getActiveLocations().length;
-    debugPrint('📊 ADMIN Locations - Pending: $pendingCount | Active: $activeCount');
-    
+    debugPrint(
+      '📊 ADMIN Locations - Pending: $pendingCount | Active: $activeCount',
+    );
+
     return Scaffold(
       backgroundColor: const Color(0xFFF1F5F9),
       body: CustomScrollView(
+        controller: _locationsScrollController,
         slivers: [
           // Header avec statistiques
           SliverAppBar(
@@ -192,7 +271,6 @@ class _LocationPageState extends State<LocationPage> {
               tooltip: 'Rafraîchir',
             ),
             flexibleSpace: FlexibleSpaceBar(
-
               background: Container(
                 decoration: const BoxDecoration(
                   gradient: LinearGradient(
@@ -243,7 +321,7 @@ class _LocationPageState extends State<LocationPage> {
               ),
             ],
           ),
-          
+
           // Contenu principal
           SliverToBoxAdapter(
             child: Padding(
@@ -259,7 +337,7 @@ class _LocationPageState extends State<LocationPage> {
                     color: Colors.orange,
                   ),
                   const SizedBox(height: 12),
-                  
+
                   // BOUTON POUR AFFICHER LA CORBEILLE
                   ElevatedButton.icon(
                     onPressed: () {
@@ -268,15 +346,21 @@ class _LocationPageState extends State<LocationPage> {
                         _showTrash = !_showTrash;
                       });
                     },
-                    icon: Icon(_showTrash ? Icons.visibility_off : Icons.delete_outline),
-                    label: Text(_showTrash ? 'Masquer corbeille' : 'Voir corbeille (${_getTerminatedLocations().length})'),
+                    icon: Icon(
+                      _showTrash ? Icons.visibility_off : Icons.delete_outline,
+                    ),
+                    label: Text(
+                      _showTrash
+                          ? 'Masquer corbeille'
+                          : 'Voir corbeille (${_getTerminatedLocations().length})',
+                    ),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: Colors.red.shade100,
                       foregroundColor: Colors.red,
                     ),
                   ),
                   const SizedBox(height: 12),
-                  
+
                   if (_isLoadingLocations)
                     _buildLoadingCard()
                   else if (_errorLoadingLocations != null)
@@ -284,10 +368,12 @@ class _LocationPageState extends State<LocationPage> {
                   else if (pendingCount == 0)
                     _buildEmptyPendingCard()
                   else
-                    ..._getPendingLocations().map((loc) => _buildPendingLocationCard(loc)),
-                  
+                    ..._getPendingLocations().map(
+                      (loc) => _buildPendingLocationCard(loc),
+                    ),
+
                   const SizedBox(height: 24),
-                  
+
                   // Section: Locations actives
                   _buildSectionHeader(
                     title: 'Locations actives',
@@ -296,12 +382,14 @@ class _LocationPageState extends State<LocationPage> {
                     color: Colors.green,
                   ),
                   const SizedBox(height: 12),
-                  
+
                   if (activeCount == 0)
                     _buildEmptyActiveCard()
                   else
-                    ..._getActiveLocations().map((loc) => _buildActiveLocationCard(loc)),
-                  
+                    ..._getActiveLocations().map(
+                      (loc) => _buildActiveLocationCard(loc),
+                    ),
+
                   // New: Corbeille section - shows terminated locations
                   if (_showTrash) ...[
                     const SizedBox(height: 24),
@@ -315,7 +403,9 @@ class _LocationPageState extends State<LocationPage> {
                     if (_getTerminatedLocations().isEmpty)
                       _buildEmptyTrashCard()
                     else ...[
-                      ..._getTerminatedLocations().map((loc) => _buildTerminatedLocationCard(loc)),
+                      ..._getTerminatedLocations().map(
+                        (loc) => _buildTerminatedLocationCard(loc),
+                      ),
                       const SizedBox(height: 16),
                       // Bouton pour supprimer toutes les demandes terminées
                       SizedBox(
@@ -326,7 +416,9 @@ class _LocationPageState extends State<LocationPage> {
                             _showDeleteAllConfirmation();
                           },
                           icon: const Icon(Icons.delete_sweep),
-                          label: const Text('Supprimer toutes les demandes terminées'),
+                          label: const Text(
+                            'Supprimer toutes les demandes terminées',
+                          ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,
@@ -351,7 +443,9 @@ class _LocationPageState extends State<LocationPage> {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('Confirmer la suppression'),
-        content: const Text('Êtes-vous sûr de vouloir supprimer toutes les demandes terminées ? Cette action est irréversible.'),
+        content: const Text(
+          'Êtes-vous sûr de vouloir supprimer toutes les demandes terminées ? Cette action est irréversible.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(ctx, false),
@@ -377,20 +471,24 @@ class _LocationPageState extends State<LocationPage> {
     try {
       final token = await ApiService.getToken();
       debugPrint('🗑️ Token obtenu');
-      final response = await http.delete(
-        Uri.parse('${ApiService.baseUrl}/locations/terminate-all'),
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': 'Bearer $token',
-        },
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .delete(
+            Uri.parse('${ApiService.baseUrl}/locations/terminate-all'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 10));
 
       debugPrint('🗑️ Réponse: ${response.statusCode}');
       if (response.statusCode == 200) {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             const SnackBar(
-              content: Text('✅ Toutes les demandes terminées ont été supprimées'),
+              content: Text(
+                '✅ Toutes les demandes terminées ont été supprimées',
+              ),
               backgroundColor: Colors.green,
             ),
           );
@@ -408,7 +506,9 @@ class _LocationPageState extends State<LocationPage> {
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('❌ Erreur lors de la suppression: ${response.statusCode}'),
+              content: Text(
+                '❌ Erreur lors de la suppression: ${response.statusCode}',
+              ),
               backgroundColor: Colors.red,
             ),
           );
@@ -418,10 +518,7 @@ class _LocationPageState extends State<LocationPage> {
       debugPrint('❌ Erreur suppression: $e');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('❌ Erreur: $e'),
-            backgroundColor: Colors.red,
-          ),
+          SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
         );
       }
     }
@@ -453,7 +550,11 @@ class _LocationPageState extends State<LocationPage> {
                 color: Colors.red.withValues(alpha: 0.1),
                 borderRadius: BorderRadius.circular(8),
               ),
-              child: const Icon(Icons.check_circle, color: Colors.red, size: 24),
+              child: const Icon(
+                Icons.check_circle,
+                color: Colors.red,
+                size: 24,
+              ),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -469,10 +570,7 @@ class _LocationPageState extends State<LocationPage> {
                   ),
                   Text(
                     loc['clientNom'] ?? 'Client',
-                    style: TextStyle(
-                      color: Colors.grey[600],
-                      fontSize: 12,
-                    ),
+                    style: TextStyle(color: Colors.grey[600], fontSize: 12),
                   ),
                 ],
               ),
@@ -510,10 +608,7 @@ class _LocationPageState extends State<LocationPage> {
         children: [
           Icon(Icons.delete_outline, size: 48, color: Colors.grey[400]),
           const SizedBox(height: 8),
-          Text(
-            'Corbeille vide',
-            style: TextStyle(color: Colors.grey[600]),
-          ),
+          Text('Corbeille vide', style: TextStyle(color: Colors.grey[600])),
         ],
       ),
     );
@@ -589,10 +684,7 @@ class _LocationPageState extends State<LocationPage> {
           ),
           child: Text(
             '$count',
-            style: TextStyle(
-              color: color,
-              fontWeight: FontWeight.bold,
-            ),
+            style: TextStyle(color: color, fontWeight: FontWeight.bold),
           ),
         ),
       ],
@@ -650,7 +742,11 @@ class _LocationPageState extends State<LocationPage> {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          const Icon(Icons.person_outline, size: 14, color: Color(0xFF64748B)),
+                          const Icon(
+                            Icons.person_outline,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
@@ -667,7 +763,11 @@ class _LocationPageState extends State<LocationPage> {
                       const SizedBox(height: 2),
                       Row(
                         children: [
-                          const Icon(Icons.calendar_today, size: 14, color: Color(0xFF64748B)),
+                          const Icon(
+                            Icons.calendar_today,
+                            size: 14,
+                            color: Color(0xFF64748B),
+                          ),
                           const SizedBox(width: 4),
                           Text(
                             _formatDateRange(loc['dateDebut'], loc['dateFin']),
@@ -695,10 +795,7 @@ class _LocationPageState extends State<LocationPage> {
                     ),
                     const Text(
                       'FCFA',
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: Color(0xFF64748B),
-                      ),
+                      style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                     ),
                   ],
                 ),
@@ -720,22 +817,24 @@ class _LocationPageState extends State<LocationPage> {
                   child: TextButton.icon(
                     onPressed: () => _performApprove(loc['id']),
                     icon: const Icon(Icons.check_circle, color: Colors.green),
-                    label: const Text('Approuver', style: TextStyle(color: Colors.green)),
+                    label: const Text(
+                      'Approuver',
+                      style: TextStyle(color: Colors.green),
+                    ),
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
                   ),
                 ),
-                Container(
-                  width: 1,
-                  height: 24,
-                  color: const Color(0xFFE2E8F0),
-                ),
+                Container(width: 1, height: 24, color: const Color(0xFFE2E8F0)),
                 Expanded(
                   child: TextButton.icon(
                     onPressed: () => _showRejectDialog(loc),
                     icon: const Icon(Icons.cancel, color: Colors.red),
-                    label: const Text('Rejeter', style: TextStyle(color: Colors.red)),
+                    label: const Text(
+                      'Rejeter',
+                      style: TextStyle(color: Colors.red),
+                    ),
                     style: TextButton.styleFrom(
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
@@ -767,7 +866,11 @@ class _LocationPageState extends State<LocationPage> {
               color: Colors.green.withValues(alpha: 0.1),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(Icons.check_circle, color: Colors.green, size: 24),
+            child: const Icon(
+              Icons.check_circle,
+              color: Colors.green,
+              size: 24,
+            ),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -786,21 +889,26 @@ class _LocationPageState extends State<LocationPage> {
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 2,
+                      ),
                       decoration: BoxDecoration(
-                        color: (loc['statut'] ?? '') == 'termine' 
-                          ? Colors.grey 
-                          : Colors.green.withValues(alpha: 0.1),
+                        color: (loc['statut'] ?? '') == 'termine'
+                            ? Colors.grey
+                            : Colors.green.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(12),
                       ),
                       child: Text(
-                        (loc['statut'] ?? '') == 'termine' ? 'Terminé' : 'En cours',
+                        (loc['statut'] ?? '') == 'termine'
+                            ? 'Terminé'
+                            : 'En cours',
                         style: TextStyle(
                           fontSize: 11,
                           fontWeight: FontWeight.w600,
-                          color: (loc['statut'] ?? '') == 'termine' 
-                            ? Colors.white 
-                            : Colors.green,
+                          color: (loc['statut'] ?? '') == 'termine'
+                              ? Colors.white
+                              : Colors.green,
                         ),
                       ),
                     ),
@@ -832,7 +940,10 @@ class _LocationPageState extends State<LocationPage> {
               GestureDetector(
                 onTap: () => _showEquipmentStatusDialog(loc),
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
                   decoration: BoxDecoration(
                     color: Colors.blue.withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(6),
@@ -893,7 +1004,9 @@ class _LocationPageState extends State<LocationPage> {
           const SizedBox(height: 12),
           ElevatedButton(
             onPressed: () => _loadLocationsFromAPI(),
-            style: ElevatedButton.styleFrom(backgroundColor: Colors.red.shade700),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.red.shade700,
+            ),
             child: const Text('Réessayer'),
           ),
         ],
@@ -907,7 +1020,10 @@ class _LocationPageState extends State<LocationPage> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
-        border: Border.all(color: const Color(0xFFE2E8F0), style: BorderStyle.solid),
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          style: BorderStyle.solid,
+        ),
       ),
       child: Column(
         children: [
@@ -917,7 +1033,11 @@ class _LocationPageState extends State<LocationPage> {
               color: Colors.orange.withValues(alpha: 0.1),
               shape: BoxShape.circle,
             ),
-            child: Icon(Icons.inbox_outlined, color: Colors.orange.shade400, size: 40),
+            child: Icon(
+              Icons.inbox_outlined,
+              color: Colors.orange.shade400,
+              size: 40,
+            ),
           ),
           const SizedBox(height: 16),
           const Text(
@@ -931,10 +1051,7 @@ class _LocationPageState extends State<LocationPage> {
           const SizedBox(height: 8),
           const Text(
             'Les nouvelles demandes de location apparaîtront ici',
-            style: TextStyle(
-              fontSize: 13,
-              color: Color(0xFF64748B),
-            ),
+            style: TextStyle(fontSize: 13, color: Color(0xFF64748B)),
             textAlign: TextAlign.center,
           ),
         ],
@@ -973,8 +1090,20 @@ class _LocationPageState extends State<LocationPage> {
     if (dateStr == null) return '';
     try {
       final date = DateTime.parse(dateStr);
-      final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
-                      'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
+      final months = [
+        'janvier',
+        'février',
+        'mars',
+        'avril',
+        'mai',
+        'juin',
+        'juillet',
+        'août',
+        'septembre',
+        'octobre',
+        'novembre',
+        'décembre',
+      ];
       return '${date.day} ${months[date.month - 1]} ${date.year}';
     } catch (e) {
       return dateStr ?? '';
@@ -1016,7 +1145,7 @@ class _LocationPageState extends State<LocationPage> {
     final dateFin = loc['dateFin'] ?? '';
     final montant = loc['montantTotal'] ?? 0;
     final statut = loc['statut'] ?? 'en_cours';
-    
+
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1043,7 +1172,11 @@ class _LocationPageState extends State<LocationPage> {
             _buildStatusRow('Client', clientNom, Icons.person),
             _buildStatusRow('Téléphone', clientTel, Icons.phone),
             const Divider(),
-            _buildStatusRow('Date début', _formatDate(dateDebut), Icons.play_arrow),
+            _buildStatusRow(
+              'Date début',
+              _formatDate(dateDebut),
+              Icons.play_arrow,
+            ),
             _buildStatusRow('Date fin', _formatDate(dateFin), Icons.stop),
             const Divider(),
             _buildStatusRow('Montant', '$montant F', Icons.attach_money),
@@ -1090,18 +1223,12 @@ class _LocationPageState extends State<LocationPage> {
           const SizedBox(width: 8),
           Text(
             '$label: ',
-            style: TextStyle(
-              color: Colors.grey[600],
-              fontSize: 13,
-            ),
+            style: TextStyle(color: Colors.grey[600], fontSize: 13),
           ),
           Expanded(
             child: Text(
               value,
-              style: const TextStyle(
-                fontWeight: FontWeight.w600,
-                fontSize: 13,
-              ),
+              style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13),
             ),
           ),
         ],
@@ -1109,110 +1236,33 @@ class _LocationPageState extends State<LocationPage> {
     );
   }
 
-  void _showRejectDialog(Map<String, dynamic> location) {
-    final controller = TextEditingController();
-    bool isValid = false;
-    
-    showDialog(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                  color: Colors.red.withValues(alpha: 0.1),
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: const Icon(Icons.cancel, color: Colors.red),
-              ),
-              const SizedBox(width: 12),
-              const Text('Rejeter la demande'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.orange.shade50,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Row(
-                  children: [
-                    Icon(Icons.info_outline, color: Colors.orange.shade700, size: 20),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        'La raison sera visible par le client',
-                        style: TextStyle(color: Colors.orange.shade800, fontSize: 13),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: controller,
-                maxLines: 3,
-                onChanged: (value) {
-                  setDialogState(() {
-                    isValid = value.trim().isNotEmpty;
-                  });
-                },
-                decoration: InputDecoration(
-                  labelText: 'Motif du rejet',
-                  hintText: 'Ex: Appareil indisponible, dates impossibles...',
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  prefixIcon: const Icon(Icons.message_outlined),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton.icon(
-              onPressed: isValid
-                  ? () async {
-                      Navigator.pop(dialogContext);
-                      try {
-                        await ApiService.rejectLocation(location['id'], controller.text.trim());
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(
-                              content: Text('✅ Demande rejetée avec succès'),
-                              backgroundColor: Colors.green,
-                            ),
-                          );
-                          _loadLocationsFromAPI();
-                        }
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('❌ Erreur: $e'), backgroundColor: Colors.red),
-                          );
-                        }
-                      }
-                    }
-                  : null,
-              icon: const Icon(Icons.close),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.red,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-              ),
-              label: const Text('Confirmer'),
-            ),
-          ],
-        ),
-      ),
+  Future<void> _showRejectDialog(Map<String, dynamic> location) async {
+    final reason = await showAdminRejectionDialog(
+      context,
+      title: 'Rejeter la réservation',
+      hintText: 'Ex : Appareil indisponible, dates impossibles…',
     );
+    if (!mounted || reason == null || reason.trim().isEmpty) return;
+
+    try {
+      await ApiService.rejectLocation(location['id'], reason);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('✅ Demande rejetée avec succès'),
+          backgroundColor: Colors.green,
+        ),
+      );
+      await _loadLocationsFromAPI();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('❌ Erreur: $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+    }
   }
 }

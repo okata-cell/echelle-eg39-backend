@@ -75,6 +75,9 @@ String adminStatusKey(Object? value) {
     case 'en_cours':
     case 'active':
       return 'en_cours';
+    case 'en_retard':
+    case 'overdue':
+      return 'en_retard';
     case 'envoye':
     case 'sent':
       return 'envoye';
@@ -99,6 +102,8 @@ String adminStatusLabel(Object? value) {
       return 'Annulée';
     case 'en_cours':
       return 'En cours';
+    case 'en_retard':
+      return 'En retard';
     case 'envoye':
       return 'Envoyé';
     case 'termine':
@@ -121,6 +126,8 @@ Color adminStatusColor(Object? value) {
     case 'en_cours':
     case 'envoye':
       return AdminPalette.blueprintBlue;
+    case 'en_retard':
+      return AdminPalette.safetyAmber;
     case 'termine':
       return AdminPalette.secondaryText;
     default:

@@ -147,7 +147,7 @@ app.get('/fix-appareils', async (req, res) => {
       await pool.query(`
         INSERT INTO appareils (code, nom, type, image_url, prix_location, prix_vente, disponible)
         VALUES ($1, $2, $3, $4, $5, $6, true)
-        ON CONFLICT (code) DO UPDATE SET nom = EXCLUDED.nom, type = EXCLUDED.type, image_url = EXCLUDED.image_url, prix_location = EXCLUDED.prix_location, prix_vente = EXCLUDED.prix_vente, disponible = true
+        ON CONFLICT (code) DO UPDATE SET nom = EXCLUDED.nom, type = EXCLUDED.type, image_url = EXCLUDED.image_url, prix_location = EXCLUDED.prix_location, prix_vente = EXCLUDED.prix_vente
       `, [code, nom, type, imageUrl, prixLocation, prixVente]);
       inserted++;
     }
@@ -170,40 +170,6 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Erreur serveur interne' });
 });
 
-// ---------- TÂCHE AUTOMATIQUE: EXPIRATION DES LOCATIONS ----------
-async function checkExpiredLocations() {
-  try {
-    // Trouver les locations expirées (dateFin < aujourd'hui)
-    const today = new Date().toISOString().split('T')[0];
-    
-    const expiredResult = await pool.query(
-      "SELECT l.id, l.code, l.appareil_id, l.date_fin FROM locations l WHERE statut = 'en_cours' AND date_fin < $1",
-      [today]
-    );
-    
-    if (expiredResult.rows.length > 0) {
-      console.log(`⏰ ${expiredResult.rows.length} location(s) expirée(s) trouvée(s)`);
-      
-      for (const loc of expiredResult.rows) {
-        // Marquer comme terminée
-        await pool.query(
-          "UPDATE locations SET statut = 'termine', updated_at = NOW() WHERE id = $1",
-          [loc.id]
-        );
-        
-        // Rendre l'appareil disponible
-        if (loc.appareil_id) {
-          await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
-        }
-        
-        console.log(`✅ Location ${loc.code} expirée - appareil libéré`);
-      }
-    }
-  } catch (e) {
-    console.error('❌ Erreur vérification locations expirées:', e);
-  }
-}
-
 // ---------- DÉMARRAGE DU SERVEUR AVEC MIGRATIONS ----------
 (async () => {
   try {
@@ -211,10 +177,9 @@ async function checkExpiredLocations() {
     await runMigrations({ closePool: false });
     console.log('✅ Migrations terminées');
     
-    // Vérifier les locations expirées
-    console.log('🔍 Vérification des locations expirées...');
-    await checkExpiredLocations();
-    
+    // Les locations échues restent occupées jusqu’à confirmation du retour physique.
+    // Aucun job de démarrage ne termine ni ne libère automatiquement un appareil.
+
     // Démarrer le cron job de rappel pour les demandes en attente
     console.log('🔔 Configuration du cron job de rappel...');
     startReminderCron('0 9 * * *', 24); // Tous les jours à 9h, après 24h d'attente

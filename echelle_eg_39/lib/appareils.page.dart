@@ -711,8 +711,63 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
     }
   }
 
-  void changerStatut(int index) {
-    _dataManager.toggleDisponibilite(index);
+  Future<void> changerStatut(int index) async {
+    final appareil = _dataManager.appareils[index];
+    final nouvelleDisponibilite = !appareil.disponible;
+    final id = appareil.dbId;
+    if (id == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Impossible de mettre à jour cet appareil sans identifiant serveur.',
+            ),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+      return;
+    }
+
+    try {
+      await ApiService.updateAppareil(
+        id: id,
+        disponible: nouvelleDisponibilite,
+      );
+      if (!mounted) return;
+      _dataManager.updateAppareil(
+        index,
+        Appareil(
+          id: appareil.id,
+          dbId: appareil.dbId,
+          nom: appareil.nom,
+          type: appareil.type,
+          imageUrl: appareil.imageUrl,
+          prixLocation: appareil.prixLocation,
+          prixVente: appareil.prixVente,
+          disponible: nouvelleDisponibilite,
+        ),
+      );
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            nouvelleDisponibilite
+                ? 'Appareil remis en service.'
+                : 'Appareil mis hors service.',
+          ),
+          backgroundColor: nouvelleDisponibilite ? Colors.green : Colors.orange,
+        ),
+      );
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Impossible de modifier la disponibilité : $error'),
+          backgroundColor: Colors.red,
+        ),
+      );
+      await _loadAppareilsFromBackend();
+    }
   }
 
   void supprimerAppareil(int index) {
@@ -1044,14 +1099,14 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                             12,
                                           ),
                                         ),
-                                        onSelected: (value) {
+                                        onSelected: (value) async {
                                           if (value == "edit") {
                                             _ouvrirFormulaireModification(
                                               context,
                                               index,
                                             );
                                           } else if (value == "statut") {
-                                            changerStatut(index);
+                                            await changerStatut(index);
                                           } else if (value == "delete") {
                                             supprimerAppareil(index);
                                           }

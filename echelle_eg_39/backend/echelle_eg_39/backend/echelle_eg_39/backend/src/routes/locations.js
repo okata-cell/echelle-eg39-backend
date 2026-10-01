@@ -1,9 +1,19 @@
 const express = require('express');
+const { randomUUID } = require('node:crypto');
 const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
-const { sendLocationApprovedEmail, sendLocationRejectedEmail } = require('../services/email_sms_service');
+const {
+  businessToday,
+  findBlockingLocation,
+  inclusiveRentalDays,
+  isDateOnly,
+} = require('../utils/rental_dates');
+const {
+  sendLocationApprovedEmail,
+  sendLocationRejectedEmail,
+} = require('../services/email_sms_service');
 
 function mapLocation(location) {
   return {
@@ -27,28 +37,40 @@ function mapLocation(location) {
   };
 }
 
+function validateDateRange(dateDebut, dateFin) {
+  if (!isDateOnly(dateDebut) || !isDateOnly(dateFin)) {
+    return { error: 'Les dates doivent être au format AAAA-MM-JJ.' };
+  }
+  if (dateDebut < businessToday()) {
+    return { error: 'La date de début doit être aujourd’hui ou ultérieure.' };
+  }
+  if (dateFin < dateDebut) {
+    return { error: 'La date de retour doit être égale ou postérieure au début.' };
+  }
+  return null;
+}
+
 async function listLocations(req, res, { adminOnly = false } = {}) {
   try {
     const { statut } = req.query;
     let query = `
       SELECT l.*, u.first_name, u.last_name, u.email, u.phone,
              a.type AS appareil_type, a.image_url AS appareil_image_url
-      FROM locations l
-      JOIN users u ON l.user_id = u.id
-      LEFT JOIN appareils a ON l.appareil_id = a.id
+        FROM locations l
+        JOIN users u ON l.user_id = u.id
+        LEFT JOIN appareils a ON l.appareil_id = a.id
     `;
     const params = [];
 
-    // Le répertoire admin est complet; tout autre compte reste limité au sien.
     if (!adminOnly && req.user.role !== 'admin') {
       query += ' WHERE l.user_id = $1';
       params.push(req.user.userId);
     }
 
     if (statut) {
-      const whereClause = params.length > 0 ? 'AND' : 'WHERE';
+      query += params.length > 0 ? ' AND' : ' WHERE';
       params.push(statut);
-      query += ` ${whereClause} l.statut = $${params.length}`;
+      query += ` l.statut = $${params.length}`;
     }
 
     query += ' ORDER BY l.created_at DESC';
@@ -61,524 +83,453 @@ async function listLocations(req, res, { adminOnly = false } = {}) {
   }
 }
 
-// Répertoire complet destiné à l’interface admin; les comptes clients sont refusés.
 router.get('/admin', authMiddleware, adminMiddleware, (req, res) =>
   listLocations(req, res, { adminOnly: true }),
 );
-
-// Les clients ne voient que leurs propres demandes.
 router.get('/', authMiddleware, (req, res) => listLocations(req, res));
 
-// Créer une location (admin ou client)
-router.post('/', authMiddleware, [
-  body('appareilId').isInt().withMessage('ID appareil requis'),
-  body('dateDebut').isISO8601().withMessage('Date début invalide'),
-  body('dateFin').isISO8601().withMessage('Date fin invalide'),
-], async (req, res) => {
+// Aperçu de disponibilité par plage. La création revalide toujours sous verrou.
+router.get('/disponibilite', async (req, res) => {
+  res.set('Cache-Control', 'no-store');
+  const appareilId = Number(req.query.appareilId);
+  const { dateDebut, dateFin } = req.query;
+  const rangeError = validateDateRange(dateDebut, dateFin);
+  if (!Number.isSafeInteger(appareilId) || appareilId <= 0 || rangeError) {
+    return res.status(400).json({
+      disponible: false,
+      raison: rangeError?.error ?? 'Identifiant appareil invalide.',
+    });
+  }
+
   try {
+    const appareilResult = await pool.query(
+      'SELECT id, hors_service FROM appareils WHERE id = $1',
+      [appareilId],
+    );
+    if (appareilResult.rows.length === 0) {
+      return res.status(404).json({ disponible: false, raison: 'Appareil introuvable.' });
+    }
+    if (appareilResult.rows[0].hors_service) {
+      return res.json({ disponible: false, raison: 'hors_service' });
+    }
+
+    const conflit = await findBlockingLocation(pool, {
+      appareilId,
+      dateDebut,
+      dateFin,
+      today: businessToday(),
+    });
+    if (conflit) {
+      return res.json({
+        disponible: false,
+        raison: 'chevauchement',
+        dateDebutConflit: conflit.date_debut,
+        dateFinConflit: conflit.date_fin,
+      });
+    }
+    return res.json({ disponible: true, raison: null });
+  } catch (error) {
+    console.error('Erreur vérification disponibilité location:', error);
+    return res.status(500).json({ error: 'Impossible de vérifier la disponibilité.' });
+  }
+});
+
+router.post(
+  '/',
+  authMiddleware,
+  [
+    body('appareilId').isInt({ min: 1 }).withMessage('ID appareil requis'),
+    body('dateDebut').custom(isDateOnly).withMessage('Date début invalide (AAAA-MM-JJ)'),
+    body('dateFin').custom(isDateOnly).withMessage('Date fin invalide (AAAA-MM-JJ)'),
+  ],
+  async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      console.log('❌ Validation errors:', errors.array());
       return res.status(400).json({ errors: errors.array() });
     }
 
-    const { appareilId, dateDebut, dateFin, userId, nombreJours, total } = req.body;
-    console.log('📦 POST /locations body:', req.body);
-    console.log('👤 User:', req.user.role, req.user.userId);
-    console.log('👤 User ID from token:', req.user.userId);
-
-    // Admin peut créer pour un autre user, client seulement pour lui-même
-    const targetUserId = req.user.role === 'admin' && userId ? parseInt(userId) : req.user.userId;
-
-    // Extract numeric ID or code from the input
-    // Can be either: 'APP-001' (string code) or 11 (integer id) or '11' (string id)
-    let targetAppareilId = appareilId;
-    let searchByCode = false;
-    
-    if (typeof appareilId === 'string') {
-      if (appareilId.includes('APP-')) {
-        // It's like 'APP-001', find by code in DB
-        searchByCode = true;
-        console.log('🔧 Looking for appareil with code:', appareilId);
-      } else {
-        // Try parsing as plain number string
-        targetAppareilId = parseInt(appareilId);
-        console.log('🔧 Parsed appareilId string as int:', targetAppareilId);
-      }
-    } else if (typeof appareilId === 'number') {
-      // It's already a number (int)
-      targetAppareilId = appareilId;
-      console.log('🔧 Using appareilId as int:', targetAppareilId);
-    }
-    
-    // Validate the parsed ID (if not searching by code)
-    if (!searchByCode && (isNaN(targetAppareilId) || targetAppareilId <= 0)) {
-      console.log('❌ Invalid appareilId after parsing:', targetAppareilId);
-      return res.status(400).json({ error: 'ID appareil invalide' });
+    const { dateDebut, dateFin, userId } = req.body;
+    const appareilId = Number(req.body.appareilId);
+    const targetUserId = req.user.role === 'admin' && userId != null
+      ? Number(userId)
+      : Number(req.user.userId);
+    const rangeError = validateDateRange(dateDebut, dateFin);
+    if (rangeError) return res.status(400).json(rangeError);
+    if (!Number.isSafeInteger(targetUserId) || targetUserId <= 0) {
+      return res.status(400).json({ error: 'Identifiant client invalide.' });
     }
 
-    console.log('🔍 Looking for appareil with:', searchByCode ? 'code' : 'id', ':', searchByCode ? appareilId : targetAppareilId);
+    const days = inclusiveRentalDays(dateDebut, dateFin);
+    const client = await pool.connect();
+    let transactionOpen = false;
+    try {
+      await client.query('BEGIN');
+      transactionOpen = true;
 
-    // Try to find the appareil - first by id, then by code if not found
-    let appareilResult;
-    if (!searchByCode) {
-      // Try by id first
-      appareilResult = await pool.query('SELECT * FROM appareils WHERE id = $1', [targetAppareilId]);
-      
-      // If not found by id, try by code format
+      const appareilResult = await client.query(
+        `SELECT id, nom, prix_location, hors_service
+           FROM appareils
+          WHERE id = $1
+          FOR UPDATE`,
+        [appareilId],
+      );
       if (appareilResult.rows.length === 0) {
-        console.log('🔄 Not found by id, trying by code...');
-        const codeFormat = `APP-${String(targetAppareilId).padStart(3, '0')}`;
-        appareilResult = await pool.query('SELECT * FROM appareils WHERE code = $1', [codeFormat]);
-        console.log('🔍 Try by code:', codeFormat, 'Found:', appareilResult.rows.length);
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(404).json({ error: 'Appareil introuvable.' });
       }
-    } else {
-      // Search by code directly
-      appareilResult = await pool.query('SELECT * FROM appareils WHERE code = $1', [appareilId]);
-    }
 
-    if (appareilResult.rows.length === 0) {
-      console.log('❌ Appareil non trouvé: ID=', targetAppareilId, ', original=', appareilId);
-      console.log('🔍 Debug: tous les appareils dans la DB:');
-      const allAppareils = await pool.query('SELECT id, code, nom FROM appareils LIMIT 20');
-      console.log('→', allAppareils.rows);
-      
-      // Try to find by ID from the default appareils (APP-001 -> id=1, etc.)
-      // This handles the case where frontend sends numeric ID like 13
-      const frontendId = typeof appareilId === 'number' ? appareilId : parseInt(appareilId);
-      if (!isNaN(frontendId)) {
-        console.log('🔄 Trying alternative: search by ID =', frontendId);
-        const altResult = await pool.query('SELECT * FROM appareils WHERE id = $1', [frontendId]);
-        if (altResult.rows.length > 0) {
-          console.log('✅ Found by alternative ID search!');
-          appareilResult = altResult;
-        }
+      const appareil = appareilResult.rows[0];
+      if (appareil.hors_service) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(409).json({
+          code: 'APPAREIL_HORS_SERVICE',
+          error: 'Cet appareil est temporairement hors service.',
+        });
       }
-      
-      // If still not found, check if there's an APP-00X format issue
-      if (appareilResult.rows.length === 0 && typeof appareilId === 'number') {
-        const codeFormat = `APP-${String(appareilId).padStart(3, '0')}`;
-        console.log('🔄 Trying code format:', codeFormat);
-        const codeResult = await pool.query('SELECT * FROM appareils WHERE code = $1', [codeFormat]);
-        if (codeResult.rows.length > 0) {
-          console.log('✅ Found by code format!');
-          appareilResult = codeResult;
-        }
-      }
-      
-      if (appareilResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Appareil introuvable. Veuillez sélectionner un autre appareil.' });
-      }
-    }
 
-    const appareil = appareilResult.rows[0];
-    console.log('🔍 Appareil:', appareil.nom, 'disponible:', appareil.disponible ? 'OUI' : 'NON');
-    
-    // Nettoyage et validation des dates
-    const dateDebutClean = dateDebut.split('T')[0];
-    const dateFinClean = dateFin.split('T')[0];
-    const debut = new Date(dateDebutClean);
-    const fin = new Date(dateFinClean);
-
-    if (isNaN(debut.getTime()) || isNaN(fin.getTime())) {
-      return res.status(400).json({ error: 'Format de date invalide (attendu: YYYY-MM-DD)' });
-    }
-
-    let jours = Math.ceil((fin - debut) / (1000 * 60 * 60 * 24)) + 1;
-    if (jours <= 0) jours = 1;
-
-    // Vérifier si le prix existe (gestion camelCase ou snake_case du DB)
-    const prixJournalier = appareil.prix_location || appareil.prix_journalier || 0;
-    
-    // Utiliser total du client si fourni, sinon calcul automatique
-    const montantTotal = (total && !isNaN(total)) ? parseInt(total) : (prixJournalier * jours);
-
-    if (isNaN(montantTotal) || montantTotal <= 0) {
-      console.error('❌ Erreur calcul montantTotal:', { prixJournalier, jours, total });
-      return res.status(400).json({ error: 'Le montant total calculé est invalide' });
-    }
-    
-    const code = `LOC-${Date.now()}`;
-    console.log(`💰 Insertion Location: User=${targetUserId}, Appareil=${appareil.id}, Total=${montantTotal}`);
-
-    // Insertion simple - la contrainte sera corrigée par /fix-constraint
-    const result = await pool.query(
-      `INSERT INTO locations (code, user_id, appareil_id, appareil_nom, date_debut, date_fin, prix_journalier, montant_total)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-       RETURNING *`,
-      [code, parseInt(targetUserId), appareil.id, appareil.nom, dateDebutClean, dateFinClean, prixJournalier, montantTotal]
-    );
-
-    // Mettre à jour le statut après insertion
-    await pool.query("UPDATE locations SET statut = 'en_attente' WHERE id = $1", [result.rows[0].id]);
-    const finalResult = await pool.query('SELECT * FROM locations WHERE id = $1', [result.rows[0].id]);
-    const location = finalResult.rows[0];
-
-    console.log('✅ Location INSERTED id=', location.id, 'code=', code, 'statut=', location.statut);
-
-      // NE PAS marquer l'appareil comme indisponible automatiquement
-      // L'appareil ne sera marqué indisponible que quand l'admin approuve
-
-      res.status(201).json({
-        message: 'Demande de location créée - en attente de validation admin',
-        location: {
-          id: location.id,
-          code: location.code,
-          appareilNom: location.appareil_nom,
-          dateDebut: location.date_debut,
-          dateFin: location.date_fin,
-          montantTotal: location.montant_total,
-          statut: location.statut
-        }
+      const conflit = await findBlockingLocation(client, {
+        appareilId,
+        dateDebut,
+        dateFin,
+        today: businessToday(),
       });
-  } catch (error) {
-    console.error('💥 Erreur création location:', error);
-    
-    // Provide more specific error messages based on the error type
-    let errorMessage = 'Erreur serveur';
-    let hint = 'Veuillez réessayer plus tard';
-    
-    if (error.code === '23502') {
-      // NOT NULL constraint violation
-      errorMessage = 'Données manquantes';
-      hint = 'Vérifiez que tous les champs obligatoires sont remplis';
-    } else if (error.code === '23503') {
-      // Foreign key violation
-      errorMessage = 'Appareil ou utilisateur introuvable';
-      hint = 'L\'appareil ou l\'utilisateur sélectionné n\'existe plus';
-    } else if (error.code === '22P02') {
-      // Invalid input syntax
-      errorMessage = 'Format de données invalide';
-      hint = 'Les dates doivent être au format YYYY-MM-DD';
-    } else if (error.message) {
-      errorMessage = error.message;
-    }
-    
-    res.status(500).json({ 
-      error: errorMessage, 
-      details: error.message,
-      hint: hint
-    });
-  }
-});
+      if (conflit) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(409).json({
+          code: 'PERIODE_INDISPONIBLE',
+          error: 'Cette période chevauche une autre réservation de cet appareil.',
+          dateDebutConflit: conflit.date_debut,
+          dateFinConflit: conflit.date_fin,
+        });
+      }
 
-// Supprimer et recréer la CHECK constraint sans 'en_attente' (la vraie solution)
+      const prixJournalier = Number(appareil.prix_location);
+      const montantTotal = prixJournalier * days;
+      if (!Number.isSafeInteger(montantTotal) || montantTotal <= 0) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(400).json({ error: 'Le montant total calculé est invalide.' });
+      }
+
+      const code = `LOC-${Date.now()}-${randomUUID().slice(0, 8)}`;
+      const inserted = await client.query(
+        `INSERT INTO locations
+           (code, user_id, appareil_id, appareil_nom, date_debut, date_fin,
+            prix_journalier, montant_total, statut)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'en_attente')
+         RETURNING id, code, appareil_nom, date_debut, date_fin, montant_total, statut`,
+        [
+          code,
+          targetUserId,
+          appareil.id,
+          appareil.nom,
+          dateDebut,
+          dateFin,
+          prixJournalier,
+          montantTotal,
+        ],
+      );
+      await client.query('COMMIT');
+      transactionOpen = false;
+
+      return res.status(201).json({
+        message: 'Demande de location créée - en attente de validation admin.',
+        location: {
+          id: inserted.rows[0].id,
+          code: inserted.rows[0].code,
+          appareilNom: inserted.rows[0].appareil_nom,
+          dateDebut: inserted.rows[0].date_debut,
+          dateFin: inserted.rows[0].date_fin,
+          montantTotal: inserted.rows[0].montant_total,
+          statut: inserted.rows[0].statut,
+        },
+      });
+    } catch (error) {
+      if (transactionOpen) {
+        try {
+          await client.query('ROLLBACK');
+        } catch (rollbackError) {
+          console.error('Erreur rollback création location:', rollbackError);
+        }
+      }
+      console.error('Erreur création location:', error);
+      return res.status(500).json({ error: 'Erreur serveur.' });
+    } finally {
+      client.release();
+    }
+  },
+);
+
+// Conserver ce correctif historique, protégé admin, pour les bases anciennes.
 router.get('/fix-constraint', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    // Supprimer la constraint
     await pool.query('ALTER TABLE locations DROP CONSTRAINT IF EXISTS locations_statut_check');
-    // Recréer avec 'en_attente' inclus
-    await pool.query(
-      "ALTER TABLE locations ADD CONSTRAINT locations_statut_check CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard', 'annulee'))"
-    );
-    console.log('✅ CHECK constraint recréée avec en_attente');
-    res.json({ message: 'Constraint corrigée' });
-  } catch (e) {
-    console.error('❌ Erreur:', e);
-    res.status(500).json({ error: e.message });
+    await pool.query(`
+      ALTER TABLE locations ADD CONSTRAINT locations_statut_check
+      CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'termine', 'en_retard', 'annulee'))
+    `);
+    return res.json({ message: 'Contrainte des statuts vérifiée.' });
+  } catch (error) {
+    console.error('Erreur mise à jour contrainte des locations:', error);
+    return res.status(500).json({ error: 'Impossible de vérifier la contrainte.' });
   }
 });
 
-// Terminer une location (admin)
-router.patch('/:id/terminer', authMiddleware, adminMiddleware, async (req, res) => {
+// Marquer une location en retard n’affecte jamais l’occupation physique.
+router.patch('/:id/retard', authMiddleware, adminMiddleware, async (req, res) => {
+  const today = businessToday();
   try {
-    const { id } = req.params;
-
     const result = await pool.query(
       `UPDATE locations
-       SET statut = 'termine', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1 AND statut IN ('en_cours', 'approuvee', 'en_retard')
-       RETURNING appareil_id`,
-      [id]
+          SET statut = 'en_retard', updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+          AND statut = 'en_cours'
+          AND date_fin < $2::date
+        RETURNING id, statut, date_fin`,
+      [req.params.id, today],
     );
-
     if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Location non trouvée' });
-    }
-
-    // Rendre l'appareil disponible
-    const appareilId = result.rows[0].appareil_id;
-    if (appareilId) {
-      await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [appareilId]);
-    }
-
-    res.json({ message: 'Location terminée' });
-  } catch (error) {
-    console.error('Erreur terminer location:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Réinitialiser toutes les locations en 'en_attente' (pour diagnostic/fix)
-router.patch('/reset-statuts', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const result = await pool.query(
-      "UPDATE locations SET statut = 'en_attente' WHERE statut = 'en_cours' RETURNING *"
-    );
-    console.log('🔧 Reset statuts: ${result.rowCount} locations mises à jour');
-    res.json({ 
-      message: '${result.rowCount} locations remises en attente',
-      updated: result.rows 
-    });
-  } catch (error) {
-    console.error('Erreur reset statuts:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Vérifier et expirer les locations (admin seulement : cette route modifie les statuts).
-router.get('/check-expired', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const today = new Date().toISOString().split('T')[0];
-    
-    const expiredResult = await pool.query(
-      "SELECT l.id, l.code, l.appareil_id, l.date_fin FROM locations l WHERE statut = 'en_cours' AND date_fin <= $1",
-      [today]
-    );
-    
-    const expiredLocations = [];
-    
-    for (const loc of expiredResult.rows) {
-      // Marquer comme terminée
-      await pool.query(
-        "UPDATE locations SET statut = 'termine', updated_at = NOW() WHERE id = $1",
-        [loc.id]
+      const existing = await pool.query(
+        'SELECT id, statut, date_fin FROM locations WHERE id = $1',
+        [req.params.id],
       );
-      
-      // Rendre l'appareil disponible
-      if (loc.appareil_id) {
-        await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ error: 'Location introuvable.' });
       }
-      
-      expiredLocations.push({ id: loc.id, code: loc.code, dateFin: loc.date_fin });
-    }
-    
-    if (expiredLocations.length > 0) {
-      console.log(`⏰ ${expiredLocations.length} location(s) expirée(s)`);
-    }
-    
-    res.json({ 
-      message: '${expiredLocations.length} location(s) expirée(s) et terminée(s)',
-      expired: expiredLocations
-    });
-  } catch (error) {
-    console.error('Erreur vérification:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Supprimer toutes les locations actives (en_cours) - pour recommencer à zéro
-router.delete('/clear-active', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    // D'abord récupérer les appareil_id pour les rendre disponibles
-    const locsToDelete = await pool.query(
-      "SELECT appareil_id FROM locations WHERE statut = 'en_cours'"
-    );
-    
-    // Rendre les appareils disponibles
-    for (const loc of locsToDelete.rows) {
-      if (loc.appareil_id) {
-        await pool.query('UPDATE appareils SET disponible = true WHERE id = $1', [loc.appareil_id]);
-      }
-    }
-    
-    // Supprimer les locations actives
-    const result = await pool.query(
-      "DELETE FROM locations WHERE statut = 'en_cours' RETURNING id, code"
-    );
-    
-    console.log('🗑️ Supprimé ${result.rowCount} locations actives');
-    res.json({ 
-      message: '${result.rowCount} locations actives supprimées',
-      deleted: result.rows 
-    });
-  } catch (error) {
-    console.error('Erreur suppression:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Approuver une location (admin)
-router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-
-    // First get the location with user info
-    const locResult = await pool.query(
-      `SELECT l.*, u.first_name, u.last_name, u.email 
-       FROM locations l 
-       JOIN users u ON l.user_id = u.id 
-       WHERE l.id = $1`,
-      [id]
-    );
-
-    if (locResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Location non trouvée' });
-    }
-
-    const location = locResult.rows[0];
-
-    // Update the location status
-    const result = await pool.query(
-      `UPDATE locations
-       SET statut = 'en_cours', updated_at = CURRENT_TIMESTAMP
-       WHERE id = $1
-       RETURNING *`,
-      [id]
-    );
-
-    const updatedLocation = result.rows[0];
-
-    // Marquer l'appareil comme indisponible
-    if (updatedLocation.appareil_id) {
-      await pool.query('UPDATE appareils SET disponible = false WHERE id = $1', [updatedLocation.appareil_id]);
-    }
-
-    // Envoyer un email de notification
-    const userName = `${location.first_name} ${location.last_name}`;
-    const userEmail = location.email;
-    
-    // Envoyer l'email de manière asynchrone (ne pas bloquer la réponse)
-    sendLocationApprovedEmail(
-      userEmail,
-      userName,
-      updatedLocation.code,
-      updatedLocation.appareil_nom,
-      updatedLocation.date_debut,
-      updatedLocation.date_fin,
-      updatedLocation.montant_total
-    ).catch(err => console.error('Erreur envoi email approbation:', err));
-
-    res.json({ message: 'Location approuvée', location: updatedLocation });
-  } catch (error) {
-    console.error('Erreur approuver location:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Rejeter une location (admin)
-router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const { raison } = req.body;
-
-    // First get the location with user info
-    const locResult = await pool.query(
-      `SELECT l.*, u.first_name, u.last_name, u.email 
-       FROM locations l 
-       JOIN users u ON l.user_id = u.id 
-       WHERE l.id = $1`,
-      [id]
-    );
-
-    if (locResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Location non trouvée' });
-    }
-
-    const location = locResult.rows[0];
-
-    const result = await pool.query(
-      `UPDATE locations
-       SET statut = 'rejetee', commentaire_admin = $1, updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2
-       RETURNING *`,
-      [raison || 'Demande rejetée', id]
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(404).json({ error: 'Location non trouvée' });
-    }
-
-    const updatedLocation = result.rows[0];
-
-    // Envoyer un email de notification
-    const userName = `${location.first_name} ${location.last_name}`;
-    const userEmail = location.email;
-    
-    // Envoyer l'email de manière asynchrone (ne pas bloquer la réponse)
-    sendLocationRejectedEmail(
-      userEmail,
-      userName,
-      updatedLocation.code,
-      updatedLocation.appareil_nom,
-      raison || 'Demande rejetée'
-    ).catch(err => console.error('Erreur envoi email rejet:', err));
-
-    res.json({ message: 'Location rejetée', location: updatedLocation });
-  } catch (error) {
-    console.error('💥 Erreur rejeter location:', error);
-    console.error('💥 Code:', error.code);
-    console.error('💥 Detail:', error.detail);
-    res.status(500).json({ 
-      error: 'Erreur serveur', 
-      details: error.message,
-      code: error.code
-    });
-  }
-});
-
-// Supprimer une location terminée ou rejétée (client ou admin)
-router.delete('/:id', authMiddleware, async (req, res) => {
-  try {
-    const { id } = req.params;
-    const userId = req.user.userId;
-    const isAdmin = req.user.role === 'admin';
-    
-    // Vérifier que la location existe et est terminée ou rejétée
-    const checkResult = await pool.query(
-      'SELECT * FROM locations WHERE id = $1',
-      [id]
-    );
-    
-    if (checkResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Location non trouvée' });
-    }
-    
-    const location = checkResult.rows[0];
-    
-    // Vérifier le statut - seulement terminé ou rejété peut être supprimé
-    if (!['termine', 'rejetee', 'annulee'].includes(location.statut)) {
-      return res.status(400).json({
-        error: 'Seules les locations terminées, rejetées ou annulées peuvent être supprimées',
+      return res.status(409).json({
+        error: 'Seule une location en cours après sa date de retour peut être marquée en retard.',
       });
     }
-    
-    // Vérifier les permissions: soit admin, soit le propriétaire
-    if (!isAdmin && location.user_id !== userId) {
-      return res.status(403).json({ error: 'Non autorisé' });
-    }
-    
-    // Supprimer la location
-    await pool.query('DELETE FROM locations WHERE id = $1', [id]);
-    
-    console.log('🗑️ Location supprimée: id=', id, 'par user=', userId);
-    
-    res.json({ message: 'Location supprimée' });
+    return res.json({ message: 'Location marquée en retard.', location: result.rows[0] });
   } catch (error) {
-    console.error('💥 Erreur supprimer location:', error);
-    res.status(500).json({ error: 'Erreur serveur' });
+    console.error('Erreur marquage retard:', error);
+    return res.status(500).json({ error: 'Impossible de marquer cette location en retard.' });
+  }
+});
+
+// L’admin confirme le retour physique ; la période est libérée par le statut terminé.
+router.patch('/:id/terminer', authMiddleware, adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  let transactionOpen = false;
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const result = await client.query(
+      `UPDATE locations
+          SET statut = 'termine', updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1
+          AND statut IN ('en_cours', 'en_retard')
+        RETURNING id, appareil_id, statut`,
+      [req.params.id],
+    );
+    if (result.rows.length === 0) {
+      const existing = await client.query(
+        'SELECT id FROM locations WHERE id = $1',
+        [req.params.id],
+      );
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      if (existing.rows.length === 0) {
+        return res.status(404).json({ error: 'Location introuvable.' });
+      }
+      return res.status(409).json({
+        error: 'Cette location ne peut pas être terminée dans son état actuel.',
+      });
+    }
+
+    if (result.rows[0].appareil_id != null) {
+      await client.query(
+        `UPDATE appareils
+            SET disponible = NOT hors_service,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = $1`,
+        [result.rows[0].appareil_id],
+      );
+    }
+    await client.query('COMMIT');
+    transactionOpen = false;
+    return res.json({ message: 'Retour physique confirmé, location terminée.' });
+  } catch (error) {
+    if (transactionOpen) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Erreur rollback retour location:', rollbackError);
+      }
+    }
+    console.error('Erreur confirmation retour:', error);
+    return res.status(500).json({ error: 'Impossible de confirmer le retour.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res) => {
+  const client = await pool.connect();
+  let transactionOpen = false;
+  let approvedLocation;
+  try {
+    await client.query('BEGIN');
+    transactionOpen = true;
+    const locationResult = await client.query(
+      `SELECT l.*, u.first_name, u.last_name, u.email
+         FROM locations l
+         JOIN users u ON u.id = l.user_id
+        WHERE l.id = $1
+        FOR UPDATE OF l`,
+      [req.params.id],
+    );
+    if (locationResult.rows.length === 0) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(404).json({ error: 'Location introuvable.' });
+    }
+    const location = locationResult.rows[0];
+    if (location.statut !== 'en_attente' && location.statut !== 'approuvee') {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({ error: 'Cette location ne peut plus être approuvée.' });
+    }
+    if (!location.appareil_id) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({ error: 'L’appareil associé à cette location n’existe plus.' });
+    }
+    if (String(location.date_fin).slice(0, 10) < businessToday()) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({
+        error: 'La période demandée est échue. Rejetez cette demande et demandez au client de choisir de nouvelles dates.',
+      });
+    }
+
+    const appareilResult = await client.query(
+      'SELECT id, hors_service FROM appareils WHERE id = $1 FOR UPDATE',
+      [location.appareil_id],
+    );
+    if (appareilResult.rows.length === 0 || appareilResult.rows[0].hors_service) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({ error: 'Appareil actuellement hors service.' });
+    }
+    const conflit = await findBlockingLocation(client, {
+      appareilId: location.appareil_id,
+      dateDebut: String(location.date_debut).slice(0, 10),
+      dateFin: String(location.date_fin).slice(0, 10),
+      today: businessToday(),
+      excludeLocationId: location.id,
+    });
+    if (conflit) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({
+        code: 'PERIODE_INDISPONIBLE',
+        error: 'Une autre location bloque cette période. Actualisez la file.',
+      });
+    }
+
+    const updated = await client.query(
+      `UPDATE locations
+          SET statut = 'en_cours', updated_at = CURRENT_TIMESTAMP
+        WHERE id = $1 AND statut IN ('en_attente', 'approuvee')
+        RETURNING *`,
+      [req.params.id],
+    );
+    if (updated.rows.length === 0) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({ error: 'La location a changé. Actualisez la file.' });
+    }
+    approvedLocation = { ...location, ...updated.rows[0] };
+    await client.query(
+      'UPDATE appareils SET disponible = false, updated_at = CURRENT_TIMESTAMP WHERE id = $1',
+      [location.appareil_id],
+    );
+    await client.query('COMMIT');
+    transactionOpen = false;
+
+    sendLocationApprovedEmail(
+      location.email,
+      `${location.first_name} ${location.last_name}`,
+      approvedLocation.code,
+      approvedLocation.appareil_nom,
+      approvedLocation.date_debut,
+      approvedLocation.date_fin,
+      approvedLocation.montant_total,
+    ).catch((error) => console.error('Erreur envoi email approbation:', error));
+
+    return res.json({ message: 'Location approuvée.', location: approvedLocation });
+  } catch (error) {
+    if (transactionOpen) {
+      try {
+        await client.query('ROLLBACK');
+      } catch (rollbackError) {
+        console.error('Erreur rollback approbation:', rollbackError);
+      }
+    }
+    console.error('Erreur approbation location:', error);
+    return res.status(500).json({ error: 'Erreur serveur.' });
+  } finally {
+    client.release();
+  }
+});
+
+router.patch('/:id/rejeter', authMiddleware, adminMiddleware, async (req, res) => {
+  const reason = String(req.body.raison || 'Demande rejetée').trim();
+  try {
+    const result = await pool.query(
+      `UPDATE locations AS l
+          SET statut = 'rejetee', commentaire_admin = $1, updated_at = CURRENT_TIMESTAMP
+         FROM users AS u
+        WHERE l.id = $2
+          AND l.user_id = u.id
+          AND l.statut = 'en_attente'
+        RETURNING l.*, u.first_name, u.last_name, u.email`,
+      [reason || 'Demande rejetée', req.params.id],
+    );
+    if (result.rows.length === 0) {
+      const existing = await pool.query('SELECT id FROM locations WHERE id = $1', [req.params.id]);
+      if (existing.rows.length === 0) return res.status(404).json({ error: 'Location introuvable.' });
+      return res.status(409).json({ error: 'Seule une demande en attente peut être rejetée.' });
+    }
+    const location = result.rows[0];
+    sendLocationRejectedEmail(
+      location.email,
+      `${location.first_name} ${location.last_name}`,
+      location.code,
+      location.appareil_nom,
+      reason || 'Demande rejetée',
+    ).catch((error) => console.error('Erreur envoi email rejet:', error));
+    return res.json({ message: 'Location rejetée.', location });
+  } catch (error) {
+    console.error('Erreur rejet location:', error);
+    return res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+router.delete('/:id', authMiddleware, async (req, res) => {
+  try {
+    const result = await pool.query(
+      `DELETE FROM locations
+        WHERE id = $1
+          AND statut IN ('termine', 'rejetee', 'annulee')
+          AND ($2::text = 'admin' OR user_id = $3)
+        RETURNING id`,
+      [req.params.id, req.user.role, req.user.userId],
+    );
+    if (result.rows.length === 0) {
+      const existing = await pool.query('SELECT id FROM locations WHERE id = $1', [req.params.id]);
+      if (existing.rows.length === 0) return res.status(404).json({ error: 'Location introuvable.' });
+      return res.status(403).json({ error: 'Seules vos locations terminées ou rejetées peuvent être supprimées.' });
+    }
+    return res.json({ message: 'Location supprimée.' });
+  } catch (error) {
+    console.error('Erreur suppression location:', error);
+    return res.status(500).json({ error: 'Erreur serveur.' });
   }
 });
 
 module.exports = router;
-
-// Route supprimer terminees - AVEC gestion erreurs complete
-router.delete('/terminate-all', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    // Compter avant
-    const avant = await pool.query("SELECT COUNT(*) FROM locations WHERE statut = 'termine'");
-    const nb = parseInt(avant.rows[0].count);
-    if (nb === 0) return res.json({ ok: true, message: 'Deja vide' });
-    
-    // Supprimer prolongations
-    await pool.query(`DELETE FROM prolongations WHERE location_id IN (SELECT id FROM locations WHERE statut = 'termine')`);
-    
-    // Supprimer locations
-    const r = await pool.query("DELETE FROM locations WHERE statut = 'termine' RETURNING id");
-    
-    res.json({ ok: true, supprime: r.rowCount });
-  } catch (e) {
-    console.error('❌ Suppression echouee:', e.message);
-    res.status(500).json({ error: e.message });
-  }
-});

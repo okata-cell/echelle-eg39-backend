@@ -631,29 +631,36 @@ class ApiService {
     }
   }
 
-  /// Expirer les locations arrivées à leur terme (admin uniquement).
-  static Future<void> checkExpiredLocations() async {
-    final token = await ensureAuthenticated();
-    if (token == null) {
-      throw const ApiException(
-        type: ApiErrorType.request,
-        message: 'Session administrateur requise.',
-      );
+  /// Prévisualiser la disponibilité d'un appareil pour une plage de dates.
+  /// Cette vérification est informative : la création la revalide sous verrou.
+  static Future<Map<String, dynamic>> getLocationAvailability({
+    required int appareilId,
+    required String dateDebut,
+    required String dateFin,
+  }) async {
+    final uri = Uri.parse('$baseUrl/locations/disponibilite').replace(
+      queryParameters: {
+        'appareilId': '$appareilId',
+        'dateDebut': dateDebut,
+        'dateFin': dateFin,
+      },
+    );
+    final response = await http.get(uri).timeout(const Duration(seconds: 15));
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      return decoded;
     }
 
-    final response = await http
-        .get(
-          Uri.parse('$baseUrl/locations/check-expired'),
-          headers: {'Authorization': 'Bearer $token'},
-        )
-        .timeout(const Duration(seconds: 5));
-    if (response.statusCode != 200) {
-      throw ApiException(
-        type: ApiErrorType.request,
-        message: 'Impossible de vérifier les locations arrivées à terme.',
-        statusCode: response.statusCode,
-      );
-    }
+    final message = decoded is Map<String, dynamic>
+        ? decoded['error']?.toString()
+        : null;
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: message ?? 'Impossible de vérifier cette période.',
+      statusCode: response.statusCode,
+    );
   }
 
   /// Récupérer tout le registre des locations (admin uniquement).
@@ -692,7 +699,7 @@ class ApiService {
     );
   }
 
-  /// Terminer une location et libérer son appareil (admin).
+  /// Confirmer le retour physique et clôturer la location (admin).
   static Future<Map<String, dynamic>?> terminateLocation(int locationId) async {
     final token = await ensureAuthenticated();
     if (token == null) {
@@ -761,6 +768,39 @@ class ApiService {
             'Erreur lors du rejet de la location',
       );
     }
+  }
+
+  /// Marquer une location en retard après sa date de retour prévue (admin).
+  static Future<Map<String, dynamic>?> markLocationOverdue(
+    int locationId,
+  ) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session administrateur requise.',
+      );
+    }
+
+    final response = await http.patch(
+      Uri.parse('$baseUrl/locations/$locationId/retard'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+
+    final message = decoded is Map<String, dynamic>
+        ? decoded['error']?.toString()
+        : null;
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: message ?? 'Impossible de marquer cette location en retard.',
+      statusCode: response.statusCode,
+    );
   }
 
   /// Approuver une location (admin)
@@ -1008,11 +1048,22 @@ class ApiService {
       print('✅ Location created successfully: ${result['location']?['code']}');
       return result;
     } else {
-      final errorBody = jsonDecode(response.body);
+      final decoded = jsonDecode(response.body);
+      final errorBody = decoded is Map<String, dynamic>
+          ? decoded
+          : <String, dynamic>{};
       final errorMsg =
-          errorBody['error'] ?? errorBody['message'] ?? 'Erreur inconnue';
+          errorBody['error']?.toString() ??
+          errorBody['message']?.toString() ??
+          'Erreur inconnue';
       print('❌ createLocation failed: $errorMsg');
-      throw Exception(errorMsg);
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message: errorMsg,
+        statusCode: response.statusCode,
+      );
     }
   }
 
@@ -1142,9 +1193,7 @@ class ApiService {
         payload['email'] = normalizedEmail;
       }
 
-      final headers = <String, String>{
-        'Content-Type': 'application/json',
-      };
+      final headers = <String, String>{'Content-Type': 'application/json'};
       final token = await getToken();
       if (token != null) {
         headers['Authorization'] = 'Bearer $token';
@@ -1283,6 +1332,7 @@ class ApiService {
     int? prixLocation,
     int? prixVente,
     String? imageUrl,
+    bool? disponible,
   }) async {
     final token = await ensureAuthenticated();
     if (token == null)
@@ -1304,6 +1354,7 @@ class ApiService {
         'prixLocation': prixLocation,
         'prixVente': prixVente,
         'imageUrl': imageUrl,
+        'disponible': disponible,
       }),
     );
 

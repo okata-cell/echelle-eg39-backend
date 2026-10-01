@@ -1,6 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echelle_eg_39/admin/location_queue_filter.dart';
+import 'package:echelle_eg_39/admin/admin_tokens.dart';
 
 void main() {
   const locations = <Map<String, dynamic>>[
@@ -10,7 +11,8 @@ void main() {
     {'id': 4, 'statut': 'rejetee'},
     {'id': 5, 'statut': 'annulee'},
     {'id': 6, 'statut': 'cancelled'},
-    {'id': 7, 'statut': 'legacy_unknown'},
+    {'id': 7, 'statut': 'en_retard'},
+    {'id': 8, 'statut': 'legacy_unknown'},
   ];
 
   test('classe chaque statut dans le bon onglet', () {
@@ -26,7 +28,7 @@ void main() {
         locations,
         LocationQueueFilter.inProgress,
       ).map((location) => location['id']),
-      [2],
+      [2, 7],
     );
     expect(
       filterLocationsForQueue(
@@ -47,7 +49,19 @@ void main() {
         locations,
         LocationQueueFilter.all,
       ).map((location) => location['id']),
-      [1, 2, 3, 4, 5, 6, 7],
+      [1, 2, 3, 4, 5, 6, 7, 8],
+    );
+  });
+
+  test('présente le retard dans la file active avec sa couleur d’alerte', () {
+    expect(adminStatusLabel('en_retard'), 'En retard');
+    expect(adminStatusColor('en_retard'), AdminPalette.safetyAmber);
+    expect(
+      filterLocationsForQueue(
+        locations,
+        LocationQueueFilter.inProgress,
+      ).map((location) => location['id']),
+      [2, 7],
     );
   });
 
@@ -55,10 +69,10 @@ void main() {
     expect(countLocationsForQueue(locations, LocationQueueFilter.pending), 1);
     expect(
       countLocationsForQueue(locations, LocationQueueFilter.inProgress),
-      1,
+      2,
     );
     expect(countLocationsForQueue(locations, LocationQueueFilter.completed), 1);
     expect(countLocationsForQueue(locations, LocationQueueFilter.history), 3);
-    expect(countLocationsForQueue(locations, LocationQueueFilter.all), 7);
+    expect(countLocationsForQueue(locations, LocationQueueFilter.all), 8);
   });
 }

@@ -1012,151 +1012,158 @@ Future<String?> showAdminRejectionSheet(
   BuildContext context, {
   required String entityLabel,
   String helperText = 'Le motif sera visible par le client.',
-}) async {
-  final controller = TextEditingController();
-  var isValid = false;
+}) {
+  return showModalBottomSheet<String>(
+    context: context,
+    isScrollControlled: true,
+    backgroundColor: Colors.transparent,
+    builder: (_) =>
+        _AdminRejectionSheet(entityLabel: entityLabel, helperText: helperText),
+  );
+}
 
-  try {
-    return await showModalBottomSheet<String>(
-      context: context,
-      isScrollControlled: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) {
-        return StatefulBuilder(
-          builder: (context, setState) {
-            final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
-            return Padding(
-              padding: EdgeInsets.only(bottom: bottomInset),
+class _AdminRejectionSheet extends StatefulWidget {
+  const _AdminRejectionSheet({
+    required this.entityLabel,
+    required this.helperText,
+  });
+
+  final String entityLabel;
+  final String helperText;
+
+  @override
+  State<_AdminRejectionSheet> createState() => _AdminRejectionSheetState();
+}
+
+class _AdminRejectionSheetState extends State<_AdminRejectionSheet> {
+  final TextEditingController _controller = TextEditingController();
+  bool _isValid = false;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
+    return Padding(
+      padding: EdgeInsets.only(bottom: bottomInset),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(
+          AdminSpacing.xxl,
+          AdminSpacing.md,
+          AdminSpacing.xxl,
+          AdminSpacing.xxl,
+        ),
+        decoration: const BoxDecoration(
+          color: AdminPalette.surface,
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(AdminRadii.sheet),
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Center(
               child: Container(
-                padding: const EdgeInsets.fromLTRB(
-                  AdminSpacing.xxl,
-                  AdminSpacing.md,
-                  AdminSpacing.xxl,
-                  AdminSpacing.xxl,
-                ),
-                decoration: const BoxDecoration(
-                  color: AdminPalette.surface,
-                  borderRadius: BorderRadius.vertical(
-                    top: Radius.circular(AdminRadii.sheet),
-                  ),
-                ),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Center(
-                      child: Container(
-                        width: 42,
-                        height: 4,
-                        decoration: BoxDecoration(
-                          color: AdminPalette.border,
-                          borderRadius: BorderRadius.circular(4),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AdminSpacing.xl),
-                    Text(
-                      'Rejeter $entityLabel',
-                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                        color: AdminPalette.primaryText,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                    const SizedBox(height: AdminSpacing.xs),
-                    Text(
-                      helperText,
-                      style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: AdminPalette.secondaryText,
-                      ),
-                    ),
-                    const SizedBox(height: AdminSpacing.lg),
-                    TextField(
-                      controller: controller,
-                      autofocus: true,
-                      minLines: 3,
-                      maxLines: 5,
-                      maxLength: 1000,
-                      onChanged: (value) =>
-                          setState(() => isValid = value.trim().isNotEmpty),
-                      decoration: InputDecoration(
-                        labelText: 'Motif du rejet',
-                        hintText:
-                            'Expliquez la décision à conserver dans le dossier…',
-                        alignLabelWithHint: true,
-                        prefixIcon: const Padding(
-                          padding: EdgeInsets.only(bottom: 46),
-                          child: Icon(Icons.message_outlined),
-                        ),
-                        filled: true,
-                        fillColor: AdminPalette.mutedSurface,
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AdminRadii.field),
-                          borderSide: const BorderSide(
-                            color: AdminPalette.border,
-                          ),
-                        ),
-                        enabledBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AdminRadii.field),
-                          borderSide: const BorderSide(
-                            color: AdminPalette.border,
-                          ),
-                        ),
-                        focusedBorder: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(AdminRadii.field),
-                          borderSide: const BorderSide(
-                            color: AdminPalette.blueprintBlue,
-                            width: 2,
-                          ),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: AdminSpacing.md),
-                    Row(
-                      children: [
-                        Expanded(
-                          child: TextButton(
-                            onPressed: () => Navigator.pop(sheetContext),
-                            style: TextButton.styleFrom(
-                              minimumSize: const Size(0, 48),
-                            ),
-                            child: const Text('Annuler'),
-                          ),
-                        ),
-                        const SizedBox(width: AdminSpacing.sm),
-                        Expanded(
-                          child: ElevatedButton.icon(
-                            onPressed: isValid
-                                ? () => Navigator.pop(
-                                    sheetContext,
-                                    controller.text.trim(),
-                                  )
-                                : null,
-                            icon: const Icon(Icons.close, size: 18),
-                            label: const Text('Confirmer'),
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AdminPalette.destructiveRed,
-                              foregroundColor: Colors.white,
-                              minimumSize: const Size(0, 48),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(
-                                  AdminRadii.field,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
+                width: 42,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: AdminPalette.border,
+                  borderRadius: BorderRadius.circular(4),
                 ),
               ),
-            );
-          },
-        );
-      },
+            ),
+            const SizedBox(height: AdminSpacing.xl),
+            Text(
+              'Rejeter ${widget.entityLabel}',
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                color: AdminPalette.primaryText,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: AdminSpacing.xs),
+            Text(
+              widget.helperText,
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                color: AdminPalette.secondaryText,
+              ),
+            ),
+            const SizedBox(height: AdminSpacing.lg),
+            TextField(
+              controller: _controller,
+              autofocus: true,
+              minLines: 3,
+              maxLines: 5,
+              maxLength: 1000,
+              onChanged: (value) =>
+                  setState(() => _isValid = value.trim().isNotEmpty),
+              decoration: InputDecoration(
+                labelText: 'Motif du rejet',
+                hintText: 'Expliquez la décision à conserver dans le dossier…',
+                alignLabelWithHint: true,
+                prefixIcon: const Padding(
+                  padding: EdgeInsets.only(bottom: 46),
+                  child: Icon(Icons.message_outlined),
+                ),
+                filled: true,
+                fillColor: AdminPalette.mutedSurface,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AdminRadii.field),
+                  borderSide: const BorderSide(color: AdminPalette.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AdminRadii.field),
+                  borderSide: const BorderSide(color: AdminPalette.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(AdminRadii.field),
+                  borderSide: const BorderSide(
+                    color: AdminPalette.blueprintBlue,
+                    width: 2,
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: AdminSpacing.md),
+            Row(
+              children: [
+                Expanded(
+                  child: TextButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    style: TextButton.styleFrom(minimumSize: const Size(0, 48)),
+                    child: const Text('Annuler'),
+                  ),
+                ),
+                const SizedBox(width: AdminSpacing.sm),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isValid
+                        ? () =>
+                              Navigator.of(context).pop(_controller.text.trim())
+                        : null,
+                    icon: const Icon(Icons.close, size: 18),
+                    label: const Text('Confirmer'),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AdminPalette.destructiveRed,
+                      foregroundColor: Colors.white,
+                      minimumSize: const Size(0, 48),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(AdminRadii.field),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
     );
-  } finally {
-    controller.dispose();
   }
 }
 
