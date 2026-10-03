@@ -9,9 +9,12 @@ router.get('/', authMiddleware, async (req, res) => {
   try {
     const { statut } = req.query;
     let query = `
-      SELECT d.*, u.first_name, u.last_name, u.email, u.phone
+      SELECT d.*, u.first_name, u.last_name, u.email, u.phone,
+             a.code AS appareil_code, a.type AS appareil_type,
+             a.image_url AS appareil_image_url
       FROM demandes_achat d
       JOIN users u ON d.user_id = u.id
+      LEFT JOIN appareils a ON a.id = d.appareil_id
     `;
     const params = [];
 
@@ -38,6 +41,10 @@ router.get('/', authMiddleware, async (req, res) => {
         clientNom: `${d.first_name} ${d.last_name}`,
         clientEmail: d.email,
         clientPhone: d.phone,
+        appareilId: d.appareil_id,
+        appareilCode: d.appareil_code,
+        appareilType: d.appareil_type,
+        imageUrl: d.appareil_image_url,
         appareilNom: d.appareil_nom,
         appareilPrix: d.appareil_prix,
         quantite: d.quantite,
@@ -123,6 +130,10 @@ router.post('/', authMiddleware, [
       demande: {
         id: demande.id,
         code: demande.code,
+        appareilId: demande.appareil_id,
+        appareilCode: appareil.code,
+        appareilType: appareil.type,
+        imageUrl: appareil.image_url,
         appareilNom: demande.appareil_nom,
         quantite: demande.quantite,
         total: demande.total,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
+import 'purchase_request_image.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ClientMesDemandesPage extends StatefulWidget {
@@ -194,8 +195,10 @@ class _ClientMesDemandesPageState extends State<ClientMesDemandesPage> {
   }
 
   Widget _buildDemandeCard(Map<String, dynamic> demande) {
-    // Support both API response format and local model format
-    final produitNom = demande['appareilNom'] ?? demande['produitNom'] ?? 'Produit';
+    // Support both API response format and local model format.
+    final produitNom =
+        (demande['appareilNom'] ?? demande['produitNom'] ?? 'Produit').toString();
+    final imageUrl = resolvePurchaseRequestImageUrl(demande);
     final statut = demande['statut']?.toString() ?? 'en_attente';
     final quantite = demande['quantite'] ?? 1;
     final produitPrix = demande['appareilPrix'] ?? demande['produitPrix'] ?? 0;
@@ -217,11 +220,49 @@ class _ClientMesDemandesPageState extends State<ClientMesDemandesPage> {
           children: [
             // En-tête avec produit et statut
             Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
+                Semantics(
+                  image: true,
+                  label: 'Image de $produitNom',
+                  child: SizedBox(
+                    width: 64,
+                    height: 64,
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(8),
+                      child: Image.network(
+                        imageUrl,
+                        fit: BoxFit.cover,
+                        loadingBuilder: (context, child, progress) {
+                          if (progress == null) return child;
+                          return Container(
+                            color: const Color(0xFFF3F4F6),
+                            alignment: Alignment.center,
+                            child: const SizedBox(
+                              width: 20,
+                              height: 20,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          );
+                        },
+                        errorBuilder: (context, error, stackTrace) =>
+                            Container(
+                              color: const Color(0xFFF3F4F6),
+                              alignment: Alignment.center,
+                              child: const Icon(
+                                Icons.image_not_supported_outlined,
+                                color: Color(0xFF9CA3AF),
+                              ),
+                            ),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 12),
                 Expanded(
                   child: Text(
                     produitNom,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: const TextStyle(
                       fontSize: 16,
                       fontWeight: FontWeight.bold,
@@ -229,6 +270,7 @@ class _ClientMesDemandesPageState extends State<ClientMesDemandesPage> {
                     ),
                   ),
                 ),
+                const SizedBox(width: 8),
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
