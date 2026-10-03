@@ -393,6 +393,30 @@ test('l’approbation revalide les chevauchements et refuse les demandes concurr
   assert.equal(database.locations[0].statut, 'en_attente');
 });
 
+test('approuve une location quand PostgreSQL renvoie ses dates en objets Date', async () => {
+  const today = businessToday();
+  const postgresDate = new Date(`${today}T00:00:00`);
+  const database = newDatabase({
+    locations: [makeLocation({
+      id: 906,
+      date_debut: postgresDate,
+      date_fin: postgresDate,
+      statut: 'en_attente',
+    })],
+  });
+  pool.connect = database.connect;
+
+  const response = await fetch(`${baseUrl}/906/approuver`, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${tokenFor('admin', 7)}` },
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.location.statut, 'en_cours');
+  assert.equal(database.releaseCount, 1);
+});
+
 test('le répertoire admin des locations reste inaccessible à un client', async () => {
   pool.query = async () => { throw new Error('La base ne doit pas être appelée'); };
   const response = await fetch(`${baseUrl}/admin`, {

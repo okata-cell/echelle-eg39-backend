@@ -5,6 +5,7 @@ const {
   findBlockingLocation,
   inclusiveRentalDays,
   isDateOnly,
+  toDateOnly,
   RENTAL_BLOCKING_STATUSES,
 } = require('../src/utils/rental_dates');
 
@@ -15,6 +16,14 @@ test('validates date-only values and inclusive rental days', () => {
   assert.equal(inclusiveRentalDays('2026-10-01', '2026-10-01'), 1);
   assert.equal(inclusiveRentalDays('2026-10-01', '2026-10-03'), 3);
   assert.equal(inclusiveRentalDays('2026-10-03', '2026-10-01'), 0);
+});
+
+test('normalizes PostgreSQL DATE values without stringifying Date objects', () => {
+  const postgresDate = new Date(2026, 9, 8);
+  assert.equal(toDateOnly(postgresDate), '2026-10-08');
+  assert.equal(toDateOnly('2026-10-08'), '2026-10-08');
+  assert.equal(toDateOnly('Thu Oct 08'), null);
+  assert.equal(toDateOnly(new Date(Number.NaN)), null);
 });
 
 test('uses the Togo business calendar for the current rental day', () => {

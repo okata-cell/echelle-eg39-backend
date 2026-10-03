@@ -9,6 +9,7 @@ const {
   findBlockingLocation,
   inclusiveRentalDays,
   isDateOnly,
+  toDateOnly,
 } = require('../utils/rental_dates');
 
 function mapLocation(location) {
@@ -362,7 +363,14 @@ router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res)
       transactionOpen = false;
       return res.status(409).json({ error: 'L’appareil associé à cette location n’existe plus.' });
     }
-    if (String(location.date_fin).slice(0, 10) < businessToday()) {
+    const locationDateDebut = toDateOnly(location.date_debut);
+    const locationDateFin = toDateOnly(location.date_fin);
+    if (!locationDateDebut || !locationDateFin) {
+      await client.query('ROLLBACK');
+      transactionOpen = false;
+      return res.status(409).json({ error: 'Les dates de cette location sont invalides.' });
+    }
+    if (locationDateFin < businessToday()) {
       await client.query('ROLLBACK');
       transactionOpen = false;
       return res.status(409).json({
@@ -381,8 +389,8 @@ router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res)
     }
     const conflict = await findBlockingLocation(client, {
       appareilId: location.appareil_id,
-      dateDebut: String(location.date_debut).slice(0, 10),
-      dateFin: String(location.date_fin).slice(0, 10),
+      dateDebut: locationDateDebut,
+      dateFin: locationDateFin,
       today: businessToday(),
       excludeLocationId: location.id,
     });

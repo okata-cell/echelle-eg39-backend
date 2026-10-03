@@ -21,8 +21,11 @@ function tokenFor(userId = 42) {
   return jwt.sign({ userId, role: 'client' }, process.env.JWT_SECRET);
 }
 
-function fakeDatabase({ hasConflict = false } = {}) {
+function fakeDatabase({ hasConflict = false, dateColumnsAsDate = false } = {}) {
   const state = { queries: [], inserted: false, released: 0 };
+  const storedDate = dateColumnsAsDate
+    ? new Date(`${businessToday()}T00:00:00`)
+    : businessToday();
   state.connect = async () => ({
     async query(sql, values = []) {
       const normalized = sql.trim().replace(/\s+/g, ' ');
@@ -34,8 +37,8 @@ function fakeDatabase({ hasConflict = false } = {}) {
           user_id: 42,
           appareil_id: 2039,
           appareil_nom: 'GPS de test',
-          date_debut: businessToday(),
-          date_fin: businessToday(),
+          date_debut: storedDate,
+          date_fin: storedDate,
           prix_journalier: 25000,
           montant_total: 25000,
           statut: 'en_cours',
@@ -102,8 +105,8 @@ test('refuse atomiquement une prolongation qui chevauche une autre location', as
   assert.equal(database.released, 1);
 });
 
-test('crée une prolongation libre et met à jour la location dans la transaction', async () => {
-  const database = fakeDatabase();
+test('crée une prolongation avec des colonnes DATE PostgreSQL reçues comme Date', async () => {
+  const database = fakeDatabase({ dateColumnsAsDate: true });
   pool.connect = database.connect;
   const end = new Date(`${businessToday()}T00:00:00.000Z`);
   end.setUTCDate(end.getUTCDate() + 3);

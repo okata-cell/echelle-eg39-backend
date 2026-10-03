@@ -27,6 +27,21 @@ function isDateOnly(value) {
     parsed.toISOString().slice(0, 10) === value;
 }
 
+// pg parses PostgreSQL DATE columns into local-time JavaScript Date objects.
+// Keep their calendar day instead of stringifying them ("Thu Oct 08 ...").
+function toDateOnly(value) {
+  if (value instanceof Date) {
+    if (!Number.isFinite(value.getTime())) return null;
+    const year = String(value.getFullYear()).padStart(4, '0');
+    const month = String(value.getMonth() + 1).padStart(2, '0');
+    const day = String(value.getDate()).padStart(2, '0');
+    const dateOnly = `${year}-${month}-${day}`;
+    return isDateOnly(dateOnly) ? dateOnly : null;
+  }
+
+  return isDateOnly(value) ? value : null;
+}
+
 function businessToday(now = new Date()) {
   const values = Object.fromEntries(
     new Intl.DateTimeFormat('en-CA', {
@@ -99,4 +114,5 @@ module.exports = {
   findBlockingLocation,
   inclusiveRentalDays,
   isDateOnly,
+  toDateOnly,
 };

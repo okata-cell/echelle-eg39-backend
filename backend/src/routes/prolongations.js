@@ -8,6 +8,7 @@ const {
   findBlockingLocation,
   inclusiveRentalDays,
   isDateOnly,
+  toDateOnly,
 } = require('../utils/rental_dates');
 
 router.get('/', authMiddleware, async (req, res) => {
@@ -92,8 +93,14 @@ router.post(
         return res.status(409).json({ error: 'L’appareil lié à cette location est introuvable.' });
       }
 
-      const oldEnd = String(location.date_fin).slice(0, 10);
+      const oldEnd = toDateOnly(location.date_fin);
+      const rentalStart = toDateOnly(location.date_debut);
       const newEnd = req.body.nouvelleDateFin;
+      if (!oldEnd || !rentalStart) {
+        await client.query('ROLLBACK');
+        transactionOpen = false;
+        return res.status(409).json({ error: 'Les dates de cette location sont invalides.' });
+      }
       const extraDays = inclusiveRentalDays(oldEnd, newEnd) - 1;
       if (extraDays <= 0 || extraDays > 30) {
         await client.query('ROLLBACK');
@@ -103,7 +110,7 @@ router.post(
 
       const conflict = await findBlockingLocation(client, {
         appareilId: location.appareil_id,
-        dateDebut: String(location.date_debut).slice(0, 10),
+        dateDebut: rentalStart,
         dateFin: newEnd,
         today: businessToday(),
         excludeLocationId: location.id,
