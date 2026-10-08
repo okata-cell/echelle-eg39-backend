@@ -96,6 +96,10 @@ String adminStatusLabel(Object? value) {
       return 'En attente';
     case 'approuvee':
       return 'Approuvée';
+    case 'acceptee':
+      return 'Devis accepté';
+    case 'refusee':
+      return 'Devis refusé';
     case 'rejetee':
       return 'Rejetée';
     case 'annulee':
@@ -119,8 +123,10 @@ Color adminStatusColor(Object? value) {
     case 'en_attente':
       return AdminPalette.safetyAmber;
     case 'approuvee':
+    case 'acceptee':
       return AdminPalette.approvalGreen;
     case 'rejetee':
+    case 'refusee':
     case 'annulee':
       return AdminPalette.destructiveRed;
     case 'en_cours':

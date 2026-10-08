@@ -46,6 +46,12 @@ function devisRow(overrides = {}) {
     email: 'afi@example.com',
     statut: 'en_attente',
     commentaire_admin: null,
+    montant: null,
+    date_validite: null,
+    document_url: null,
+    offre_emise_at: null,
+    client_repondu_at: null,
+    offre_expiree: false,
     created_at: '2026-09-25T10:00:00.000Z',
     updated_at: '2026-09-25T10:00:00.000Z',
     client_email: 'afi@example.com',
@@ -53,6 +59,12 @@ function devisRow(overrides = {}) {
     client_last_name: 'Koffi',
     ...overrides,
   };
+}
+
+function dateInDays(days) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + days);
+  return date.toISOString().slice(0, 10);
 }
 
 function postDevis(body, token) {
@@ -75,21 +87,16 @@ const corpsValide = {
   email: 'afi@example.com',
 };
 
-test('un devis anonyme reste accepté mais n’est rattaché à aucun compte', async () => {
-  let capturedParams = null;
-  pool.query = async (query, params) => {
-    assert.match(query, /INSERT INTO devis/);
-    capturedParams = params;
-    return { rows: [devisRow({ user_id: null })] };
+test('une demande sans authentification est refusée sans accès à la base', async () => {
+  let queried = false;
+  pool.query = async () => {
+    queried = true;
+    throw new Error('aucune écriture ne doit avoir lieu');
   };
 
   const response = await postDevis(corpsValide);
-  const body = await response.json();
-
-  assert.equal(response.status, 201);
-  assert.equal(body.lieAuCompte, false);
-  assert.equal(capturedParams[0], null);
-  assert.equal(capturedParams[5], '+22890000000', 'le téléphone doit être normalisé');
+  assert.equal(response.status, 401);
+  assert.equal(queried, false);
 });
 
 test('un devis soumis avec un jeton est rattaché au compte connecté', async () => {
@@ -109,14 +116,22 @@ test('un devis soumis avec un jeton est rattaché au compte connecté', async ()
   assert.equal(body.devis.clientEmail, 'afi@example.com');
 });
 
-test('un jeton invalide n’empêche pas la création du devis', async () => {
-  pool.query = async () => ({ rows: [devisRow({ user_id: null })] });
+test('un jeton invalide ne permet pas de soumettre une demande', async () => {
+  pool.query = async () => {
+    throw new Error('aucune écriture ne doit avoir lieu');
+  };
 
   const response = await postDevis(corpsValide, 'jeton-perime');
-  const body = await response.json();
+  assert.equal(response.status, 401);
+});
 
-  assert.equal(response.status, 201);
-  assert.equal(body.lieAuCompte, false);
+test('un administrateur ne peut pas soumettre une demande client', async () => {
+  pool.query = async () => {
+    throw new Error('aucune écriture ne doit avoir lieu');
+  };
+
+  const response = await postDevis(corpsValide, tokenFor('admin'));
+  assert.equal(response.status, 403);
 });
 
 test('la liste admin reste réservée aux administrateurs', async () => {
@@ -146,6 +161,173 @@ test('le suivi client ne renvoie que les devis du compte connecté', async () =>
   assert.equal(capturedParams[0], 42);
   assert.equal(body.devis.length, 1);
   assert.equal(body.devis[0].clientNom, 'Afi Koffi');
+});
+
+test('l’admin émet un devis avec montant, validité et document HTTPS', async () => {
+  let offerParams;
+  pool.query = async (query, params) => {
+    if (/UPDATE devis/.test(query)) {
+      assert.match(query, /statut = 'envoye'/);
+      assert.match(query, /user_id IS NOT NULL/);
+      offerParams = params;
+      return { rows: [{ id: 5 }] };
+    }
+    if (/SELECT d\.\*/.test(query)) {
+      return {
+        rows: [devisRow({
+          statut: 'envoye',
+          montant: '125000',
+          date_validite: dateInDays(7),
+          document_url: 'https://files.example.com/devis-5.pdf',
+          offre_emise_at: '2026-10-08T10:00:00.000Z',
+        })],
+      };
+    }
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  const response = await fetch(`${baseUrl}/5/offre`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${tokenFor('admin')}`,
+    },
+    body: JSON.stringify({
+      montant: 125000,
+      dateValidite: dateInDays(7),
+      documentUrl: 'https://files.example.com/devis-5.pdf',
+    }),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(offerParams[0], 125000);
+  assert.equal(offerParams[2], 'https://files.example.com/devis-5.pdf');
+  assert.equal(body.devis.statut, 'envoye');
+  assert.equal(body.devis.montant, '125000');
+  assert.equal(body.devis.documentUrl, 'https://files.example.com/devis-5.pdf');
+});
+
+test('l’émission refuse une date de validité passée', async () => {
+  let queried = false;
+  pool.query = async () => {
+    queried = true;
+    return { rows: [] };
+  };
+
+  const response = await fetch(`${baseUrl}/5/offre`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${tokenFor('admin')}`,
+    },
+    body: JSON.stringify({
+      montant: 50000,
+      dateValidite: '2000-01-01',
+      documentUrl: 'https://files.example.com/devis.pdf',
+    }),
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(queried, false);
+});
+
+test('l’émission refuse les liens PDF non HTTPS et les montants invalides', async () => {
+  let queried = false;
+  pool.query = async () => {
+    queried = true;
+    return { rows: [] };
+  };
+
+  const response = await fetch(`${baseUrl}/5/offre`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${tokenFor('admin')}`,
+    },
+    body: JSON.stringify({
+      montant: 0,
+      dateValidite: dateInDays(7),
+      documentUrl: 'http://files.example.com/devis.pdf',
+    }),
+  });
+
+  assert.equal(response.status, 400);
+  assert.equal(queried, false);
+});
+
+test('seul le propriétaire connecté peut accepter une offre active', async () => {
+  let updateParams;
+  pool.query = async (query, params) => {
+    if (/UPDATE devis/.test(query)) {
+      assert.match(query, /user_id = \$3/);
+      assert.match(query, /date_validite >=/);
+      updateParams = params;
+      return { rows: [{ id: 5 }] };
+    }
+    if (/SELECT d\.\*/.test(query)) {
+      return { rows: [devisRow({ statut: 'acceptee', client_repondu_at: '2026-10-08T10:00:00.000Z' })] };
+    }
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  const response = await fetch(`${baseUrl}/5/reponse`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${tokenFor('client', 42)}`,
+    },
+    body: JSON.stringify({ decision: 'acceptee' }),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.deepEqual(updateParams, ['acceptee', '5', 42]);
+  assert.equal(body.devis.statut, 'acceptee');
+});
+
+test('un client ne peut pas répondre au devis d’un autre compte', async () => {
+  pool.query = async (query) => {
+    if (/UPDATE devis/.test(query)) return { rows: [] };
+    if (/SELECT user_id, statut, date_validite/.test(query)) {
+      return { rows: [{ user_id: 84, statut: 'envoye', date_validite: dateInDays(7) }] };
+    }
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  const response = await fetch(`${baseUrl}/5/reponse`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${tokenFor('client', 42)}`,
+    },
+    body: JSON.stringify({ decision: 'acceptee' }),
+  });
+
+  assert.equal(response.status, 404);
+});
+
+test('une offre expirée ne peut plus être acceptée ou refusée', async () => {
+  pool.query = async (query) => {
+    if (/UPDATE devis/.test(query)) return { rows: [] };
+    if (/SELECT user_id, statut, date_validite/.test(query)) {
+      return { rows: [{ user_id: 42, statut: 'envoye', date_validite: '2000-01-01' }] };
+    }
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  const response = await fetch(`${baseUrl}/5/reponse`, {
+    method: 'PATCH',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${tokenFor('client', 42)}`,
+    },
+    body: JSON.stringify({ decision: 'refusee' }),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.match(body.error, /expirée/);
 });
 
 test('la liste admin accepte plusieurs statuts et rejette un statut inconnu', async () => {
@@ -183,6 +365,27 @@ test('un devis en attente peut être approuvé', async () => {
 
   assert.equal(response.status, 200);
   assert.equal(body.devis.statut, 'approuvee');
+});
+
+test('l’admin ne peut pas simuler l’émission ou la décision du client par le suivi', async () => {
+  let queried = false;
+  pool.query = async () => {
+    queried = true;
+    throw new Error('aucune mutation ne doit avoir lieu');
+  };
+
+  for (const statut of ['envoye', 'acceptee', 'refusee']) {
+    const response = await fetch(`${baseUrl}/5/statut`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${tokenFor('admin')}`,
+      },
+      body: JSON.stringify({ statut }),
+    });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(queried, false);
 });
 
 test('un devis rejeté est définitif : la route de suivi refuse de le relancer', async () => {

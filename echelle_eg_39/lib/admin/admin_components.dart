@@ -935,11 +935,13 @@ class AdminDecisionBar extends StatelessWidget {
     required this.onApprove,
     required this.onReject,
     this.isBusy = false,
+    this.approveLabel = 'Approuver',
   });
 
   final VoidCallback onApprove;
   final VoidCallback onReject;
   final bool isBusy;
+  final String approveLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -958,7 +960,7 @@ class AdminDecisionBar extends StatelessWidget {
           child: ElevatedButton.icon(
             onPressed: onApprove,
             icon: const Icon(Icons.check, size: 18),
-            label: const Text('Approuver'),
+            label: Text(approveLabel),
             style: ElevatedButton.styleFrom(
               backgroundColor: AdminPalette.approvalGreen,
               foregroundColor: Colors.white,

@@ -227,6 +227,11 @@ async function migrate() {
     await client.query(
       'ALTER TABLE devis ADD COLUMN IF NOT EXISTS user_id INTEGER REFERENCES users(id) ON DELETE SET NULL',
     );
+    await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS montant BIGINT');
+    await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS date_validite DATE');
+    await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS document_url TEXT');
+    await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS offre_emise_at TIMESTAMP');
+    await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS client_repondu_at TIMESTAMP');
     // Rattachement rétroactif des devis anonymes à un compte existant (même email).
     await client.query(`
       UPDATE devis d
@@ -242,7 +247,12 @@ async function migrate() {
     );
     await client.query(`
       ALTER TABLE devis ADD CONSTRAINT devis_statut_check
-      CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'envoye', 'termine'))
+      CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'envoye', 'acceptee', 'refusee', 'termine'))
+    `);
+    await client.query('ALTER TABLE devis DROP CONSTRAINT IF EXISTS devis_montant_check');
+    await client.query(`
+      ALTER TABLE devis ADD CONSTRAINT devis_montant_check
+      CHECK (montant IS NULL OR montant > 0)
     `);
 
     await client.query('CREATE INDEX IF NOT EXISTS idx_devis_statut ON devis(statut)');

@@ -245,9 +245,19 @@ class ApiService {
 
     if (response.statusCode == 200) {
       return jsonDecode(response.body);
-    } else {
-      throw Exception(jsonDecode(response.body)['error']);
     }
+
+    final decoded = jsonDecode(response.body);
+    final message = decoded is Map<String, dynamic>
+        ? decoded['error']?.toString() ?? 'Impossible de vérifier la session.'
+        : 'Impossible de vérifier la session.';
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: message,
+      statusCode: response.statusCode,
+    );
   }
 
   /// Récupérer les comptes clients et leurs coordonnées (admin uniquement).
@@ -1164,9 +1174,7 @@ class ApiService {
     }
   }
 
-  /// Soumettre une demande de devis.
-  /// La route est publique : le jeton est envoyé s'il existe, afin que le devis
-  /// soit rattaché au compte connecté. Sans jeton, la demande reste anonyme.
+  /// Soumettre une demande de devis rattachée au compte client connecté.
   static Future<Map<String, dynamic>> createDevis({
     required String serviceId,
     required String serviceName,
@@ -1193,15 +1201,20 @@ class ApiService {
         payload['email'] = normalizedEmail;
       }
 
-      final headers = <String, String>{'Content-Type': 'application/json'};
-      final token = await getToken();
-      if (token != null) {
-        headers['Authorization'] = 'Bearer $token';
+      final token = await ensureAuthenticated();
+      if (token == null) {
+        throw const ApiException(
+          type: ApiErrorType.request,
+          message: 'Connectez-vous pour envoyer une demande de devis.',
+        );
       }
 
       final response = await http.post(
         Uri.parse('$baseUrl/devis'),
-        headers: headers,
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': 'Bearer $token',
+        },
         body: jsonEncode(payload),
       );
 
@@ -1210,10 +1223,7 @@ class ApiService {
 
       if (response.statusCode == 201) {
         final data = jsonDecode(response.body);
-        print(
-          '✅ Devis créé: ${data['devis']?['id']} '
-          '(lié au compte: ${data['lieAuCompte'] == true})',
-        );
+        print('✅ Demande de devis créée: ${data['devis']?['id']}');
         return data;
       } else {
         final errorBody = jsonDecode(response.body);
@@ -1231,7 +1241,93 @@ class ApiService {
     }
   }
 
-  /// Approuver une demande de devis (admin)
+  /// Émettre ou remplacer une offre de devis (admin).
+  static Future<Map<String, dynamic>> issueDevisOffer({
+    required int devisId,
+    required int montant,
+    required String dateValidite,
+    required String documentUrl,
+    String? commentaireAdmin,
+  }) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session administrateur requise.',
+      );
+    }
+
+    final response = await http.patch(
+      Uri.parse('$baseUrl/devis/$devisId/offre'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({
+        'montant': montant,
+        'dateValidite': dateValidite,
+        'documentUrl': documentUrl,
+        if (commentaireAdmin != null && commentaireAdmin.trim().isNotEmpty)
+          'commentaireAdmin': commentaireAdmin.trim(),
+      }),
+    );
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    final message = decoded is Map<String, dynamic>
+        ? decoded['error']?.toString() ?? 'Impossible d’envoyer cette offre.'
+        : 'Impossible d’envoyer cette offre.';
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: message,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Accepter ou refuser une offre reçue (client propriétaire uniquement).
+  static Future<Map<String, dynamic>> respondToDevis(
+    int devisId,
+    String decision,
+  ) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session client requise.',
+      );
+    }
+
+    final response = await http.patch(
+      Uri.parse('$baseUrl/devis/$devisId/reponse'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'decision': decision}),
+    );
+
+    final decoded = jsonDecode(response.body);
+    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
+      return decoded;
+    }
+    final message = decoded is Map<String, dynamic>
+        ? decoded['error']?.toString() ??
+              'Impossible de répondre à cette offre.'
+        : 'Impossible de répondre à cette offre.';
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: message,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Approuver une demande de devis (ancienne API, conservée pour compatibilité).
   static Future<Map<String, dynamic>> approveDevis(int devisId) async {
     final token = await ensureAuthenticated();
     if (token == null)

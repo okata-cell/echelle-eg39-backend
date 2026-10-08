@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'api_service.dart';
 import 'client_mes_devis.dart';
+import 'login.page.dart';
 
 class Service {
   final String id;
@@ -706,7 +707,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
                 SizedBox(
                   width: double.infinity,
                   child: ElevatedButton(
-                    onPressed: () => _showQuoteDialog(service),
+                    onPressed: () => _startQuoteRequest(service),
                     style: ElevatedButton.styleFrom(
                       backgroundColor: const Color(0xFF2563EB),
                       foregroundColor: Colors.white,
@@ -759,6 +760,66 @@ class _ServiceScreenState extends State<ServiceScreen> {
         return const Color(0xFF0D9488);
       default:
         return const Color(0xFF6B7280);
+    }
+  }
+
+  Future<void> _promptQuoteSignIn() async {
+    final shouldSignIn = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Connexion requise'),
+        content: const Text(
+          'Connectez-vous pour envoyer une demande de devis et la retrouver dans « Mes devis ».',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Plus tard'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Se connecter'),
+          ),
+        ],
+      ),
+    );
+    if (!mounted || shouldSignIn != true) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+  }
+
+  Future<void> _startQuoteRequest(Service service) async {
+    final token = await ApiService.ensureAuthenticated();
+    if (!mounted) return;
+
+    if (token == null) {
+      await _promptQuoteSignIn();
+      return;
+    }
+
+    try {
+      final profile = await ApiService.getMe();
+      if (!mounted) return;
+      if (profile['role'] != 'client') {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Un compte client est requis pour demander un devis.'),
+          ),
+        );
+        return;
+      }
+      _showQuoteDialog(service);
+    } catch (error) {
+      if (!mounted) return;
+      if (error is ApiException && error.statusCode == 401) {
+        await ApiService.removeToken();
+        if (mounted) await _promptQuoteSignIn();
+        return;
+      }
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Vérification de la session impossible : $error')),
+      );
     }
   }
 

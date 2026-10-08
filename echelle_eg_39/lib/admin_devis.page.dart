@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
@@ -56,6 +57,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       switch (_filterStatut) {
         case 'suivi':
           return status == 'en_cours' || status == 'envoye' || status == 'termine';
+        case 'reponses':
+          return status == 'acceptee' || status == 'refusee';
         default:
           return status == _filterStatut;
       }
@@ -70,28 +73,198 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
         return status == 'en_cours' || status == 'envoye' || status == 'termine';
       }).length;
     }
+    if (filter == 'reponses') {
+      return _devis.where((devis) {
+        final status = adminStatusKey(devis['statut']);
+        return status == 'acceptee' || status == 'refusee';
+      }).length;
+    }
     return _devis.where((devis) => adminStatusKey(devis['statut']) == filter).length;
   }
 
-  Future<void> _approveDevis(int devisId) async {
-    if (!_startMutation(devisId)) return;
+  Future<void> _issueDevis(int devisId) async {
+    final formKey = GlobalKey<FormState>();
+    final amountController = TextEditingController();
+    final validUntilController = TextEditingController();
+    final documentController = TextEditingController();
+    final noteController = TextEditingController();
+    DateTime? validUntil;
+    var isSaving = false;
+    final messenger = ScaffoldMessenger.of(context);
 
     try {
-      await ApiService.approveDevis(devisId);
-      if (mounted) {
-        showAdminMessage(
-          context,
-          'Devis #$devisId approuvé.',
-          backgroundColor: AdminPalette.approvalGreen,
-        );
-        await _loadDevis();
-      }
-    } catch (error) {
-      if (mounted) {
-        showAdminMessage(context, 'Approbation impossible : $error', backgroundColor: AdminPalette.destructiveRed);
-      }
+      await showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (dialogContext) => StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: Text('Émettre le devis #$devisId'),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: amountController,
+                      keyboardType: TextInputType.number,
+                      decoration: const InputDecoration(
+                        labelText: 'Montant (FCFA)',
+                        prefixIcon: Icon(Icons.payments_outlined),
+                      ),
+                      validator: (value) {
+                        final amount = int.tryParse(value?.trim() ?? '');
+                        return amount == null || amount <= 0
+                            ? 'Saisissez un montant entier supérieur à zéro.'
+                            : null;
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: validUntilController,
+                      readOnly: true,
+                      onTap: () async {
+                        final today = DateUtils.dateOnly(DateTime.now());
+                        final picked = await showDatePicker(
+                          context: dialogContext,
+                          initialDate: validUntil ?? today,
+                          firstDate: today,
+                          lastDate: DateTime(today.year + 5),
+                        );
+                        if (picked != null) {
+                          validUntil = picked;
+                          setDialogState(() {
+                            validUntilController.text =
+                                '${picked.year.toString().padLeft(4, '0')}-'
+                                '${picked.month.toString().padLeft(2, '0')}-'
+                                '${picked.day.toString().padLeft(2, '0')}';
+                          });
+                        }
+                      },
+                      decoration: const InputDecoration(
+                        labelText: 'Valable jusqu’au',
+                        prefixIcon: Icon(Icons.event_outlined),
+                      ),
+                      validator: (value) => value?.isNotEmpty == true
+                          ? null
+                          : 'Choisissez une date de validité.',
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: documentController,
+                      keyboardType: TextInputType.url,
+                      decoration: const InputDecoration(
+                        labelText: 'Lien HTTPS du document PDF',
+                        helperText: 'Collez un lien durable vers le PDF hébergé.',
+                        prefixIcon: Icon(Icons.picture_as_pdf_outlined),
+                      ),
+                      validator: (value) {
+                        final uri = Uri.tryParse(value?.trim() ?? '');
+                        return uri != null &&
+                                uri.scheme == 'https' &&
+                                uri.host.isNotEmpty &&
+                                uri.userInfo.isEmpty
+                            ? null
+                            : 'Saisissez une URL HTTPS valide.';
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: noteController,
+                      maxLines: 2,
+                      maxLength: 1000,
+                      decoration: const InputDecoration(
+                        labelText: 'Message au client (facultatif)',
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              ElevatedButton.icon(
+                onPressed: isSaving
+                    ? null
+                    : () async {
+                        if (!formKey.currentState!.validate()) return;
+                        if (!_startMutation(devisId)) return;
+                        setDialogState(() => isSaving = true);
+                        try {
+                          await ApiService.issueDevisOffer(
+                            devisId: devisId,
+                            montant: int.parse(amountController.text.trim()),
+                            dateValidite: validUntilController.text,
+                            documentUrl: documentController.text.trim(),
+                            commentaireAdmin: noteController.text,
+                          );
+                          if (!mounted || !dialogContext.mounted) return;
+                          Navigator.pop(dialogContext);
+                          messenger
+                            ..hideCurrentSnackBar()
+                            ..showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  'Offre envoyée au client pour le devis #$devisId.',
+                                ),
+                                backgroundColor: AdminPalette.approvalGreen,
+                              ),
+                            );
+                          await _loadDevis();
+                        } catch (error) {
+                          if (mounted) {
+                            messenger
+                              ..hideCurrentSnackBar()
+                              ..showSnackBar(
+                                SnackBar(
+                                  content: Text('Émission impossible : $error'),
+                                  backgroundColor: AdminPalette.destructiveRed,
+                                ),
+                              );
+                          }
+                        } finally {
+                          _finishMutation(devisId);
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSaving = false);
+                          }
+                        }
+                      },
+                icon: isSaving
+                    ? const SizedBox(
+                        width: 16,
+                        height: 16,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Icon(Icons.send_outlined),
+                label: const Text('Envoyer l’offre'),
+              ),
+            ],
+          ),
+        ),
+      );
     } finally {
-      _finishMutation(devisId);
+      amountController.dispose();
+      validUntilController.dispose();
+      documentController.dispose();
+      noteController.dispose();
+    }
+  }
+
+  Future<void> _openDocument(String value) async {
+    final uri = Uri.tryParse(value);
+    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
+      showAdminMessage(
+        context,
+        'Le lien du PDF est invalide.',
+        backgroundColor: AdminPalette.destructiveRed,
+      );
+      return;
+    }
+    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
+      showAdminMessage(context, 'Impossible d’ouvrir le PDF.');
     }
   }
 
@@ -214,6 +387,9 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     final createdAt = formatAdminDate(devis['createdAt']);
     final adminNote = _displayValue(devis['commentaireAdmin']);
     final description = _displayValue(devis['description']);
+    final amount = devis['montant'];
+    final validity = formatAdminDate(devis['dateValidite']);
+    final documentUrl = _displayValue(devis['documentUrl']);
     final linkedAccount = _buildLinkedAccount(devis);
 
     return Column(
@@ -229,6 +405,33 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
             if (linkedAccount != null) _buildMeta(linkedAccount),
           ],
         ),
+        if (amount != null || validity.isNotEmpty || documentUrl.isNotEmpty) ...[
+          const SizedBox(height: AdminSpacing.md),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AdminSpacing.md),
+            decoration: BoxDecoration(
+              color: AdminPalette.mutedSurface,
+              borderRadius: BorderRadius.circular(AdminRadii.field),
+            ),
+            child: Wrap(
+              spacing: AdminSpacing.md,
+              runSpacing: AdminSpacing.sm,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (amount != null)
+                  _buildMeta('Montant : ${formatAdminAmount(amount)}'),
+                if (validity.isNotEmpty) _buildMeta('Valable jusqu’au $validity'),
+                if (documentUrl.isNotEmpty)
+                  OutlinedButton.icon(
+                    onPressed: () => _openDocument(documentUrl),
+                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                    label: const Text('Ouvrir le PDF'),
+                  ),
+              ],
+            ),
+          ),
+        ],
         if (description.isNotEmpty) ...[
           const SizedBox(height: AdminSpacing.md),
           Container(
@@ -303,7 +506,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     if (isPending) {
       return AdminDecisionBar(
         isBusy: isBusy,
-        onApprove: () => _approveDevis(devisId),
+        approveLabel: 'Émettre un devis',
+        onApprove: () => _issueDevis(devisId),
         onReject: () => _rejectDevis(devisId),
       );
     }
@@ -311,13 +515,19 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (status != 'rejetee')
+        if (status == 'envoye' && devis['clientReponduAt'] == null)
+          IconButton(
+            onPressed: isBusy ? null : () => _issueDevis(devisId),
+            tooltip: 'Modifier l’offre',
+            icon: const Icon(Icons.edit_outlined),
+            color: AdminPalette.blueprintBlue,
+          ),
+        if (status != 'rejetee' && status != 'refusee' && status != 'envoye')
           PopupMenuButton<String>(
             tooltip: 'Modifier le suivi',
             onSelected: (value) => _updateStatut(devisId, value),
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'en_cours', child: Text('En cours')),
-              PopupMenuItem(value: 'envoye', child: Text('Envoyé')),
               PopupMenuItem(value: 'termine', child: Text('Terminé')),
             ],
             child: const Icon(Icons.more_horiz, color: AdminPalette.secondaryText),
@@ -460,6 +670,11 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
                   value: 'suivi',
                   label: 'Suivi',
                   count: _countFor('suivi'),
+                ),
+                AdminFilterOption(
+                  value: 'reponses',
+                  label: 'Réponses',
+                  count: _countFor('reponses'),
                 ),
                 AdminFilterOption(
                   value: 'tous',
