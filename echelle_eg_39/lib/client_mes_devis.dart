@@ -20,6 +20,7 @@ class ClientMesDevisPage extends StatefulWidget {
 class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
   List<Map<String, dynamic>> _devis = [];
   final Set<String> _busyDevisIds = <String>{};
+  final Set<String> _openingDocumentIds = <String>{};
   bool _isLoading = true;
   String? _error;
 
@@ -240,7 +241,9 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                       fontSize: 9,
                       height: 1.2,
                       fontWeight: atteinte ? FontWeight.w700 : FontWeight.w400,
-                      color: atteinte ? const Color(0xFF111827) : const Color(0xFF9CA3AF),
+                      color: atteinte
+                          ? const Color(0xFF111827)
+                          : const Color(0xFF9CA3AF),
                     ),
                   ),
                 ],
@@ -249,8 +252,14 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                 Expanded(
                   child: Container(
                     height: 2,
-                    margin: const EdgeInsets.only(bottom: 16, left: 2, right: 2),
-                    color: index < indexActuel ? color : const Color(0xFFE5E7EB),
+                    margin: const EdgeInsets.only(
+                      bottom: 16,
+                      left: 2,
+                      right: 2,
+                    ),
+                    color: index < indexActuel
+                        ? color
+                        : const Color(0xFFE5E7EB),
                   ),
                 ),
             ],
@@ -277,24 +286,36 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     return DateUtils.dateOnly(date).isBefore(today);
   }
 
-  Future<void> _openDocument(String value) async {
-    final uri = Uri.tryParse(value);
-    if (uri == null ||
-        uri.scheme != 'https' ||
-        uri.host.isEmpty ||
-        uri.userInfo.isNotEmpty) {
-      if (mounted) {
+  Future<void> _openDocument(int devisId) async {
+    final key = '$devisId';
+    if (!mounted || _openingDocumentIds.contains(key)) return;
+    setState(() => _openingDocumentIds.add(key));
+
+    try {
+      final document = await ApiService.getDevisDocumentUrl(devisId);
+      final uri = Uri.tryParse(document['url'] ?? '');
+      if (uri == null ||
+          uri.scheme != 'https' ||
+          uri.host.isEmpty ||
+          uri.userInfo.isNotEmpty) {
+        throw const FormatException('URL HTTPS invalide');
+      }
+      if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
+          mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Le lien du PDF n’est pas valide.')),
+          const SnackBar(content: Text('Impossible d’ouvrir le document PDF.')),
         );
       }
-      return;
-    }
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
-        mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Impossible d’ouvrir le document PDF.')),
-      );
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document indisponible. Réessayez dans un instant.'),
+          ),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingDocumentIds.remove(key));
     }
   }
 
@@ -305,7 +326,9 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
         title: Text(
           decision == 'acceptee' ? 'Accepter ce devis ?' : 'Refuser ce devis ?',
         ),
-        content: const Text('Votre décision sera enregistrée dans le suivi de cette demande.'),
+        content: const Text(
+          'Votre décision sera enregistrée dans le suivi de cette demande.',
+        ),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(dialogContext, false),
@@ -328,7 +351,9 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(decision == 'acceptee' ? 'Devis accepté.' : 'Devis refusé.'),
+          content: Text(
+            decision == 'acceptee' ? 'Devis accepté.' : 'Devis refusé.',
+          ),
         ),
       );
       await _loadDevis();
@@ -353,12 +378,13 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
   ) {
     final amount = _formatMontant(devis['montant']);
     final validUntil = _formatDate(devis['dateValidite']);
-    final documentUrl = _valeur(devis['documentUrl']);
+    final hasDocument = devis['documentDisponible'] == true ||
+        _valeur(devis['documentUrl']).isNotEmpty;
     final isPending = statut == 'envoye';
     final isExpired = isPending && _offreExpiree(devis);
     final isBusy = _busyDevisIds.contains('$devisId');
 
-    if (amount.isEmpty && validUntil.isEmpty && documentUrl.isEmpty) {
+    if (amount.isEmpty && validUntil.isEmpty && !hasDocument) {
       return const SizedBox.shrink();
     }
 
@@ -390,11 +416,19 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
               style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
             ),
           ],
-          if (documentUrl.isNotEmpty) ...[
+          if (hasDocument) ...[
             const SizedBox(height: 8),
             OutlinedButton.icon(
-              onPressed: () => _openDocument(documentUrl),
-              icon: const Icon(Icons.picture_as_pdf_outlined),
+              onPressed: _openingDocumentIds.contains('$devisId')
+                  ? null
+                  : () => _openDocument(devisId),
+              icon: _openingDocumentIds.contains('$devisId')
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.picture_as_pdf_outlined),
               label: const Text('Ouvrir le PDF'),
             ),
           ],
@@ -402,7 +436,10 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
             const SizedBox(height: 8),
             const Text(
               'Offre expirée — contactez-nous pour demander une nouvelle offre.',
-              style: TextStyle(color: Color(0xFFB45309), fontWeight: FontWeight.w600),
+              style: TextStyle(
+                color: Color(0xFFB45309),
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ] else if (isPending) ...[
             const SizedBox(height: 8),
@@ -411,16 +448,24 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
               runSpacing: 8,
               children: [
                 ElevatedButton.icon(
-                  onPressed: isBusy ? null : () => _respondToOffer(devisId, 'acceptee'),
+                  onPressed: isBusy
+                      ? null
+                      : () => _respondToOffer(devisId, 'acceptee'),
                   icon: const Icon(Icons.check_circle_outline),
                   label: const Text('Accepter le devis'),
-                  style: ElevatedButton.styleFrom(backgroundColor: const Color(0xFF059669)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF059669),
+                  ),
                 ),
                 OutlinedButton.icon(
-                  onPressed: isBusy ? null : () => _respondToOffer(devisId, 'refusee'),
+                  onPressed: isBusy
+                      ? null
+                      : () => _respondToOffer(devisId, 'refusee'),
                   icon: const Icon(Icons.close),
                   label: const Text('Refuser le devis'),
-                  style: OutlinedButton.styleFrom(foregroundColor: const Color(0xFFDC2626)),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: const Color(0xFFDC2626),
+                  ),
                 ),
               ],
             ),
@@ -432,7 +477,10 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
 
   Widget _buildDevisCard(Map<String, dynamic> devis) {
     final id = _valeur(devis['id'], fallback: '?');
-    final serviceName = _valeur(devis['serviceName'], fallback: 'Service non renseigné');
+    final serviceName = _valeur(
+      devis['serviceName'],
+      fallback: 'Service non renseigné',
+    );
     final description = _valeur(devis['description']);
     final commentaire = _valeur(devis['commentaireAdmin']);
     final createdAt = _formatDate(devis['createdAt']);
@@ -466,7 +514,10 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                       const SizedBox(height: 2),
                       Text(
                         'Devis #$id${createdAt.isEmpty ? '' : ' · $createdAt'}',
-                        style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+                        style: const TextStyle(
+                          fontSize: 12,
+                          color: Color(0xFF6B7280),
+                        ),
                       ),
                     ],
                   ),
@@ -477,11 +528,7 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
             ),
             const SizedBox(height: 16),
             _buildProgression(statut),
-            _buildFormalOfferDetails(
-              devis,
-              int.tryParse(id) ?? 0,
-              statut,
-            ),
+            _buildFormalOfferDetails(devis, int.tryParse(id) ?? 0, statut),
             if (description.isNotEmpty) ...[
               const SizedBox(height: 16),
               Container(
@@ -493,7 +540,11 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                 ),
                 child: Text(
                   description,
-                  style: const TextStyle(fontSize: 13, color: Color(0xFF374151), height: 1.4),
+                  style: const TextStyle(
+                    fontSize: 13,
+                    color: Color(0xFF374151),
+                    height: 1.4,
+                  ),
                 ),
               ),
             ],
@@ -505,13 +556,17 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                 decoration: BoxDecoration(
                   color: _couleurStatut(statut).withValues(alpha: 0.08),
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: _couleurStatut(statut).withValues(alpha: 0.25)),
+                  border: Border.all(
+                    color: _couleurStatut(statut).withValues(alpha: 0.25),
+                  ),
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      statut == 'rejetee' ? 'Motif du refus' : 'Message de l\'administration',
+                      statut == 'rejetee'
+                          ? 'Motif du refus'
+                          : 'Message de l\'administration',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
@@ -521,7 +576,11 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                     const SizedBox(height: 4),
                     Text(
                       commentaire,
-                      style: const TextStyle(fontSize: 13, color: Color(0xFF111827), height: 1.35),
+                      style: const TextStyle(
+                        fontSize: 13,
+                        color: Color(0xFF111827),
+                        height: 1.35,
+                      ),
                     ),
                   ],
                 ),
@@ -547,7 +606,11 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.request_quote_outlined, size: 64, color: Colors.grey[400]),
+            Icon(
+              Icons.request_quote_outlined,
+              size: 64,
+              color: Colors.grey[400],
+            ),
             const SizedBox(height: 16),
             const Text(
               'Aucune demande de devis',
@@ -592,39 +655,46 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(24),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        const Icon(Icons.error_outline, size: 64, color: Color(0xFFDC2626)),
-                        const SizedBox(height: 16),
-                        Text(
-                          _error!,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(fontSize: 14, color: Color(0xFF374151)),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton(
-                          onPressed: _loadDevis,
-                          child: const Text('Réessayer'),
-                        ),
-                      ],
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline,
+                      size: 64,
+                      color: Color(0xFFDC2626),
                     ),
-                  ),
-                )
-              : _devis.isEmpty
-                  ? _buildEmptyState()
-                  : RefreshIndicator(
-                      onRefresh: _loadDevis,
-                      child: ListView.builder(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        padding: const EdgeInsets.all(16),
-                        itemCount: _devis.length,
-                        itemBuilder: (context, index) => _buildDevisCard(_devis[index]),
+                    const SizedBox(height: 16),
+                    Text(
+                      _error!,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF374151),
                       ),
                     ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: _loadDevis,
+                      child: const Text('Réessayer'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : _devis.isEmpty
+          ? _buildEmptyState()
+          : RefreshIndicator(
+              onRefresh: _loadDevis,
+              child: ListView.builder(
+                physics: const AlwaysScrollableScrollPhysics(),
+                padding: const EdgeInsets.all(16),
+                itemCount: _devis.length,
+                itemBuilder: (context, index) => _buildDevisCard(_devis[index]),
+              ),
+            ),
     );
   }
 }

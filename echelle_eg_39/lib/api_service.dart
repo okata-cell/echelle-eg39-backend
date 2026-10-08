@@ -1246,7 +1246,6 @@ class ApiService {
     required int devisId,
     required int montant,
     required String dateValidite,
-    required String documentUrl,
     String? commentaireAdmin,
   }) async {
     final token = await ensureAuthenticated();
@@ -1266,7 +1265,6 @@ class ApiService {
       body: jsonEncode({
         'montant': montant,
         'dateValidite': dateValidite,
-        'documentUrl': documentUrl,
         if (commentaireAdmin != null && commentaireAdmin.trim().isNotEmpty)
           'commentaireAdmin': commentaireAdmin.trim(),
       }),
@@ -1284,6 +1282,51 @@ class ApiService {
           ? ApiErrorType.serverUnavailable
           : ApiErrorType.request,
       message: message,
+      statusCode: response.statusCode,
+    );
+  }
+
+  /// Récupérer une URL temporaire après autorisation côté serveur.
+  static Future<Map<String, String?>> getDevisDocumentUrl(int devisId) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session requise pour ouvrir ce document.',
+      );
+    }
+
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/devis/$devisId/document-url'),
+          headers: {'Authorization': 'Bearer $token'},
+        )
+        .timeout(const Duration(seconds: 15));
+
+    Map<String, dynamic> decoded = <String, dynamic>{};
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic>) decoded = body;
+    } on FormatException {
+      // Une erreur générique est renvoyée pour les réponses non JSON.
+    }
+
+    if (response.statusCode == 200) {
+      final url = decoded['url'];
+      final uri = url is String ? Uri.tryParse(url) : null;
+      if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty && uri.userInfo.isEmpty) {
+        return {
+          'url': uri.toString(),
+          'expiresAt': decoded['expiresAt']?.toString(),
+        };
+      }
+    }
+
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: decoded['error']?.toString() ?? 'Document de devis indisponible.',
       statusCode: response.statusCode,
     );
   }

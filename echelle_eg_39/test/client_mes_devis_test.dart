@@ -11,6 +11,7 @@ Map<String, dynamic> devis({
   Object? montant,
   String? dateValidite,
   String? documentUrl,
+  bool documentDisponible = false,
   bool offreExpiree = false,
 }) {
   return {
@@ -29,6 +30,7 @@ Map<String, dynamic> devis({
     'montant': montant,
     'dateValidite': dateValidite,
     'documentUrl': documentUrl,
+    'documentDisponible': documentDisponible,
     'offreExpiree': offreExpiree,
     'createdAt': '2026-09-25T10:00:00.000Z',
     'updatedAt': '2026-09-25T10:00:00.000Z',
@@ -36,9 +38,7 @@ Map<String, dynamic> devis({
 }
 
 Widget pageAvec(DevisLoader loader) {
-  return MaterialApp(
-    home: ClientMesDevisPage(loadDevis: loader),
-  );
+  return MaterialApp(home: ClientMesDevisPage(loadDevis: loader));
 }
 
 void main() {
@@ -75,7 +75,9 @@ void main() {
   ) async {
     await tester.pumpWidget(
       pageAvec(
-        () async => [devis(statut: 'rejetee', commentaireAdmin: 'Budget insuffisant')],
+        () async => [
+          devis(statut: 'rejetee', commentaireAdmin: 'Budget insuffisant'),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -88,7 +90,12 @@ void main() {
   testWidgets('le message de suivi est affiché hors rejet', (tester) async {
     await tester.pumpWidget(
       pageAvec(
-        () async => [devis(statut: 'envoye', commentaireAdmin: 'Devis transmis par e-mail')],
+        () async => [
+          devis(
+            statut: 'envoye',
+            commentaireAdmin: 'Devis transmis par e-mail',
+          ),
+        ],
       ),
     );
     await tester.pumpAndSettle();
@@ -98,35 +105,42 @@ void main() {
     expect(find.text('Devis transmis par e-mail'), findsOneWidget);
   });
 
-  testWidgets('une offre affiche son prix, son échéance, son PDF et les décisions', (
-    tester,
-  ) async {
-    final validity = DateTime.now().add(const Duration(days: 7));
-    final dateValidite = '${validity.year.toString().padLeft(4, '0')}-'
-        '${validity.month.toString().padLeft(2, '0')}-'
-        '${validity.day.toString().padLeft(2, '0')}';
+  testWidgets(
+    'une offre affiche son prix, son échéance, son PDF et les décisions',
+    (tester) async {
+      final validity = DateTime.now().add(const Duration(days: 7));
+      final dateValidite =
+          '${validity.year.toString().padLeft(4, '0')}-'
+          '${validity.month.toString().padLeft(2, '0')}-'
+          '${validity.day.toString().padLeft(2, '0')}';
 
-    await tester.pumpWidget(
-      pageAvec(
-        () async => [
-          devis(
-            id: 59,
-            statut: 'envoye',
-            montant: '1250000',
-            dateValidite: dateValidite,
-            documentUrl: 'https://files.example.com/devis-59.pdf',
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
+      await tester.pumpWidget(
+        pageAvec(
+          () async => [
+            devis(
+              id: 59,
+              statut: 'envoye',
+              montant: '1250000',
+              dateValidite: dateValidite,
+              documentDisponible: true,
+            ),
+          ],
+        ),
+      );
+      await tester.pumpAndSettle();
 
-    expect(find.text('1 250 000 FCFA'), findsOneWidget);
-    expect(find.text('Valable jusqu’au ${dateValidite.split('-').reversed.join('/')}'), findsOneWidget);
-    expect(find.text('Ouvrir le PDF'), findsOneWidget);
-    expect(find.text('Accepter le devis'), findsOneWidget);
-    expect(find.text('Refuser le devis'), findsOneWidget);
-  });
+      expect(find.text('1 250 000 FCFA'), findsOneWidget);
+      expect(
+        find.text(
+          'Valable jusqu’au ${dateValidite.split('-').reversed.join('/')}',
+        ),
+        findsOneWidget,
+      );
+      expect(find.text('Ouvrir le PDF'), findsOneWidget);
+      expect(find.text('Accepter le devis'), findsOneWidget);
+      expect(find.text('Refuser le devis'), findsOneWidget);
+    },
+  );
 
   testWidgets('une offre expirée ne propose plus de décision', (tester) async {
     await tester.pumpWidget(
@@ -145,12 +159,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Offre expirée — contactez-nous pour demander une nouvelle offre.'), findsOneWidget);
+    expect(
+      find.text(
+        'Offre expirée — contactez-nous pour demander une nouvelle offre.',
+      ),
+      findsOneWidget,
+    );
     expect(find.text('Accepter le devis'), findsNothing);
     expect(find.text('Refuser le devis'), findsNothing);
   });
 
-  testWidgets('un compte sans devis invite à créer une demande', (tester) async {
+  testWidgets('un compte sans devis invite à créer une demande', (
+    tester,
+  ) async {
     await tester.pumpWidget(pageAvec(() async => []));
     await tester.pumpAndSettle();
 

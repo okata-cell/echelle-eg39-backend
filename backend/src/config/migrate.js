@@ -230,6 +230,7 @@ async function migrate() {
     await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS montant BIGINT');
     await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS date_validite DATE');
     await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS document_url TEXT');
+    await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS document_storage_key TEXT');
     await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS offre_emise_at TIMESTAMP');
     await client.query('ALTER TABLE devis ADD COLUMN IF NOT EXISTS client_repondu_at TIMESTAMP');
     // Rattachement rétroactif des devis anonymes à un compte existant (même email).

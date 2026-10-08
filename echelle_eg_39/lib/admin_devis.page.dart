@@ -15,6 +15,7 @@ class AdminDevisPage extends StatefulWidget {
 class _AdminDevisPageState extends State<AdminDevisPage> {
   List<Map<String, dynamic>> _devis = [];
   final Set<int> _busyDevisIds = <int>{};
+  final Set<int> _openingDocumentIds = <int>{};
   bool _isLoading = true;
   String? _errorMessage;
   String _filterStatut = 'en_attente';
@@ -86,7 +87,6 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     final formKey = GlobalKey<FormState>();
     final amountController = TextEditingController();
     final validUntilController = TextEditingController();
-    final documentController = TextEditingController();
     final noteController = TextEditingController();
     DateTime? validUntil;
     var isSaving = false;
@@ -150,23 +150,13 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
                           : 'Choisissez une date de validité.',
                     ),
                     const SizedBox(height: 12),
-                    TextFormField(
-                      controller: documentController,
-                      keyboardType: TextInputType.url,
-                      decoration: const InputDecoration(
-                        labelText: 'Lien HTTPS du document PDF',
-                        helperText: 'Collez un lien durable vers le PDF hébergé.',
-                        prefixIcon: Icon(Icons.picture_as_pdf_outlined),
+                    const ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Icon(Icons.picture_as_pdf_outlined),
+                      title: Text('PDF généré automatiquement'),
+                      subtitle: Text(
+                        'Le document sera créé et stocké de façon privée à l’envoi de l’offre.',
                       ),
-                      validator: (value) {
-                        final uri = Uri.tryParse(value?.trim() ?? '');
-                        return uri != null &&
-                                uri.scheme == 'https' &&
-                                uri.host.isNotEmpty &&
-                                uri.userInfo.isEmpty
-                            ? null
-                            : 'Saisissez une URL HTTPS valide.';
-                      },
                     ),
                     const SizedBox(height: 12),
                     TextFormField(
@@ -198,7 +188,6 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
                             devisId: devisId,
                             montant: int.parse(amountController.text.trim()),
                             dateValidite: validUntilController.text,
-                            documentUrl: documentController.text.trim(),
                             commentaireAdmin: noteController.text,
                           );
                           if (!mounted || !dialogContext.mounted) return;
@@ -248,23 +237,32 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     } finally {
       amountController.dispose();
       validUntilController.dispose();
-      documentController.dispose();
       noteController.dispose();
     }
   }
 
-  Future<void> _openDocument(String value) async {
-    final uri = Uri.tryParse(value);
-    if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
-      showAdminMessage(
-        context,
-        'Le lien du PDF est invalide.',
-        backgroundColor: AdminPalette.destructiveRed,
-      );
-      return;
-    }
-    if (!await launchUrl(uri, mode: LaunchMode.externalApplication) && mounted) {
-      showAdminMessage(context, 'Impossible d’ouvrir le PDF.');
+  Future<void> _openDocument(int devisId) async {
+    if (!mounted || _openingDocumentIds.contains(devisId)) return;
+    setState(() => _openingDocumentIds.add(devisId));
+
+    try {
+      final document = await ApiService.getDevisDocumentUrl(devisId);
+      final uri = Uri.tryParse(document['url'] ?? '');
+      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
+        throw const FormatException('URL HTTPS invalide');
+      }
+      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!opened && mounted) showAdminMessage(context, 'Impossible d’ouvrir le PDF.');
+    } catch (_) {
+      if (mounted) {
+        showAdminMessage(
+          context,
+          'Document indisponible. Réessayez dans un instant.',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _openingDocumentIds.remove(devisId));
     }
   }
 
@@ -381,7 +379,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     return text.isEmpty ? fallback : text;
   }
 
-  Widget _buildContactDetails(Map<String, dynamic> devis) {
+  Widget _buildContactDetails(Map<String, dynamic> devis, int devisId) {
     final email = _displayValue(devis['email']);
     final phone = _displayValue(devis['telephone']);
     final createdAt = formatAdminDate(devis['createdAt']);
@@ -389,7 +387,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     final description = _displayValue(devis['description']);
     final amount = devis['montant'];
     final validity = formatAdminDate(devis['dateValidite']);
-    final documentUrl = _displayValue(devis['documentUrl']);
+    final hasDocument = devis['documentDisponible'] == true ||
+        _displayValue(devis['documentUrl']).isNotEmpty;
     final linkedAccount = _buildLinkedAccount(devis);
 
     return Column(
@@ -405,7 +404,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
             if (linkedAccount != null) _buildMeta(linkedAccount),
           ],
         ),
-        if (amount != null || validity.isNotEmpty || documentUrl.isNotEmpty) ...[
+        if (amount != null || validity.isNotEmpty || hasDocument) ...[
           const SizedBox(height: AdminSpacing.md),
           Container(
             width: double.infinity,
@@ -422,10 +421,18 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
                 if (amount != null)
                   _buildMeta('Montant : ${formatAdminAmount(amount)}'),
                 if (validity.isNotEmpty) _buildMeta('Valable jusqu’au $validity'),
-                if (documentUrl.isNotEmpty)
+                if (hasDocument)
                   OutlinedButton.icon(
-                    onPressed: () => _openDocument(documentUrl),
-                    icon: const Icon(Icons.picture_as_pdf_outlined, size: 18),
+                    onPressed: _openingDocumentIds.contains(devisId)
+                        ? null
+                        : () => _openDocument(devisId),
+                    icon: _openingDocumentIds.contains(devisId)
+                        ? const SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.picture_as_pdf_outlined, size: 18),
                     label: const Text('Ouvrir le PDF'),
                   ),
               ],
@@ -557,7 +564,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       title: serviceName,
       requester: requesterLine,
       meta: 'Demande de service · ${adminStatusLabel(devis['statut'])}',
-      details: _buildContactDetails(devis),
+      details: _buildContactDetails(devis, id),
       footer: _buildFooter(devis, id),
     );
   }

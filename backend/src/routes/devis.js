@@ -1,9 +1,12 @@
 const express = require('express');
+const { randomUUID } = require('node:crypto');
 const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { normalizePhone } = require('../utils/identifiers');
+const devisPdfService = require('../services/devis_pdf_service');
+const devisDocumentStorage = require('../services/devis_document_storage');
 
 const DEVIS_STATUSES = [
   'en_attente',
@@ -69,13 +72,39 @@ function mapDevis(devis) {
     commentaireAdmin: devis.commentaire_admin,
     montant: devis.montant,
     dateValidite: toDateOnly(devis.date_validite),
-    documentUrl: devis.document_url,
+    documentUrl: devis.document_url || null,
+    documentDisponible: Boolean(devis.document_storage_key || devis.document_url),
+    documentUrlExpiresAt: null,
     offreEmiseAt: devis.offre_emise_at,
     clientReponduAt: devis.client_repondu_at,
     offreExpiree: devis.offre_expiree === true,
     createdAt: devis.created_at,
     updatedAt: devis.updated_at,
   };
+}
+
+async function mapAuthorizedDevis(devis) {
+  const mapped = mapDevis(devis);
+  if (!devis.document_storage_key) return mapped;
+
+  try {
+    const signed = await devisDocumentStorage.signPrivatePdfGet(
+      devis.document_storage_key,
+      devis.id,
+    );
+    mapped.documentUrl = signed.url;
+    mapped.documentUrlExpiresAt = signed.expiresAt;
+  } catch (_) {
+    // Une liste reste consultable si R2 est temporairement indisponible.
+    // L'action « Ouvrir le PDF » réessaiera via la route dédiée.
+    mapped.documentUrl = null;
+    mapped.documentUrlExpiresAt = null;
+  }
+  return mapped;
+}
+
+async function mapAuthorizedDevisList(rows) {
+  return Promise.all(rows.map(mapAuthorizedDevis));
 }
 
 function sendValidationErrors(req, res) {
@@ -258,7 +287,8 @@ router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
     query += ' ORDER BY d.created_at DESC';
 
     const result = await pool.query(query, params);
-    return res.json({ devis: result.rows.map(mapDevis) });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ devis: await mapAuthorizedDevisList(result.rows) });
   } catch (error) {
     console.error('Erreur liste devis:', error);
     return res.status(500).json({ error: 'Erreur serveur' });
@@ -272,14 +302,15 @@ router.get('/me', authMiddleware, async (req, res) => {
       `${SELECT_DEVIS} WHERE d.user_id = $1 ORDER BY d.created_at DESC`,
       [req.user.userId],
     );
-    return res.json({ devis: result.rows.map(mapDevis) });
+    res.set('Cache-Control', 'private, no-store');
+    return res.json({ devis: await mapAuthorizedDevisList(result.rows) });
   } catch (error) {
     console.error('Erreur liste devis du client:', error);
     return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Émettre une offre chiffrée avec un PDF hébergé sur un stockage durable externe.
+// Émettre une offre chiffrée et générer son PDF dans le stockage privé R2.
 router.patch('/:id/offre', authMiddleware, adminMiddleware, [
   param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
   body('montant')
@@ -289,62 +320,181 @@ router.patch('/:id/offre', authMiddleware, adminMiddleware, [
   body('dateValidite')
     .custom(isValidDateOnly)
     .withMessage('La date de validité doit être au format AAAA-MM-JJ'),
-  body('documentUrl')
-    .trim()
-    .isLength({ min: 1, max: 2048 })
-    .custom(isValidHttpsDocument)
-    .withMessage('Le document doit être accessible via une URL HTTPS valide'),
   body('commentaireAdmin').optional().trim().isLength({ max: 1000 }),
 ], async (req, res) => {
   if (sendValidationErrors(req, res)) return;
 
-  const { montant, dateValidite, documentUrl } = req.body;
+  const { montant, dateValidite } = req.body;
   if (dateValidite < businessToday()) {
     return res.status(400).json({ error: 'La date de validité ne peut pas être passée' });
   }
 
+  let uploadedKey = null;
+  let uploadCompleted = false;
   try {
+    const existingResult = await pool.query(
+      `${SELECT_DEVIS} WHERE d.id = $1`,
+      [req.params.id],
+    );
+    if (existingResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Demande de devis non trouvée' });
+    }
+    const devis = existingResult.rows[0];
+    if (devis.user_id == null) {
+      return res.status(409).json({ error: 'Cette demande n’est pas liée à un compte client' });
+    }
+    if (!(devis.statut === 'en_attente' || devis.statut === 'approuvee' ||
+        (devis.statut === 'envoye' && devis.client_repondu_at == null))) {
+      return res.status(409).json({ error: 'Cette demande ne peut plus recevoir d’offre' });
+    }
+
+    const pdfBuffer = await devisPdfService.createDevisPdfBuffer({
+      devis,
+      montant,
+      dateValidite,
+      commentaireAdmin: req.body.commentaireAdmin || '',
+      dateEmission: businessToday(),
+    });
+    uploadedKey = `devis/${devis.id}/offers/${randomUUID()}.pdf`;
+    await devisDocumentStorage.putPrivatePdf(uploadedKey, pdfBuffer, devis.id);
+    uploadCompleted = true;
+
     const updated = await pool.query(
       `UPDATE devis
        SET statut = 'envoye', montant = $1, date_validite = $2::date,
-           document_url = $3, offre_emise_at = CURRENT_TIMESTAMP,
-           client_repondu_at = NULL,
-           commentaire_admin = COALESCE(NULLIF($5, ''), commentaire_admin),
+           document_url = NULL, document_storage_key = $3,
+           offre_emise_at = CURRENT_TIMESTAMP, client_repondu_at = NULL,
+           commentaire_admin = COALESCE(NULLIF($4, ''), commentaire_admin),
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $4 AND user_id IS NOT NULL
+       WHERE id = $5 AND user_id IS NOT NULL
+         AND statut = $6
+         AND document_storage_key IS NOT DISTINCT FROM $7
          AND $2::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Lome')::date
-         AND (statut IN ('en_attente', 'approuvee')
-              OR (statut = 'envoye' AND client_repondu_at IS NULL))
-       RETURNING id`,
-      [montant, dateValidite, documentUrl, req.params.id, req.body.commentaireAdmin || ''],
+         AND ($6 IN ('en_attente', 'approuvee')
+              OR ($6 = 'envoye' AND client_repondu_at IS NULL))
+       RETURNING *`,
+      [
+        montant,
+        dateValidite,
+        uploadedKey,
+        req.body.commentaireAdmin || '',
+        req.params.id,
+        devis.statut,
+        devis.document_storage_key || null,
+      ],
     );
 
     if (updated.rows.length === 0) {
-      const existing = await pool.query(
+      await deleteObjectBestEffort(uploadedKey, devis.id);
+      uploadedKey = null;
+      const latest = await pool.query(
         'SELECT id, user_id, statut, client_repondu_at FROM devis WHERE id = $1',
         [req.params.id],
       );
-      if (existing.rows.length === 0) {
+      if (latest.rows.length === 0) {
         return res.status(404).json({ error: 'Demande de devis non trouvée' });
       }
-      const devis = existing.rows[0];
-      if (devis.user_id == null) {
+      if (latest.rows[0].user_id == null) {
         return res.status(409).json({ error: 'Cette demande n’est pas liée à un compte client' });
       }
-      if (devis.statut === 'envoye' && devis.client_repondu_at != null) {
+      if (latest.rows[0].statut === 'envoye' && latest.rows[0].client_repondu_at != null) {
         return res.status(409).json({ error: 'Le client a déjà répondu à cette offre' });
       }
       return res.status(409).json({ error: 'Cette demande ne peut plus recevoir d’offre' });
     }
 
-    const result = await pool.query(`${SELECT_DEVIS} WHERE d.id = $1`, [req.params.id]);
+    const previousStorageKey = devis.document_storage_key;
+    uploadedKey = null;
+    if (previousStorageKey) {
+      await deleteObjectBestEffort(previousStorageKey, devis.id);
+    }
+
+    const updatedDevis = {
+      ...devis,
+      ...updated.rows[0],
+      offre_expiree: false,
+    };
+    res.set('Cache-Control', 'private, no-store');
     return res.json({
       message: 'Offre de devis envoyée au client',
-      devis: mapDevis(result.rows[0]),
+      devis: await mapAuthorizedDevis(updatedDevis),
     });
   } catch (error) {
-    console.error('Erreur émission devis:', error);
-    return res.status(500).json({ error: 'Erreur serveur' });
+    if (uploadedKey && uploadCompleted && error.code !== 'R2_NOT_CONFIGURED') {
+      let referencedByDevis = true;
+      try {
+        const reference = await pool.query(
+          'SELECT 1 FROM devis WHERE document_storage_key = $1 LIMIT 1',
+          [uploadedKey],
+        );
+        referencedByDevis = reference.rows.length > 0;
+      } catch (_) {
+        // En cas de résultat SQL incertain, on conserve l’objet plutôt que de
+        // supprimer un PDF que PostgreSQL aurait peut-être déjà référencé.
+      }
+      if (referencedByDevis) {
+        console.warn(`Vérifier l’état R2 du devis ${req.params.id} après une erreur SQL`);
+      } else {
+        await deleteObjectBestEffort(uploadedKey, req.params.id);
+      }
+    }
+    if (error.code === 'R2_NOT_CONFIGURED') {
+      return res.status(503).json({
+        error: 'Le stockage privé des PDF n’est pas configuré. Contactez l’administration.',
+      });
+    }
+    console.error('Erreur émission devis:', error.name || 'Erreur inconnue');
+    return res.status(503).json({ error: 'Impossible de générer ou stocker le PDF du devis' });
+  }
+});
+
+async function deleteObjectBestEffort(key, devisId) {
+  try {
+    await devisDocumentStorage.deletePrivatePdf(key);
+  } catch (_) {
+    console.warn(`Nettoyage R2 du devis ${devisId} à réessayer`);
+  }
+}
+
+// Signer l’accès au document seulement après vérification du rôle et de la propriété.
+router.get('/:id/document-url', authMiddleware, [
+  param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
+], async (req, res) => {
+  if (sendValidationErrors(req, res)) return;
+
+  try {
+    const result = await pool.query(
+      'SELECT id, user_id, document_url, document_storage_key FROM devis WHERE id = $1',
+      [req.params.id],
+    );
+    const devis = result.rows[0];
+    const isAdmin = req.user.role === 'admin';
+    const isOwnerClient = req.user.role === 'client' &&
+      String(devis?.user_id) === String(req.user.userId);
+    if (!devis || (!isAdmin && !isOwnerClient)) {
+      return res.status(404).json({ error: 'Document de devis non trouvé' });
+    }
+
+    if (devis.document_storage_key) {
+      const signed = await devisDocumentStorage.signPrivatePdfGet(
+        devis.document_storage_key,
+        devis.id,
+      );
+      res.set('Cache-Control', 'private, no-store');
+      return res.json(signed);
+    }
+
+    if (isValidHttpsDocument(devis.document_url)) {
+      res.set('Cache-Control', 'private, no-store');
+      return res.json({ url: devis.document_url, expiresAt: null });
+    }
+    return res.status(404).json({ error: 'Document de devis indisponible' });
+  } catch (error) {
+    if (error.code === 'R2_NOT_CONFIGURED') {
+      return res.status(503).json({ error: 'Le stockage privé des PDF est indisponible.' });
+    }
+    console.error('Erreur accès document devis:', error.name || 'Erreur inconnue');
+    return res.status(503).json({ error: 'Impossible d’ouvrir le document du devis' });
   }
 });
 
@@ -467,12 +617,15 @@ router.patch('/:id/statut', authMiddleware, adminMiddleware, [
 router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'DELETE FROM devis WHERE id = $1 RETURNING id',
+      'DELETE FROM devis WHERE id = $1 RETURNING id, document_storage_key',
       [req.params.id],
     );
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Devis non trouvé' });
+    }
+    if (result.rows[0].document_storage_key) {
+      await deleteObjectBestEffort(result.rows[0].document_storage_key, req.params.id);
     }
 
     return res.json({ message: 'Devis supprimé' });
