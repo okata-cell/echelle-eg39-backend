@@ -36,7 +36,7 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     'approuvee': 1,
     'acceptee': 1,
     'en_cours': 2,
-    'envoye': 2,
+    'envoye': 1,
     'termine': 3,
   };
 

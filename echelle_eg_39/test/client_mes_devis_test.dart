@@ -58,6 +58,18 @@ void main() {
     expect(find.text('Demande envoyée'), findsNWidgets(2));
   });
 
+  testWidgets('un devis envoyé active Offre chiffrée, pas En cours', (
+    tester,
+  ) async {
+    await tester.pumpWidget(pageAvec(() async => [devis(statut: 'envoye')]));
+    await tester.pumpAndSettle();
+
+    final offerStep = tester.widget<Text>(find.text('Offre chiffrée'));
+    final inProgressStep = tester.widget<Text>(find.text('En cours'));
+    expect(offerStep.style?.fontWeight, FontWeight.w700);
+    expect(inProgressStep.style?.fontWeight, FontWeight.w400);
+  });
+
   testWidgets('un devis refusé affiche le motif de l’administration', (
     tester,
   ) async {
