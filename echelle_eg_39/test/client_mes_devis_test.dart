@@ -9,10 +9,6 @@ Map<String, dynamic> devis({
   String? commentaireAdmin,
   String? description = 'Relevé du terrain',
   Object? montant,
-  String? dateValidite,
-  String? documentUrl,
-  bool documentDisponible = false,
-  bool offreExpiree = false,
 }) {
   return {
     'id': id,
@@ -28,10 +24,6 @@ Map<String, dynamic> devis({
     'statut': statut,
     'commentaireAdmin': commentaireAdmin,
     'montant': montant,
-    'dateValidite': dateValidite,
-    'documentUrl': documentUrl,
-    'documentDisponible': documentDisponible,
-    'offreExpiree': offreExpiree,
     'createdAt': '2026-09-25T10:00:00.000Z',
     'updatedAt': '2026-09-25T10:00:00.000Z',
   };
@@ -42,7 +34,7 @@ Widget pageAvec(DevisLoader loader) {
 }
 
 void main() {
-  testWidgets('affiche les devis du compte avec leur statut', (tester) async {
+  testWidgets('affiche les demandes du compte et leur statut', (tester) async {
     await tester.pumpWidget(
       pageAvec(() async => [devis(), devis(id: 58, statut: 'termine')]),
     );
@@ -52,27 +44,28 @@ void main() {
     expect(find.text('Bornage de terrain'), findsNWidgets(2));
     expect(find.text('Devis #57 · 25/09/2026'), findsOneWidget);
     expect(find.text('En attente'), findsOneWidget);
-    // Les 4 libellés d'étape sont toujours rendus : 2 cartes = 2 occurrences,
-    // plus le badge du devis terminé.
     expect(find.text('Terminée'), findsNWidgets(3));
     expect(find.text('Demande envoyée'), findsNWidgets(2));
   });
 
-  testWidgets('un devis envoyé active Offre chiffrée, pas En cours', (
+  testWidgets('une demande approuvée montre le montant communiqué', (
     tester,
   ) async {
-    await tester.pumpWidget(pageAvec(() async => [devis(statut: 'envoye')]));
+    await tester.pumpWidget(
+      pageAvec(() async => [devis(statut: 'approuvee', montant: '1250000')]),
+    );
     await tester.pumpAndSettle();
 
-    final offerStep = tester.widget<Text>(find.text('Offre chiffrée'));
-    final inProgressStep = tester.widget<Text>(find.text('En cours'));
-    expect(offerStep.style?.fontWeight, FontWeight.w700);
-    expect(inProgressStep.style?.fontWeight, FontWeight.w400);
+    expect(find.text('Devis approuvé'), findsOneWidget);
+    expect(find.text('Montant approuvé'), findsOneWidget);
+    expect(find.text('1 250 000 FCFA'), findsOneWidget);
+    expect(find.text('Accepter le devis'), findsNothing);
+    expect(find.text('Refuser le devis'), findsNothing);
+    expect(find.text('Ouvrir le PDF'), findsNothing);
+    expect(find.textContaining('Valable jusqu’au'), findsNothing);
   });
 
-  testWidgets('un devis refusé affiche le motif de l’administration', (
-    tester,
-  ) async {
+  testWidgets('une demande rejetée affiche le motif admin', (tester) async {
     await tester.pumpWidget(
       pageAvec(
         () async => [
@@ -85,91 +78,32 @@ void main() {
     expect(find.text('Demande refusée'), findsOneWidget);
     expect(find.text('Motif du refus'), findsOneWidget);
     expect(find.text('Budget insuffisant'), findsOneWidget);
-  });
-
-  testWidgets('le message de suivi est affiché hors rejet', (tester) async {
-    await tester.pumpWidget(
-      pageAvec(
-        () async => [
-          devis(
-            statut: 'envoye',
-            commentaireAdmin: 'Devis transmis par e-mail',
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(find.text('Devis envoyé'), findsOneWidget);
-    expect(find.text("Message de l'administration"), findsOneWidget);
-    expect(find.text('Devis transmis par e-mail'), findsOneWidget);
+    expect(find.text('Accepter le devis'), findsNothing);
+    expect(find.text('Refuser le devis'), findsNothing);
   });
 
   testWidgets(
-    'une offre affiche son prix, son échéance, son PDF et les décisions',
+    'ne montre pas un commentaire admin historique sur une approbation',
     (tester) async {
-      final validity = DateTime.now().add(const Duration(days: 7));
-      final dateValidite =
-          '${validity.year.toString().padLeft(4, '0')}-'
-          '${validity.month.toString().padLeft(2, '0')}-'
-          '${validity.day.toString().padLeft(2, '0')}';
-
       await tester.pumpWidget(
         pageAvec(
           () async => [
             devis(
-              id: 59,
-              statut: 'envoye',
-              montant: '1250000',
-              dateValidite: dateValidite,
-              documentDisponible: true,
+              statut: 'approuvee',
+              montant: 50000,
+              commentaireAdmin: 'Ancien commentaire',
             ),
           ],
         ),
       );
       await tester.pumpAndSettle();
 
-      expect(find.text('1 250 000 FCFA'), findsOneWidget);
-      expect(
-        find.text(
-          'Valable jusqu’au ${dateValidite.split('-').reversed.join('/')}',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('Ouvrir le PDF'), findsOneWidget);
-      expect(find.text('Accepter le devis'), findsOneWidget);
-      expect(find.text('Refuser le devis'), findsOneWidget);
+      expect(find.text('50 000 FCFA'), findsOneWidget);
+      expect(find.text('Ancien commentaire'), findsNothing);
     },
   );
 
-  testWidgets('une offre expirée ne propose plus de décision', (tester) async {
-    await tester.pumpWidget(
-      pageAvec(
-        () async => [
-          devis(
-            id: 60,
-            statut: 'envoye',
-            montant: 50000,
-            dateValidite: '2000-01-01',
-            documentUrl: 'https://files.example.com/devis-60.pdf',
-            offreExpiree: true,
-          ),
-        ],
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.text(
-        'Offre expirée — contactez-nous pour demander une nouvelle offre.',
-      ),
-      findsOneWidget,
-    );
-    expect(find.text('Accepter le devis'), findsNothing);
-    expect(find.text('Refuser le devis'), findsNothing);
-  });
-
-  testWidgets('un compte sans devis invite à créer une demande', (
+  testWidgets('un compte sans demande est invité à en créer une', (
     tester,
   ) async {
     await tester.pumpWidget(pageAvec(() async => []));
@@ -178,7 +112,7 @@ void main() {
     expect(find.text('Aucune demande de devis'), findsOneWidget);
   });
 
-  testWidgets('une erreur affiche un bouton de nouvelle tentative', (
+  testWidgets('une erreur affiche une action de nouvelle tentative', (
     tester,
   ) async {
     var appels = 0;
@@ -192,7 +126,6 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('Serveur indisponible'), findsOneWidget);
-
     await tester.tap(find.text('Réessayer'));
     await tester.pumpAndSettle();
 
@@ -200,7 +133,7 @@ void main() {
     expect(find.text('Devis #57 · 25/09/2026'), findsOneWidget);
   });
 
-  testWidgets('tirer vers le bas recharge les devis', (tester) async {
+  testWidgets('tirer vers le bas recharge le suivi du client', (tester) async {
     var appels = 0;
     await tester.pumpWidget(
       pageAvec(() async {

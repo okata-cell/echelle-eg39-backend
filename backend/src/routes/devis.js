@@ -1,13 +1,12 @@
 const express = require('express');
-const { randomUUID } = require('node:crypto');
-const router = express.Router();
 const { body, param, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { normalizePhone } = require('../utils/identifiers');
-const devisPdfService = require('../services/devis_pdf_service');
-const devisDocumentStorage = require('../services/devis_document_storage');
 
+const router = express.Router();
+
+// Les anciennes valeurs restent lisibles pour préserver l'historique.
 const DEVIS_STATUSES = [
   'en_attente',
   'approuvee',
@@ -18,49 +17,36 @@ const DEVIS_STATUSES = [
   'refusee',
   'termine',
 ];
-const ADMIN_MANAGED_STATUSES = [
-  'en_attente',
-  'approuvee',
-  'rejetee',
-  'en_cours',
-  'termine',
-];
-const CLIENT_DECISIONS = ['acceptee', 'refusee'];
-
-// Transitions autorisées : clé = statut courant, valeur = statuts atteignables.
-// termines et rejetee sont définitifs.
+const ADMIN_MANAGED_STATUSES = ['en_cours', 'termine'];
 const DEVIS_TRANSITIONS = {
-  en_attente: ['approuvee', 'rejetee'],
-  approuvee: ['en_cours', 'envoye', 'termine'],
-  en_cours: ['envoye', 'termine'],
+  en_attente: [],
+  approuvee: ['en_cours', 'termine'],
+  rejetee: [],
+  en_cours: ['termine'],
+  // Anciennes offres émises avant le nouveau workflow : aucune acceptation,
+  // aucun refus et aucune nouvelle émission ne sont encore proposés.
   envoye: ['termine'],
   acceptee: ['en_cours', 'termine'],
   refusee: [],
   termine: [],
-  rejetee: [],
 };
 
 const SELECT_DEVIS = `
   SELECT d.*,
          u.email AS client_email,
          u.first_name AS client_first_name,
-         u.last_name AS client_last_name,
-         CASE
-           WHEN d.date_validite IS NOT NULL
-             AND d.date_validite < (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Lome')::date
-           THEN TRUE ELSE FALSE
-         END AS offre_expiree
-  FROM devis d
-  LEFT JOIN users u ON u.id = d.user_id
+         u.last_name AS client_last_name
+    FROM devis d
+    LEFT JOIN users u ON u.id = d.user_id
 `;
 
 function mapDevis(devis) {
   return {
     id: devis.id,
     userId: devis.user_id,
-    clientEmail: devis.client_email,
+    clientEmail: devis.client_email ?? null,
     clientNom: devis.client_first_name
-      ? `${devis.client_first_name} ${devis.client_last_name}`.trim()
+      ? `${devis.client_first_name} ${devis.client_last_name || ''}`.trim()
       : null,
     serviceId: devis.service_id,
     serviceName: devis.service_name,
@@ -69,42 +55,11 @@ function mapDevis(devis) {
     telephone: devis.telephone,
     email: devis.email,
     statut: devis.statut,
-    commentaireAdmin: devis.commentaire_admin,
-    montant: devis.montant,
-    dateValidite: toDateOnly(devis.date_validite),
-    documentUrl: devis.document_url || null,
-    documentDisponible: Boolean(devis.document_storage_key || devis.document_url),
-    documentUrlExpiresAt: null,
-    offreEmiseAt: devis.offre_emise_at,
-    clientReponduAt: devis.client_repondu_at,
-    offreExpiree: devis.offre_expiree === true,
+    commentaireAdmin: devis.commentaire_admin ?? null,
+    montant: devis.montant ?? null,
     createdAt: devis.created_at,
     updatedAt: devis.updated_at,
   };
-}
-
-async function mapAuthorizedDevis(devis) {
-  const mapped = mapDevis(devis);
-  if (!devis.document_storage_key) return mapped;
-
-  try {
-    const signed = await devisDocumentStorage.signPrivatePdfGet(
-      devis.document_storage_key,
-      devis.id,
-    );
-    mapped.documentUrl = signed.url;
-    mapped.documentUrlExpiresAt = signed.expiresAt;
-  } catch (_) {
-    // Une liste reste consultable si R2 est temporairement indisponible.
-    // L'action « Ouvrir le PDF » réessaiera via la route dédiée.
-    mapped.documentUrl = null;
-    mapped.documentUrlExpiresAt = null;
-  }
-  return mapped;
-}
-
-async function mapAuthorizedDevisList(rows) {
-  return Promise.all(rows.map(mapAuthorizedDevis));
 }
 
 function sendValidationErrors(req, res) {
@@ -115,10 +70,6 @@ function sendValidationErrors(req, res) {
   return true;
 }
 
-function allowedTransitions(statut) {
-  return DEVIS_TRANSITIONS[statut] ?? [];
-}
-
 function clientMiddleware(req, res, next) {
   if (req.user.role !== 'client') {
     return res.status(403).json({ error: 'Action réservée aux clients' });
@@ -126,40 +77,10 @@ function clientMiddleware(req, res, next) {
   return next();
 }
 
-function isValidDateOnly(value) {
-  if (typeof value !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
-  const parsed = new Date(`${value}T00:00:00.000Z`);
-  return !Number.isNaN(parsed.getTime()) && parsed.toISOString().slice(0, 10) === value;
+function allowedTransitions(statut) {
+  return DEVIS_TRANSITIONS[statut] ?? [];
 }
 
-function toDateOnly(value) {
-  if (value instanceof Date && !Number.isNaN(value.getTime())) {
-    return `${value.getFullYear()}-${String(value.getMonth() + 1).padStart(2, '0')}-${String(value.getDate()).padStart(2, '0')}`;
-  }
-  const text = value?.toString() ?? '';
-  const match = text.match(/^(\d{4}-\d{2}-\d{2})/);
-  return match ? match[1] : value ?? null;
-}
-
-function businessToday() {
-  const parts = new Intl.DateTimeFormat('en-CA', {
-    timeZone: 'Africa/Lome', year: 'numeric', month: '2-digit', day: '2-digit',
-  }).formatToParts(new Date());
-  const values = Object.fromEntries(parts.map(({ type, value }) => [type, value]));
-  return `${values.year}-${values.month}-${values.day}`;
-}
-
-function isValidHttpsDocument(value) {
-  try {
-    const url = new URL(value);
-    return url.protocol === 'https:' && Boolean(url.hostname) && !url.username && !url.password;
-  } catch (_) {
-    return false;
-  }
-}
-
-// Applique une transition de statut en respectant DEVIS_TRANSITIONS.
-// Retourne { error, status } en cas de refus, sinon null.
 async function transitionStatut(devisId, nextStatut, commentaire) {
   const existing = await pool.query(
     'SELECT id, statut FROM devis WHERE id = $1',
@@ -171,42 +92,54 @@ async function transitionStatut(devisId, nextStatut, commentaire) {
   }
 
   const currentStatut = existing.rows[0].statut;
-  if (currentStatut === nextStatut) {
-    return { status: 400, error: `Le devis est déjà au statut « ${nextStatut} »` };
-  }
-
-  const allowed = allowedTransitions(currentStatut);
-  if (!allowed.includes(nextStatut)) {
+  if (!allowedTransitions(currentStatut).includes(nextStatut)) {
     return {
-      status: 400,
-      error: allowed.length
-        ? `Transition impossible depuis « ${currentStatut} ». Statuts autorisés : ${allowed.join(', ')}.`
-        : `Transition impossible depuis « ${currentStatut} » : ce devis est clôturé.`,
+      status: 409,
+      error: 'Cette demande ne peut pas recevoir cette mise à jour de suivi.',
     };
   }
 
-  const result = await pool.query(
+  const updated = await pool.query(
     `UPDATE devis
-     SET statut = $1,
-         commentaire_admin = COALESCE(NULLIF($2, ''), commentaire_admin),
-         updated_at = CURRENT_TIMESTAMP
-     WHERE id = $3 AND statut = $4
-     RETURNING id`,
+        SET statut = $1,
+            commentaire_admin = COALESCE(NULLIF($2, ''), commentaire_admin),
+            updated_at = CURRENT_TIMESTAMP
+      WHERE id = $3 AND statut = $4
+      RETURNING *`,
     [nextStatut, commentaire || '', devisId, currentStatut],
   );
 
-  if (result.rows.length === 0) {
+  if (updated.rows.length === 0) {
     return {
       status: 409,
-      error: 'Ce devis a été modifié entre-temps. Actualisez la liste.',
+      error: 'Cette demande vient d’être modifiée. Actualisez la liste.',
     };
   }
 
-  const updated = await pool.query(`${SELECT_DEVIS} WHERE d.id = $1`, [devisId]);
   return { devis: updated.rows[0] };
 }
 
-// Soumettre une demande de devis : un compte client est obligatoire.
+async function pendingRequestError(devisId) {
+  const existing = await pool.query(
+    'SELECT id, user_id, statut FROM devis WHERE id = $1',
+    [devisId],
+  );
+  if (existing.rows.length === 0) {
+    return { status: 404, error: 'Demande de devis non trouvée' };
+  }
+  if (existing.rows[0].user_id == null) {
+    return {
+      status: 409,
+      error: 'Cette demande n’est pas liée à un compte client.',
+    };
+  }
+  return {
+    status: 409,
+    error: 'Cette demande a déjà été traitée. Actualisez la liste.',
+  };
+}
+
+// Le bouton Envoyer du client crée une demande liée à son compte authentifié.
 router.post('/', authMiddleware, clientMiddleware, [
   body('serviceId').optional().isString(),
   body('serviceName').optional().isString(),
@@ -223,30 +156,20 @@ router.post('/', authMiddleware, clientMiddleware, [
 
   try {
     const { serviceId, serviceName, description, nom, telephone, email } = req.body;
-    const userId = req.user?.userId ?? null;
-    const normalizedTelephone = normalizePhone(telephone) || null;
-
     const result = await pool.query(
       `INSERT INTO devis (
-        user_id,
-        service_id,
-        service_name,
-        description,
-        nom,
-        telephone,
-        email,
-        statut,
-        created_at
-      )
-      VALUES ($1, $2, $3, $4, $5, $6, $7, 'en_attente', CURRENT_TIMESTAMP)
-      RETURNING *`,
+         user_id, service_id, service_name, description,
+         nom, telephone, email, statut, created_at
+       )
+       VALUES ($1, $2, $3, $4, $5, $6, $7, 'en_attente', CURRENT_TIMESTAMP)
+       RETURNING *`,
       [
-        userId,
+        req.user.userId,
         serviceId || null,
         serviceName || null,
         description || null,
         nom,
-        normalizedTelephone,
+        normalizePhone(telephone) || null,
         email || null,
       ],
     );
@@ -254,384 +177,191 @@ router.post('/', authMiddleware, clientMiddleware, [
     return res.status(201).json({
       message: 'Demande de devis soumise avec succès',
       devis: mapDevis(result.rows[0]),
-      lieAuCompte: Boolean(userId),
+      lieAuCompte: true,
     });
   } catch (error) {
-    console.error('Erreur soumission devis:', error);
+    console.error('Erreur soumission devis:', error.name || 'Erreur inconnue');
     return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Lister les demandes de devis (admin seulement).
+// Lister les demandes de devis (administration uniquement).
 router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   try {
-    const { statut } = req.query;
-    const params = [];
-    let query = SELECT_DEVIS;
-
-    const statuts = String(statut || '')
+    const statuts = String(req.query.statut || '')
       .split(',')
       .map((value) => value.trim())
       .filter(Boolean);
 
-    if (statuts.length > 0) {
-      const invalides = statuts.filter((value) => !DEVIS_STATUSES.includes(value));
-      if (invalides.length > 0) {
-        return res.status(400).json({ error: `Statut invalide : ${invalides.join(', ')}` });
-      }
-
-      params.push(statuts);
-      query += ` WHERE d.statut = ANY($${params.length}::varchar[])`;
+    if (statuts.some((statut) => !DEVIS_STATUSES.includes(statut))) {
+      return res.status(400).json({ error: 'Un ou plusieurs statuts sont invalides.' });
     }
 
+    const params = [];
+    let query = SELECT_DEVIS;
+    if (statuts.length > 0) {
+      params.push(statuts);
+      query += ' WHERE d.statut = ANY($1::varchar[])';
+    }
     query += ' ORDER BY d.created_at DESC';
 
     const result = await pool.query(query, params);
     res.set('Cache-Control', 'private, no-store');
-    return res.json({ devis: await mapAuthorizedDevisList(result.rows) });
+    return res.json({ devis: result.rows.map(mapDevis) });
   } catch (error) {
-    console.error('Erreur liste devis:', error);
+    console.error('Erreur liste devis:', error.name || 'Erreur inconnue');
     return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Lister les devis rattachés au compte connecté.
-router.get('/me', authMiddleware, async (req, res) => {
+// Lister uniquement les demandes associées au compte connecté.
+router.get('/me', authMiddleware, clientMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
       `${SELECT_DEVIS} WHERE d.user_id = $1 ORDER BY d.created_at DESC`,
       [req.user.userId],
     );
     res.set('Cache-Control', 'private, no-store');
-    return res.json({ devis: await mapAuthorizedDevisList(result.rows) });
+    return res.json({ devis: result.rows.map(mapDevis) });
   } catch (error) {
-    console.error('Erreur liste devis du client:', error);
+    console.error('Erreur liste devis du client:', error.name || 'Erreur inconnue');
     return res.status(500).json({ error: 'Erreur serveur' });
   }
 });
 
-// Émettre une offre chiffrée et générer son PDF dans le stockage privé R2.
-router.patch('/:id/offre', authMiddleware, adminMiddleware, [
+// Approuver une demande en attente et communiquer le montant au client.
+router.patch('/:id/approuver', authMiddleware, adminMiddleware, [
   param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
   body('montant')
     .isInt({ min: 1, max: Number.MAX_SAFE_INTEGER })
     .toInt()
-    .withMessage('Le montant doit être un entier positif en FCFA'),
-  body('dateValidite')
-    .custom(isValidDateOnly)
-    .withMessage('La date de validité doit être au format AAAA-MM-JJ'),
-  body('commentaireAdmin').optional().trim().isLength({ max: 1000 }),
+    .withMessage('Le montant doit être un entier positif en FCFA.'),
 ], async (req, res) => {
   if (sendValidationErrors(req, res)) return;
 
-  const { montant, dateValidite } = req.body;
-  if (dateValidite < businessToday()) {
-    return res.status(400).json({ error: 'La date de validité ne peut pas être passée' });
-  }
-
-  let uploadedKey = null;
-  let uploadCompleted = false;
   try {
-    const existingResult = await pool.query(
-      `${SELECT_DEVIS} WHERE d.id = $1`,
-      [req.params.id],
-    );
-    if (existingResult.rows.length === 0) {
-      return res.status(404).json({ error: 'Demande de devis non trouvée' });
-    }
-    const devis = existingResult.rows[0];
-    if (devis.user_id == null) {
-      return res.status(409).json({ error: 'Cette demande n’est pas liée à un compte client' });
-    }
-    if (!(devis.statut === 'en_attente' || devis.statut === 'approuvee' ||
-        (devis.statut === 'envoye' && devis.client_repondu_at == null))) {
-      return res.status(409).json({ error: 'Cette demande ne peut plus recevoir d’offre' });
-    }
-
-    const pdfBuffer = await devisPdfService.createDevisPdfBuffer({
-      devis,
-      montant,
-      dateValidite,
-      commentaireAdmin: req.body.commentaireAdmin || '',
-      dateEmission: businessToday(),
-    });
-    uploadedKey = `devis/${devis.id}/offers/${randomUUID()}.pdf`;
-    await devisDocumentStorage.putPrivatePdf(uploadedKey, pdfBuffer, devis.id);
-    uploadCompleted = true;
-
     const updated = await pool.query(
       `UPDATE devis
-       SET statut = 'envoye', montant = $1, date_validite = $2::date,
-           document_url = NULL, document_storage_key = $3,
-           offre_emise_at = CURRENT_TIMESTAMP, client_repondu_at = NULL,
-           commentaire_admin = COALESCE(NULLIF($4, ''), commentaire_admin),
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $5 AND user_id IS NOT NULL
-         AND statut = $6
-         AND document_storage_key IS NOT DISTINCT FROM $7
-         AND $2::date >= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Lome')::date
-         AND ($6 IN ('en_attente', 'approuvee')
-              OR ($6 = 'envoye' AND client_repondu_at IS NULL))
-       RETURNING *`,
-      [
-        montant,
-        dateValidite,
-        uploadedKey,
-        req.body.commentaireAdmin || '',
-        req.params.id,
-        devis.statut,
-        devis.document_storage_key || null,
-      ],
+          SET statut = 'approuvee', montant = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND statut = 'en_attente' AND user_id IS NOT NULL
+        RETURNING *`,
+      [req.body.montant, req.params.id],
     );
 
     if (updated.rows.length === 0) {
-      await deleteObjectBestEffort(uploadedKey, devis.id);
-      uploadedKey = null;
-      const latest = await pool.query(
-        'SELECT id, user_id, statut, client_repondu_at FROM devis WHERE id = $1',
-        [req.params.id],
-      );
-      if (latest.rows.length === 0) {
-        return res.status(404).json({ error: 'Demande de devis non trouvée' });
-      }
-      if (latest.rows[0].user_id == null) {
-        return res.status(409).json({ error: 'Cette demande n’est pas liée à un compte client' });
-      }
-      if (latest.rows[0].statut === 'envoye' && latest.rows[0].client_repondu_at != null) {
-        return res.status(409).json({ error: 'Le client a déjà répondu à cette offre' });
-      }
-      return res.status(409).json({ error: 'Cette demande ne peut plus recevoir d’offre' });
+      const issue = await pendingRequestError(req.params.id);
+      return res.status(issue.status).json({ error: issue.error });
     }
 
-    const previousStorageKey = devis.document_storage_key;
-    uploadedKey = null;
-    if (previousStorageKey) {
-      await deleteObjectBestEffort(previousStorageKey, devis.id);
-    }
-
-    const updatedDevis = {
-      ...devis,
-      ...updated.rows[0],
-      offre_expiree: false,
-    };
     res.set('Cache-Control', 'private, no-store');
     return res.json({
-      message: 'Offre de devis envoyée au client',
-      devis: await mapAuthorizedDevis(updatedDevis),
+      message: 'Devis approuvé et montant communiqué au client.',
+      devis: mapDevis(updated.rows[0]),
     });
   } catch (error) {
-    if (uploadedKey && uploadCompleted && error.code !== 'R2_NOT_CONFIGURED') {
-      let referencedByDevis = true;
-      try {
-        const reference = await pool.query(
-          'SELECT 1 FROM devis WHERE document_storage_key = $1 LIMIT 1',
-          [uploadedKey],
-        );
-        referencedByDevis = reference.rows.length > 0;
-      } catch (_) {
-        // En cas de résultat SQL incertain, on conserve l’objet plutôt que de
-        // supprimer un PDF que PostgreSQL aurait peut-être déjà référencé.
-      }
-      if (referencedByDevis) {
-        console.warn(`Vérifier l’état R2 du devis ${req.params.id} après une erreur SQL`);
-      } else {
-        await deleteObjectBestEffort(uploadedKey, req.params.id);
-      }
-    }
-    if (error.code === 'R2_NOT_CONFIGURED') {
-      return res.status(503).json({
-        error: 'Le stockage privé des PDF n’est pas configuré. Contactez l’administration.',
-      });
-    }
-    console.error('Erreur émission devis:', error.name || 'Erreur inconnue');
-    return res.status(503).json({ error: 'Impossible de générer ou stocker le PDF du devis' });
+    console.error('Erreur approbation devis:', error.name || 'Erreur inconnue');
+    return res.status(500).json({ error: 'Impossible d’approuver le devis.' });
   }
 });
 
-async function deleteObjectBestEffort(key, devisId) {
-  try {
-    await devisDocumentStorage.deletePrivatePdf(key);
-  } catch (_) {
-    console.warn(`Nettoyage R2 du devis ${devisId} à réessayer`);
-  }
-}
-
-// Signer l’accès au document seulement après vérification du rôle et de la propriété.
-router.get('/:id/document-url', authMiddleware, [
+// Rejeter une demande avec un motif obligatoire visible dans Mes devis.
+router.patch('/:id/rejeter', authMiddleware, adminMiddleware, [
   param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
+  body('raison')
+    .exists()
+    .withMessage('Le motif du rejet est obligatoire.')
+    .bail()
+    .isString()
+    .withMessage('Le motif doit être du texte.')
+    .bail()
+    .trim()
+    .notEmpty()
+    .withMessage('Le motif du rejet est obligatoire.')
+    .isLength({ max: 1000 })
+    .withMessage('Le motif ne peut pas dépasser 1000 caractères.'),
 ], async (req, res) => {
   if (sendValidationErrors(req, res)) return;
 
   try {
-    const result = await pool.query(
-      'SELECT id, user_id, document_url, document_storage_key FROM devis WHERE id = $1',
-      [req.params.id],
-    );
-    const devis = result.rows[0];
-    const isAdmin = req.user.role === 'admin';
-    const isOwnerClient = req.user.role === 'client' &&
-      String(devis?.user_id) === String(req.user.userId);
-    if (!devis || (!isAdmin && !isOwnerClient)) {
-      return res.status(404).json({ error: 'Document de devis non trouvé' });
-    }
-
-    if (devis.document_storage_key) {
-      const signed = await devisDocumentStorage.signPrivatePdfGet(
-        devis.document_storage_key,
-        devis.id,
-      );
-      res.set('Cache-Control', 'private, no-store');
-      return res.json(signed);
-    }
-
-    if (isValidHttpsDocument(devis.document_url)) {
-      res.set('Cache-Control', 'private, no-store');
-      return res.json({ url: devis.document_url, expiresAt: null });
-    }
-    return res.status(404).json({ error: 'Document de devis indisponible' });
-  } catch (error) {
-    if (error.code === 'R2_NOT_CONFIGURED') {
-      return res.status(503).json({ error: 'Le stockage privé des PDF est indisponible.' });
-    }
-    console.error('Erreur accès document devis:', error.name || 'Erreur inconnue');
-    return res.status(503).json({ error: 'Impossible d’ouvrir le document du devis' });
-  }
-});
-
-// Répondre à une offre reçue : seule la personne propriétaire peut décider.
-router.patch('/:id/reponse', authMiddleware, clientMiddleware, [
-  param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
-  body('decision').isIn(CLIENT_DECISIONS).withMessage('Décision invalide'),
-], async (req, res) => {
-  if (sendValidationErrors(req, res)) return;
-
-  try {
-    const { decision } = req.body;
     const updated = await pool.query(
       `UPDATE devis
-       SET statut = $1, client_repondu_at = CURRENT_TIMESTAMP,
-           updated_at = CURRENT_TIMESTAMP
-       WHERE id = $2 AND user_id = $3 AND statut = 'envoye'
-         AND date_validite >= (CURRENT_TIMESTAMP AT TIME ZONE 'Africa/Lome')::date
-       RETURNING id`,
-      [decision, req.params.id, req.user.userId],
+          SET statut = 'rejetee', commentaire_admin = $1,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND statut = 'en_attente' AND user_id IS NOT NULL
+        RETURNING *`,
+      [req.body.raison, req.params.id],
     );
 
     if (updated.rows.length === 0) {
-      const existing = await pool.query(
-        'SELECT user_id, statut, date_validite FROM devis WHERE id = $1',
-        [req.params.id],
-      );
-      if (existing.rows.length === 0 || String(existing.rows[0].user_id) !== String(req.user.userId)) {
-        return res.status(404).json({ error: 'Offre de devis non trouvée' });
-      }
-      const devis = existing.rows[0];
-      if (!devis.date_validite || toDateOnly(devis.date_validite) < businessToday()) {
-        return res.status(409).json({ error: 'La validité de cette offre est expirée' });
-      }
-      return res.status(409).json({ error: 'Cette offre a déjà reçu une réponse ou n’est plus active' });
+      const issue = await pendingRequestError(req.params.id);
+      return res.status(issue.status).json({ error: issue.error });
     }
 
-    const result = await pool.query(`${SELECT_DEVIS} WHERE d.id = $1`, [req.params.id]);
+    res.set('Cache-Control', 'private, no-store');
     return res.json({
-      message: decision === 'acceptee' ? 'Devis accepté' : 'Devis refusé',
-      devis: mapDevis(result.rows[0]),
+      message: 'Demande rejetée. Le motif a été communiqué au client.',
+      devis: mapDevis(updated.rows[0]),
     });
   } catch (error) {
-    console.error('Erreur réponse client au devis:', error);
-    return res.status(500).json({ error: 'Erreur serveur' });
+    console.error('Erreur rejet devis:', error.name || 'Erreur inconnue');
+    return res.status(500).json({ error: 'Impossible de rejeter le devis.' });
   }
 });
 
-// Approuver une demande de devis (ancien client API, conservé pour compatibilité).
-router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res) => {
-  try {
-    const outcome = await transitionStatut(req.params.id, 'approuvee', '');
-    if (outcome.error) {
-      return res.status(outcome.status).json({ error: outcome.error });
-    }
-
-    return res.json({
-      message: 'Demande de devis approuvée',
-      devis: mapDevis(outcome.devis),
-    });
-  } catch (error) {
-    console.error('Erreur approbation devis:', error);
-    return res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Rejeter une demande de devis (admin).
-router.patch('/:id/rejeter', authMiddleware, adminMiddleware, [
-  body('raison').optional().trim().isLength({ max: 1000 }).withMessage('Motif trop long'),
-], async (req, res) => {
-  if (sendValidationErrors(req, res)) return;
-
-  try {
-    const raison = String(req.body.raison || '').trim() || 'Demande rejetée';
-    const outcome = await transitionStatut(req.params.id, 'rejetee', raison);
-    if (outcome.error) {
-      return res.status(outcome.status).json({ error: outcome.error });
-    }
-
-    return res.json({
-      message: 'Demande de devis rejetée',
-      devis: mapDevis(outcome.devis),
-    });
-  } catch (error) {
-    console.error('Erreur rejet devis:', error);
-    return res.status(500).json({ error: 'Erreur serveur' });
-  }
-});
-
-// Modifier le statut d'un devis dans le suivi administratif (admin).
+// Modifier le suivi après approbation. Les décisions initiales passent
+// exclusivement par /approuver (avec montant) ou /rejeter (avec motif).
 router.patch('/:id/statut', authMiddleware, adminMiddleware, [
-  body('statut').isIn(ADMIN_MANAGED_STATUSES).withMessage('Statut invalide'),
-  body('commentaire').optional().trim(),
-  body('commentaire_admin').optional().trim(),
+  param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
+  body('statut')
+    .isIn(ADMIN_MANAGED_STATUSES)
+    .withMessage('Utilisez les actions approuver ou rejeter pour une demande en attente.'),
+  body('commentaire').optional().trim().isLength({ max: 1000 }),
+  body('commentaire_admin').optional().trim().isLength({ max: 1000 }),
 ], async (req, res) => {
   if (sendValidationErrors(req, res)) return;
 
   try {
-    const { statut } = req.body;
     const commentaire = String(
       req.body.commentaire ?? req.body.commentaire_admin ?? '',
     ).trim();
-
-    const outcome = await transitionStatut(req.params.id, statut, commentaire);
+    const outcome = await transitionStatut(
+      req.params.id,
+      req.body.statut,
+      commentaire,
+    );
     if (outcome.error) {
       return res.status(outcome.status).json({ error: outcome.error });
     }
 
     return res.json({
-      message: 'Statut du devis mis à jour',
+      message: 'Suivi du devis mis à jour.',
       devis: mapDevis(outcome.devis),
     });
   } catch (error) {
-    console.error('Erreur mise à jour devis:', error);
-    return res.status(500).json({ error: 'Erreur serveur' });
+    console.error('Erreur mise à jour devis:', error.name || 'Erreur inconnue');
+    return res.status(500).json({ error: 'Impossible de mettre à jour le suivi.' });
   }
 });
 
-// Supprimer un devis (admin seulement).
-router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
+// Supprimer une demande. Les colonnes de stockage historique ne sont pas
+// modifiées par ce workflow simplifié.
+router.delete('/:id', authMiddleware, adminMiddleware, [
+  param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
+], async (req, res) => {
+  if (sendValidationErrors(req, res)) return;
+
   try {
     const result = await pool.query(
-      'DELETE FROM devis WHERE id = $1 RETURNING id, document_storage_key',
+      'DELETE FROM devis WHERE id = $1 RETURNING id',
       [req.params.id],
     );
-
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Devis non trouvé' });
     }
-    if (result.rows[0].document_storage_key) {
-      await deleteObjectBestEffort(result.rows[0].document_storage_key, req.params.id);
-    }
-
-    return res.json({ message: 'Devis supprimé' });
+    return res.json({ message: 'Devis supprimé.' });
   } catch (error) {
-    console.error('Erreur suppression devis:', error);
-    return res.status(500).json({ error: 'Erreur serveur' });
+    console.error('Erreur suppression devis:', error.name || 'Erreur inconnue');
+    return res.status(500).json({ error: 'Impossible de supprimer le devis.' });
   }
 });
 

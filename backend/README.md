@@ -54,11 +54,6 @@ ALLOWED_ORIGINS=http://localhost:*
 ADMIN_EMAIL=admin@echelle-eg39.com
 ADMIN_PASSWORD=Admin123!
 ADMIN_PHONE=+22890014329
-# Pour les PDF de devis (valeurs conservées uniquement dans l’environnement, jamais dans Git)
-R2_ACCOUNT_ID=<identifiant_de_compte_cloudflare>
-R2_ACCESS_KEY_ID=<identifiant_api_r2>
-R2_SECRET_ACCESS_KEY=<secret_api_r2>
-R2_BUCKET_NAME=<nom_du_bucket_prive>
 ```
 
 ## 🗄️ Migrations
@@ -300,19 +295,11 @@ Testez :
 curl https://echelle-eg39-api.onrender.com/health
 ```
 
-## 📄 PDF privés des devis (Cloudflare R2)
+## 📄 Workflow des demandes de devis
 
-Le backend génère automatiquement le PDF quand l’admin émet une offre, puis le stocke dans un bucket R2 privé. La base PostgreSQL conserve uniquement la clé objet opaque. L’application ne crée aucun lien public permanent : l’admin ou le client propriétaire demande une URL signée HTTPS de lecture, valable 5 minutes, après contrôle du JWT et de la propriété du devis.
+Le client connecté soumet une demande depuis l’écran Services ; elle apparaît avec le statut « En attente ». L’administration peut ensuite l’approuver en saisissant un montant FCFA positif ou la rejeter avec un motif obligatoire visible dans « Mes devis ». Le client consulte le montant approuvé ou le motif du rejet dans son suivi. Ce workflow n’émet pas de PDF, n’utilise pas Cloudflare R2 et ne demande pas au client d’accepter ou refuser une offre.
 
-### Configuration Cloudflare et Render
-
-1. Créez un bucket Cloudflare R2 privé (ne pas activer l’accès public).
-2. Créez une clé API S3 limitée au bucket, avec droits de lecture, écriture et suppression d’objets. Gardez l’identifiant de compte, l’ID de clé et le secret hors du dépôt.
-3. Dans Render Dashboard, ouvrez le service `echelle-eg39-backend-1` et ajoutez `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY` et `R2_BUCKET_NAME` comme variables secrètes. Les noms sont déclarés `sync: false` dans le `render.yaml` racine ; leurs valeurs doivent être ajoutées dans le Dashboard.
-4. Redéployez le backend. La migration idempotente ajoute `document_storage_key` au démarrage. Aucun PDF n’est écrit sur le disque de Render.
-5. Émettez un devis de test et vérifiez qu’un admin et le client propriétaire peuvent l’ouvrir ; qu’un autre client reçoit une 404 ; puis vérifiez qu’une nouvelle URL est générée après expiration.
-
-Si ces variables manquent ou si R2 est indisponible, l’émission du devis échoue avec une erreur de service au lieu de stocker le document publiquement ou localement. Les anciennes offres avec `document_url` restent accessibles après authentification et contrôle de propriété. Les URL R2 signées sont des jetons temporaires : ne pas les journaliser, les enregistrer en base, ni les partager publiquement.
+Les champs et anciens statuts liés aux devis historiques sont conservés dans la base de données pour ne pas supprimer les données existantes.
 
 ## 📝 Notes importantes
 

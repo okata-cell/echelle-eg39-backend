@@ -38,6 +38,15 @@ class ApiService {
   // static const String baseUrl = 'http://10.0.2.2:3000/api'; // Android emulator
   // static const String baseUrl = 'http://localhost:3000/api'; // iOS simulator / web
 
+  static Map<String, dynamic>? _decodeObject(String responseBody) {
+    try {
+      final decoded = jsonDecode(responseBody);
+      return decoded is Map<String, dynamic> ? decoded : null;
+    } on FormatException {
+      return null;
+    }
+  }
+
   static Future<String?> getToken() async {
     final prefs = await SharedPreferences.getInstance();
     return prefs.getString('token');
@@ -1241,13 +1250,11 @@ class ApiService {
     }
   }
 
-  /// Émettre ou remplacer une offre de devis (admin).
-  static Future<Map<String, dynamic>> issueDevisOffer({
-    required int devisId,
-    required int montant,
-    required String dateValidite,
-    String? commentaireAdmin,
-  }) async {
+  /// Approuver une demande en attente en communiquant son prix au client.
+  static Future<Map<String, dynamic>> approveDevis(
+    int devisId,
+    int montant,
+  ) async {
     final token = await ensureAuthenticated();
     if (token == null) {
       throw const ApiException(
@@ -1255,179 +1262,108 @@ class ApiService {
         message: 'Session administrateur requise.',
       );
     }
-
-    final response = await http.patch(
-      Uri.parse('$baseUrl/devis/$devisId/offre'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({
-        'montant': montant,
-        'dateValidite': dateValidite,
-        if (commentaireAdmin != null && commentaireAdmin.trim().isNotEmpty)
-          'commentaireAdmin': commentaireAdmin.trim(),
-      }),
-    );
-
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
-      return decoded;
-    }
-    final message = decoded is Map<String, dynamic>
-        ? decoded['error']?.toString() ?? 'Impossible d’envoyer cette offre.'
-        : 'Impossible d’envoyer cette offre.';
-    throw ApiException(
-      type: response.statusCode >= 500
-          ? ApiErrorType.serverUnavailable
-          : ApiErrorType.request,
-      message: message,
-      statusCode: response.statusCode,
-    );
-  }
-
-  /// Récupérer une URL temporaire après autorisation côté serveur.
-  static Future<Map<String, String?>> getDevisDocumentUrl(int devisId) async {
-    final token = await ensureAuthenticated();
-    if (token == null) {
+    if (montant <= 0) {
       throw const ApiException(
         type: ApiErrorType.request,
-        message: 'Session requise pour ouvrir ce document.',
+        message: 'Le montant doit être un entier positif en FCFA.',
       );
     }
 
-    final response = await http
-        .get(
-          Uri.parse('$baseUrl/devis/$devisId/document-url'),
-          headers: {'Authorization': 'Bearer $token'},
-        )
-        .timeout(const Duration(seconds: 15));
-
-    Map<String, dynamic> decoded = <String, dynamic>{};
     try {
-      final body = jsonDecode(response.body);
-      if (body is Map<String, dynamic>) decoded = body;
-    } on FormatException {
-      // Une erreur générique est renvoyée pour les réponses non JSON.
-    }
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/devis/$devisId/approuver'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'montant': montant}),
+          )
+          .timeout(const Duration(seconds: 15));
 
-    if (response.statusCode == 200) {
-      final url = decoded['url'];
-      final uri = url is String ? Uri.tryParse(url) : null;
-      if (uri != null && uri.scheme == 'https' && uri.host.isNotEmpty && uri.userInfo.isEmpty) {
-        return {
-          'url': uri.toString(),
-          'expiresAt': decoded['expiresAt']?.toString(),
-        };
-      }
-    }
-
-    throw ApiException(
-      type: response.statusCode >= 500
-          ? ApiErrorType.serverUnavailable
-          : ApiErrorType.request,
-      message: decoded['error']?.toString() ?? 'Document de devis indisponible.',
-      statusCode: response.statusCode,
-    );
-  }
-
-  /// Accepter ou refuser une offre reçue (client propriétaire uniquement).
-  static Future<Map<String, dynamic>> respondToDevis(
-    int devisId,
-    String decision,
-  ) async {
-    final token = await ensureAuthenticated();
-    if (token == null) {
+      final decoded = _decodeObject(response.body);
+      if (response.statusCode == 200 && decoded != null) return decoded;
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message:
+            decoded?['error']?.toString() ??
+            'Erreur lors de l’approbation du devis.',
+        statusCode: response.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
       throw const ApiException(
-        type: ApiErrorType.request,
-        message: 'Session client requise.',
+        type: ApiErrorType.serverUnavailable,
+        message: 'Le serveur ne répond pas. Réessayez plus tard.',
+      );
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion.',
       );
     }
-
-    final response = await http.patch(
-      Uri.parse('$baseUrl/devis/$devisId/reponse'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'decision': decision}),
-    );
-
-    final decoded = jsonDecode(response.body);
-    if (response.statusCode == 200 && decoded is Map<String, dynamic>) {
-      return decoded;
-    }
-    final message = decoded is Map<String, dynamic>
-        ? decoded['error']?.toString() ??
-              'Impossible de répondre à cette offre.'
-        : 'Impossible de répondre à cette offre.';
-    throw ApiException(
-      type: response.statusCode >= 500
-          ? ApiErrorType.serverUnavailable
-          : ApiErrorType.request,
-      message: message,
-      statusCode: response.statusCode,
-    );
   }
 
-  /// Approuver une demande de devis (ancienne API, conservée pour compatibilité).
-  static Future<Map<String, dynamic>> approveDevis(int devisId) async {
-    final token = await ensureAuthenticated();
-    if (token == null)
-      throw const ApiException(
-        type: ApiErrorType.request,
-        message: 'Session requise. Veuillez vous reconnecter.',
-      );
-
-    final response = await http.patch(
-      Uri.parse('$baseUrl/devis/$devisId/approuver'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-    );
-
-    print('📡 approveDevis status: ${response.statusCode}');
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
-    }
-
-    final errorBody = jsonDecode(response.body);
-    throw Exception(
-      errorBody['error'] ?? 'Erreur lors de l\'approbation du devis',
-    );
-  }
-
-  /// Rejeter une demande de devis (admin)
+  /// Rejeter une demande en attente avec un motif visible par le client.
   static Future<Map<String, dynamic>> rejectDevis(
     int devisId,
     String raison,
   ) async {
     final token = await ensureAuthenticated();
-    if (token == null)
+    if (token == null) {
       throw const ApiException(
         type: ApiErrorType.request,
-        message: 'Session requise. Veuillez vous reconnecter.',
+        message: 'Session administrateur requise.',
       );
-
-    final response = await http.patch(
-      Uri.parse('$baseUrl/devis/$devisId/rejeter'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'raison': raison.trim()}),
-    );
-
-    print('📡 rejectDevis status: ${response.statusCode}');
-
-    if (response.statusCode == 200) {
-      return jsonDecode(response.body);
+    }
+    final trimmedReason = raison.trim();
+    if (trimmedReason.isEmpty || trimmedReason.length > 1000) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Le motif du rejet est obligatoire (1 à 1000 caractères).',
+      );
     }
 
-    final errorBody = jsonDecode(response.body);
-    throw Exception(errorBody['error'] ?? 'Erreur lors du rejet du devis');
+    try {
+      final response = await http
+          .patch(
+            Uri.parse('$baseUrl/devis/$devisId/rejeter'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({'raison': trimmedReason}),
+          )
+          .timeout(const Duration(seconds: 15));
+
+      final decoded = _decodeObject(response.body);
+      if (response.statusCode == 200 && decoded != null) return decoded;
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message:
+            decoded?['error']?.toString() ?? 'Erreur lors du rejet du devis.',
+        statusCode: response.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message: 'Le serveur ne répond pas. Réessayez plus tard.',
+      );
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion.',
+      );
+    }
   }
 
   /// Modifier le statut d'un devis sans transition d'approbation spécifique (admin)

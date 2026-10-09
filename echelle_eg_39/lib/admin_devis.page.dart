@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'admin/admin_components.dart';
+import 'admin/admin_devis_approval_dialog.dart';
 import 'admin/admin_tokens.dart';
 import 'api_service.dart';
 
@@ -15,7 +15,6 @@ class AdminDevisPage extends StatefulWidget {
 class _AdminDevisPageState extends State<AdminDevisPage> {
   List<Map<String, dynamic>> _devis = [];
   final Set<int> _busyDevisIds = <int>{};
-  final Set<int> _openingDocumentIds = <int>{};
   bool _isLoading = true;
   String? _errorMessage;
   String _filterStatut = 'en_attente';
@@ -57,9 +56,11 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       final status = adminStatusKey(devis['statut']);
       switch (_filterStatut) {
         case 'suivi':
-          return status == 'en_cours' || status == 'envoye' || status == 'termine';
-        case 'reponses':
-          return status == 'acceptee' || status == 'refusee';
+          return status == 'approuvee' ||
+              status == 'envoye' ||
+              status == 'acceptee' ||
+              status == 'en_cours' ||
+              status == 'termine';
         default:
           return status == _filterStatut;
       }
@@ -71,212 +72,60 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     if (filter == 'suivi') {
       return _devis.where((devis) {
         final status = adminStatusKey(devis['statut']);
-        return status == 'en_cours' || status == 'envoye' || status == 'termine';
+        return status == 'approuvee' ||
+            status == 'envoye' ||
+            status == 'acceptee' ||
+            status == 'en_cours' ||
+            status == 'termine';
       }).length;
     }
-    if (filter == 'reponses') {
-      return _devis.where((devis) {
-        final status = adminStatusKey(devis['statut']);
-        return status == 'acceptee' || status == 'refusee';
-      }).length;
-    }
-    return _devis.where((devis) => adminStatusKey(devis['statut']) == filter).length;
+    return _devis
+        .where((devis) => adminStatusKey(devis['statut']) == filter)
+        .length;
   }
 
-  Future<void> _issueDevis(int devisId) async {
-    final formKey = GlobalKey<FormState>();
-    final amountController = TextEditingController();
-    final validUntilController = TextEditingController();
-    final noteController = TextEditingController();
-    DateTime? validUntil;
-    var isSaving = false;
-    final messenger = ScaffoldMessenger.of(context);
+  Future<void> _approveDevis(int devisId) async {
+    if (!_startMutation(devisId)) return;
 
     try {
-      await showDialog<void>(
-        context: context,
-        barrierDismissible: false,
-        builder: (dialogContext) => StatefulBuilder(
-          builder: (dialogContext, setDialogState) => AlertDialog(
-            title: Text('Émettre le devis #$devisId'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      controller: amountController,
-                      keyboardType: TextInputType.number,
-                      decoration: const InputDecoration(
-                        labelText: 'Montant (FCFA)',
-                        prefixIcon: Icon(Icons.payments_outlined),
-                      ),
-                      validator: (value) {
-                        final amount = int.tryParse(value?.trim() ?? '');
-                        return amount == null || amount <= 0
-                            ? 'Saisissez un montant entier supérieur à zéro.'
-                            : null;
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: validUntilController,
-                      readOnly: true,
-                      onTap: () async {
-                        final today = DateUtils.dateOnly(DateTime.now());
-                        final picked = await showDatePicker(
-                          context: dialogContext,
-                          initialDate: validUntil ?? today,
-                          firstDate: today,
-                          lastDate: DateTime(today.year + 5),
-                        );
-                        if (picked != null) {
-                          validUntil = picked;
-                          setDialogState(() {
-                            validUntilController.text =
-                                '${picked.year.toString().padLeft(4, '0')}-'
-                                '${picked.month.toString().padLeft(2, '0')}-'
-                                '${picked.day.toString().padLeft(2, '0')}';
-                          });
-                        }
-                      },
-                      decoration: const InputDecoration(
-                        labelText: 'Valable jusqu’au',
-                        prefixIcon: Icon(Icons.event_outlined),
-                      ),
-                      validator: (value) => value?.isNotEmpty == true
-                          ? null
-                          : 'Choisissez une date de validité.',
-                    ),
-                    const SizedBox(height: 12),
-                    const ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Icon(Icons.picture_as_pdf_outlined),
-                      title: Text('PDF généré automatiquement'),
-                      subtitle: Text(
-                        'Le document sera créé et stocké de façon privée à l’envoi de l’offre.',
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: noteController,
-                      maxLines: 2,
-                      maxLength: 1000,
-                      decoration: const InputDecoration(
-                        labelText: 'Message au client (facultatif)',
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSaving ? null : () => Navigator.pop(dialogContext),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton.icon(
-                onPressed: isSaving
-                    ? null
-                    : () async {
-                        if (!formKey.currentState!.validate()) return;
-                        if (!_startMutation(devisId)) return;
-                        setDialogState(() => isSaving = true);
-                        try {
-                          await ApiService.issueDevisOffer(
-                            devisId: devisId,
-                            montant: int.parse(amountController.text.trim()),
-                            dateValidite: validUntilController.text,
-                            commentaireAdmin: noteController.text,
-                          );
-                          if (!mounted || !dialogContext.mounted) return;
-                          Navigator.pop(dialogContext);
-                          messenger
-                            ..hideCurrentSnackBar()
-                            ..showSnackBar(
-                              SnackBar(
-                                content: Text(
-                                  'Offre envoyée au client pour le devis #$devisId.',
-                                ),
-                                backgroundColor: AdminPalette.approvalGreen,
-                              ),
-                            );
-                          await _loadDevis();
-                        } catch (error) {
-                          if (mounted) {
-                            messenger
-                              ..hideCurrentSnackBar()
-                              ..showSnackBar(
-                                SnackBar(
-                                  content: Text('Émission impossible : $error'),
-                                  backgroundColor: AdminPalette.destructiveRed,
-                                ),
-                              );
-                          }
-                        } finally {
-                          _finishMutation(devisId);
-                          if (dialogContext.mounted) {
-                            setDialogState(() => isSaving = false);
-                          }
-                        }
-                      },
-                icon: isSaving
-                    ? const SizedBox(
-                        width: 16,
-                        height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Icon(Icons.send_outlined),
-                label: const Text('Envoyer l’offre'),
-              ),
-            ],
-          ),
-        ),
+      final amount = await showAdminDevisApprovalDialog(
+        context,
+        devisId: devisId,
       );
-    } finally {
-      amountController.dispose();
-      validUntilController.dispose();
-      noteController.dispose();
-    }
-  }
+      if (!mounted || amount == null) return;
 
-  Future<void> _openDocument(int devisId) async {
-    if (!mounted || _openingDocumentIds.contains(devisId)) return;
-    setState(() => _openingDocumentIds.add(devisId));
-
-    try {
-      final document = await ApiService.getDevisDocumentUrl(devisId);
-      final uri = Uri.tryParse(document['url'] ?? '');
-      if (uri == null || uri.scheme != 'https' || uri.host.isEmpty || uri.userInfo.isNotEmpty) {
-        throw const FormatException('URL HTTPS invalide');
-      }
-      final opened = await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!opened && mounted) showAdminMessage(context, 'Impossible d’ouvrir le PDF.');
-    } catch (_) {
+      await ApiService.approveDevis(devisId, amount);
+      if (!mounted) return;
+      showAdminMessage(
+        context,
+        'Devis #$devisId approuvé : ${formatAdminAmount(amount)} communiqué au client.',
+        backgroundColor: AdminPalette.approvalGreen,
+      );
+      await _loadDevis();
+    } catch (error) {
       if (mounted) {
         showAdminMessage(
           context,
-          'Document indisponible. Réessayez dans un instant.',
+          'Approbation impossible : $error',
           backgroundColor: AdminPalette.destructiveRed,
         );
       }
     } finally {
-      if (mounted) setState(() => _openingDocumentIds.remove(devisId));
+      _finishMutation(devisId);
     }
   }
 
   Future<void> _rejectDevis(int devisId) async {
-    if (_busyDevisIds.contains(devisId)) return;
-
-    final reason = await showAdminRejectionSheet(
-      context,
-      entityLabel: 'le devis #$devisId',
-    );
-    if (!mounted || reason == null || reason.trim().isEmpty) return;
     if (!_startMutation(devisId)) return;
 
     try {
+      final reason = await showAdminRejectionSheet(
+        context,
+        entityLabel: 'le devis #$devisId',
+        helperText: 'Motif obligatoire : il sera visible par le client.',
+      );
+      if (!mounted || reason == null || reason.trim().isEmpty) return;
+
       await ApiService.rejectDevis(devisId, reason);
       if (mounted) {
         showAdminMessage(
@@ -288,7 +137,11 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       }
     } catch (error) {
       if (mounted) {
-        showAdminMessage(context, 'Rejet impossible : $error', backgroundColor: AdminPalette.destructiveRed);
+        showAdminMessage(
+          context,
+          'Rejet impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
       }
     } finally {
       _finishMutation(devisId);
@@ -310,7 +163,11 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       }
     } catch (error) {
       if (mounted) {
-        showAdminMessage(context, 'Mise à jour impossible : $error', backgroundColor: AdminPalette.destructiveRed);
+        showAdminMessage(
+          context,
+          'Mise à jour impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
       }
     } finally {
       _finishMutation(devisId);
@@ -356,7 +213,11 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       }
     } catch (error) {
       if (mounted) {
-        showAdminMessage(context, 'Suppression impossible : $error', backgroundColor: AdminPalette.destructiveRed);
+        showAdminMessage(
+          context,
+          'Suppression impossible : $error',
+          backgroundColor: AdminPalette.destructiveRed,
+        );
       }
     } finally {
       _finishMutation(devisId);
@@ -379,16 +240,14 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     return text.isEmpty ? fallback : text;
   }
 
-  Widget _buildContactDetails(Map<String, dynamic> devis, int devisId) {
+  Widget _buildContactDetails(Map<String, dynamic> devis) {
     final email = _displayValue(devis['email']);
     final phone = _displayValue(devis['telephone']);
     final createdAt = formatAdminDate(devis['createdAt']);
     final adminNote = _displayValue(devis['commentaireAdmin']);
+    final isRejected = adminStatusKey(devis['statut']) == 'rejetee';
     final description = _displayValue(devis['description']);
     final amount = devis['montant'];
-    final validity = formatAdminDate(devis['dateValidite']);
-    final hasDocument = devis['documentDisponible'] == true ||
-        _displayValue(devis['documentUrl']).isNotEmpty;
     final linkedAccount = _buildLinkedAccount(devis);
 
     return Column(
@@ -404,7 +263,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
             if (linkedAccount != null) _buildMeta(linkedAccount),
           ],
         ),
-        if (amount != null || validity.isNotEmpty || hasDocument) ...[
+        if (amount != null) ...[
           const SizedBox(height: AdminSpacing.md),
           Container(
             width: double.infinity,
@@ -413,29 +272,12 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
               color: AdminPalette.mutedSurface,
               borderRadius: BorderRadius.circular(AdminRadii.field),
             ),
-            child: Wrap(
-              spacing: AdminSpacing.md,
-              runSpacing: AdminSpacing.sm,
-              crossAxisAlignment: WrapCrossAlignment.center,
-              children: [
-                if (amount != null)
-                  _buildMeta('Montant : ${formatAdminAmount(amount)}'),
-                if (validity.isNotEmpty) _buildMeta('Valable jusqu’au $validity'),
-                if (hasDocument)
-                  OutlinedButton.icon(
-                    onPressed: _openingDocumentIds.contains(devisId)
-                        ? null
-                        : () => _openDocument(devisId),
-                    icon: _openingDocumentIds.contains(devisId)
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          )
-                        : const Icon(Icons.picture_as_pdf_outlined, size: 18),
-                    label: const Text('Ouvrir le PDF'),
-                  ),
-              ],
+            child: Text(
+              'Montant approuvé : ${formatAdminAmount(amount)}',
+              style: const TextStyle(
+                color: AdminPalette.primaryText,
+                fontWeight: FontWeight.w800,
+              ),
             ),
           ),
         ],
@@ -472,9 +314,14 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
               ),
             ),
             child: Text(
-              'Note admin : $adminNote',
-              style: const TextStyle(
-                color: AdminPalette.destructiveRed,
+              isRejected
+                  ? 'Motif du rejet : $adminNote'
+                  : 'Note admin : $adminNote',
+              style: TextStyle(
+                color: isRejected
+                    ? AdminPalette.destructiveRed
+                    : AdminPalette.secondaryText,
+                fontWeight: FontWeight.w700,
                 height: 1.35,
               ),
             ),
@@ -487,10 +334,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
   Widget _buildMeta(String text) {
     return Text(
       text,
-      style: const TextStyle(
-        color: AdminPalette.secondaryText,
-        fontSize: 12,
-      ),
+      style: const TextStyle(color: AdminPalette.secondaryText, fontSize: 12),
     );
   }
 
@@ -513,8 +357,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     if (isPending) {
       return AdminDecisionBar(
         isBusy: isBusy,
-        approveLabel: 'Émettre un devis',
-        onApprove: () => _issueDevis(devisId),
+        approveLabel: 'Approuver le devis',
+        onApprove: () => _approveDevis(devisId),
         onReject: () => _rejectDevis(devisId),
       );
     }
@@ -522,14 +366,10 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (status == 'envoye' && devis['clientReponduAt'] == null)
-          IconButton(
-            onPressed: isBusy ? null : () => _issueDevis(devisId),
-            tooltip: 'Modifier l’offre',
-            icon: const Icon(Icons.edit_outlined),
-            color: AdminPalette.blueprintBlue,
-          ),
-        if (status != 'rejetee' && status != 'refusee' && status != 'envoye')
+        if (status == 'approuvee' ||
+            status == 'envoye' ||
+            status == 'acceptee' ||
+            status == 'en_cours')
           PopupMenuButton<String>(
             tooltip: 'Modifier le suivi',
             onSelected: (value) => _updateStatut(devisId, value),
@@ -537,7 +377,10 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
               PopupMenuItem(value: 'en_cours', child: Text('En cours')),
               PopupMenuItem(value: 'termine', child: Text('Terminé')),
             ],
-            child: const Icon(Icons.more_horiz, color: AdminPalette.secondaryText),
+            child: const Icon(
+              Icons.more_horiz,
+              color: AdminPalette.secondaryText,
+            ),
           ),
         IconButton(
           onPressed: isBusy ? null : () => _deleteDevis(devisId),
@@ -553,8 +396,14 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     final id = int.tryParse(devis['id'].toString());
     if (id == null) return const SizedBox.shrink();
 
-    final serviceName = _displayValue(devis['serviceName'], fallback: 'Service non renseigné');
-    final requester = _displayValue(devis['nom'], fallback: 'Client non renseigné');
+    final serviceName = _displayValue(
+      devis['serviceName'],
+      fallback: 'Service non renseigné',
+    );
+    final requester = _displayValue(
+      devis['nom'],
+      fallback: 'Client non renseigné',
+    );
     final phone = _displayValue(devis['telephone']);
     final requesterLine = phone.isEmpty ? requester : '$requester  ·  $phone';
 
@@ -564,7 +413,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       title: serviceName,
       requester: requesterLine,
       meta: 'Demande de service · ${adminStatusLabel(devis['statut'])}',
-      details: _buildContactDetails(devis, id),
+      details: _buildContactDetails(devis),
       footer: _buildFooter(devis, id),
     );
   }
@@ -575,41 +424,44 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     final content = _isLoading && _devis.isEmpty
         ? const SliverFillRemaining(
             hasScrollBody: false,
-            child: AdminLoadingState(label: 'Chargement des demandes de devis…'),
+            child: AdminLoadingState(
+              label: 'Chargement des demandes de devis…',
+            ),
           )
         : _errorMessage != null
-            ? SliverFillRemaining(
-                hasScrollBody: false,
-                child: AdminErrorState(
-                  message: _errorMessage!,
-                  onRetry: _loadDevis,
-                ),
-              )
-            : visibleDevis.isEmpty
-                ? SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: AdminEmptyState(
-                      icon: Icons.request_quote_outlined,
-                      title: _filterStatut == 'en_attente'
-                          ? 'Aucun devis en attente'
-                          : 'Aucun devis pour ce filtre',
-                      message: _filterStatut == 'en_attente'
-                          ? 'Les nouvelles demandes apparaîtront ici.'
-                          : 'Changez de filtre ou actualisez la file.',
-                    ),
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AdminSpacing.lg,
-                      AdminSpacing.sm,
-                      AdminSpacing.lg,
-                      AdminSpacing.section,
-                    ),
-                    sliver: SliverList.builder(
-                      itemCount: visibleDevis.length,
-                      itemBuilder: (context, index) => _buildDevisItem(visibleDevis[index]),
-                    ),
-                  );
+        ? SliverFillRemaining(
+            hasScrollBody: false,
+            child: AdminErrorState(
+              message: _errorMessage!,
+              onRetry: _loadDevis,
+            ),
+          )
+        : visibleDevis.isEmpty
+        ? SliverFillRemaining(
+            hasScrollBody: false,
+            child: AdminEmptyState(
+              icon: Icons.request_quote_outlined,
+              title: _filterStatut == 'en_attente'
+                  ? 'Aucun devis en attente'
+                  : 'Aucun devis pour ce filtre',
+              message: _filterStatut == 'en_attente'
+                  ? 'Les nouvelles demandes apparaîtront ici.'
+                  : 'Changez de filtre ou actualisez la file.',
+            ),
+          )
+        : SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              AdminSpacing.lg,
+              AdminSpacing.sm,
+              AdminSpacing.lg,
+              AdminSpacing.section,
+            ),
+            sliver: SliverList.builder(
+              itemCount: visibleDevis.length,
+              itemBuilder: (context, index) =>
+                  _buildDevisItem(visibleDevis[index]),
+            ),
+          );
 
     return RefreshIndicator(
       onRefresh: _loadDevis,
@@ -620,7 +472,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
           SliverToBoxAdapter(
             child: AdminPageHeader(
               title: 'Demandes de devis',
-              subtitle: 'Examinez les besoins clients et pilotez les réponses commerciales.',
+              subtitle:
+                  'Examinez les besoins clients et pilotez les réponses commerciales.',
               icon: Icons.request_quote_outlined,
               actions: [
                 IconButton(
@@ -677,11 +530,6 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
                   value: 'suivi',
                   label: 'Suivi',
                   count: _countFor('suivi'),
-                ),
-                AdminFilterOption(
-                  value: 'reponses',
-                  label: 'Réponses',
-                  count: _countFor('reponses'),
                 ),
                 AdminFilterOption(
                   value: 'tous',

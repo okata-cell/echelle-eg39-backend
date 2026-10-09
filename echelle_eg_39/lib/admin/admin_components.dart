@@ -960,7 +960,10 @@ class AdminDecisionBar extends StatelessWidget {
           child: ElevatedButton.icon(
             onPressed: onApprove,
             icon: const Icon(Icons.check, size: 18),
-            label: Text(approveLabel),
+            label: Text(
+              approveLabel,
+              style: const TextStyle(fontWeight: FontWeight.w700),
+            ),
             style: ElevatedButton.styleFrom(
               backgroundColor: AdminPalette.approvalGreen,
               foregroundColor: Colors.white,
@@ -975,7 +978,10 @@ class AdminDecisionBar extends StatelessWidget {
           child: OutlinedButton.icon(
             onPressed: onReject,
             icon: const Icon(Icons.close, size: 18),
-            label: const Text('Rejeter'),
+            label: const Text(
+              'Rejeter',
+              style: TextStyle(fontWeight: FontWeight.w700),
+            ),
             style: OutlinedButton.styleFrom(
               foregroundColor: AdminPalette.destructiveRed,
               side: const BorderSide(color: AdminPalette.destructiveRed),
@@ -1093,6 +1099,7 @@ class _AdminRejectionSheetState extends State<_AdminRejectionSheet> {
               widget.helperText,
               style: Theme.of(context).textTheme.bodySmall?.copyWith(
                 color: AdminPalette.secondaryText,
+                fontWeight: FontWeight.w600,
               ),
             ),
             const SizedBox(height: AdminSpacing.lg),
@@ -1112,6 +1119,7 @@ class _AdminRejectionSheetState extends State<_AdminRejectionSheet> {
                   padding: EdgeInsets.only(bottom: 46),
                   child: Icon(Icons.message_outlined),
                 ),
+                labelStyle: const TextStyle(fontWeight: FontWeight.w700),
                 filled: true,
                 fillColor: AdminPalette.mutedSurface,
                 border: OutlineInputBorder(

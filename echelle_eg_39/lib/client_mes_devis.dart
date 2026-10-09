@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'api_service.dart';
 
@@ -19,25 +18,22 @@ class ClientMesDevisPage extends StatefulWidget {
 
 class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
   List<Map<String, dynamic>> _devis = [];
-  final Set<String> _busyDevisIds = <String>{};
-  final Set<String> _openingDocumentIds = <String>{};
   bool _isLoading = true;
   String? _error;
 
   // Étapes affichées au client, dans l'ordre d'avancement.
   static const _etapes = [
     'Demande envoyée',
-    'Offre chiffrée',
-    'En cours',
+    'En traitement',
+    'Décision rendue',
     'Terminée',
   ];
 
   static const _indexParStatut = <String, int>{
     'en_attente': 0,
-    'approuvee': 1,
-    'acceptee': 1,
+    'approuvee': 2,
     'en_cours': 2,
-    'envoye': 1,
+    'envoye': 2,
     'termine': 3,
   };
 
@@ -103,7 +99,7 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
       case 'en_attente':
         return 'En attente';
       case 'approuvee':
-        return 'Demande approuvée';
+        return 'Devis approuvé';
       case 'acceptee':
         return 'Devis accepté';
       case 'rejetee':
@@ -276,117 +272,9 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     return '${digits.replaceAllMapped(RegExp(r'\B(?=(\d{3})+(?!\d))'), (_) => ' ')} FCFA';
   }
 
-  bool _offreExpiree(Map<String, dynamic> devis) {
-    final serverValue = devis['offreExpiree'];
-    if (serverValue is bool) return serverValue;
-    final raw = _valeur(devis['dateValidite']);
-    final date = DateTime.tryParse(raw);
-    if (date == null) return false;
-    final today = DateUtils.dateOnly(DateTime.now());
-    return DateUtils.dateOnly(date).isBefore(today);
-  }
-
-  Future<void> _openDocument(int devisId) async {
-    final key = '$devisId';
-    if (!mounted || _openingDocumentIds.contains(key)) return;
-    setState(() => _openingDocumentIds.add(key));
-
-    try {
-      final document = await ApiService.getDevisDocumentUrl(devisId);
-      final uri = Uri.tryParse(document['url'] ?? '');
-      if (uri == null ||
-          uri.scheme != 'https' ||
-          uri.host.isEmpty ||
-          uri.userInfo.isNotEmpty) {
-        throw const FormatException('URL HTTPS invalide');
-      }
-      if (!await launchUrl(uri, mode: LaunchMode.externalApplication) &&
-          mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Impossible d’ouvrir le document PDF.')),
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Document indisponible. Réessayez dans un instant.'),
-          ),
-        );
-      }
-    } finally {
-      if (mounted) setState(() => _openingDocumentIds.remove(key));
-    }
-  }
-
-  Future<void> _respondToOffer(int devisId, String decision) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: Text(
-          decision == 'acceptee' ? 'Accepter ce devis ?' : 'Refuser ce devis ?',
-        ),
-        content: const Text(
-          'Votre décision sera enregistrée dans le suivi de cette demande.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext, false),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(dialogContext, true),
-            child: Text(decision == 'acceptee' ? 'Confirmer' : 'Refuser'),
-          ),
-        ],
-      ),
-    );
-    if (!mounted || confirmed != true) return;
-
-    final key = '$devisId';
-    if (_busyDevisIds.contains(key)) return;
-    setState(() => _busyDevisIds.add(key));
-    try {
-      await ApiService.respondToDevis(devisId, decision);
-      if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(
-            decision == 'acceptee' ? 'Devis accepté.' : 'Devis refusé.',
-          ),
-        ),
-      );
-      await _loadDevis();
-    } catch (error) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Réponse impossible : ${_messageErreur(error)}'),
-          ),
-        );
-        await _loadDevis();
-      }
-    } finally {
-      if (mounted) setState(() => _busyDevisIds.remove(key));
-    }
-  }
-
-  Widget _buildFormalOfferDetails(
-    Map<String, dynamic> devis,
-    int devisId,
-    String statut,
-  ) {
+  Widget _buildAmountDetails(Map<String, dynamic> devis) {
     final amount = _formatMontant(devis['montant']);
-    final validUntil = _formatDate(devis['dateValidite']);
-    final hasDocument = devis['documentDisponible'] == true ||
-        _valeur(devis['documentUrl']).isNotEmpty;
-    final isPending = statut == 'envoye';
-    final isExpired = isPending && _offreExpiree(devis);
-    final isBusy = _busyDevisIds.contains('$devisId');
-
-    if (amount.isEmpty && validUntil.isEmpty && !hasDocument) {
-      return const SizedBox.shrink();
-    }
+    if (amount.isEmpty) return const SizedBox.shrink();
 
     return Container(
       width: double.infinity,
@@ -400,76 +288,23 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          if (amount.isNotEmpty)
-            Text(
-              amount,
-              style: const TextStyle(
-                color: Color(0xFF111827),
-                fontSize: 18,
-                fontWeight: FontWeight.w800,
-              ),
+          const Text(
+            'Montant approuvé',
+            style: TextStyle(
+              color: Color(0xFF111827),
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
-          if (validUntil.isNotEmpty) ...[
-            const SizedBox(height: 4),
-            Text(
-              'Valable jusqu’au $validUntil',
-              style: const TextStyle(fontSize: 12, color: Color(0xFF6B7280)),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            amount,
+            style: const TextStyle(
+              color: Color(0xFF111827),
+              fontSize: 18,
+              fontWeight: FontWeight.w800,
             ),
-          ],
-          if (hasDocument) ...[
-            const SizedBox(height: 8),
-            OutlinedButton.icon(
-              onPressed: _openingDocumentIds.contains('$devisId')
-                  ? null
-                  : () => _openDocument(devisId),
-              icon: _openingDocumentIds.contains('$devisId')
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.picture_as_pdf_outlined),
-              label: const Text('Ouvrir le PDF'),
-            ),
-          ],
-          if (isExpired) ...[
-            const SizedBox(height: 8),
-            const Text(
-              'Offre expirée — contactez-nous pour demander une nouvelle offre.',
-              style: TextStyle(
-                color: Color(0xFFB45309),
-                fontWeight: FontWeight.w600,
-              ),
-            ),
-          ] else if (isPending) ...[
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ElevatedButton.icon(
-                  onPressed: isBusy
-                      ? null
-                      : () => _respondToOffer(devisId, 'acceptee'),
-                  icon: const Icon(Icons.check_circle_outline),
-                  label: const Text('Accepter le devis'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF059669),
-                  ),
-                ),
-                OutlinedButton.icon(
-                  onPressed: isBusy
-                      ? null
-                      : () => _respondToOffer(devisId, 'refusee'),
-                  icon: const Icon(Icons.close),
-                  label: const Text('Refuser le devis'),
-                  style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFFDC2626),
-                  ),
-                ),
-              ],
-            ),
-          ],
+          ),
         ],
       ),
     );
@@ -528,7 +363,8 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
             ),
             const SizedBox(height: 16),
             _buildProgression(statut),
-            _buildFormalOfferDetails(devis, int.tryParse(id) ?? 0, statut),
+            if (statut == 'approuvee' || statut == 'envoye')
+              _buildAmountDetails(devis),
             if (description.isNotEmpty) ...[
               const SizedBox(height: 16),
               Container(
@@ -548,7 +384,7 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                 ),
               ),
             ],
-            if (commentaire.isNotEmpty) ...[
+            if (statut == 'rejetee' && commentaire.isNotEmpty) ...[
               const SizedBox(height: 12),
               Container(
                 width: double.infinity,
@@ -564,9 +400,7 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      statut == 'rejetee'
-                          ? 'Motif du refus'
-                          : 'Message de l\'administration',
+                      'Motif du refus',
                       style: TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w800,
