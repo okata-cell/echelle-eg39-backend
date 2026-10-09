@@ -3,14 +3,16 @@ import 'package:flutter/material.dart';
 import 'api_service.dart';
 
 typedef DevisLoader = Future<List<Map<String, dynamic>>> Function();
+typedef DevisDeleter = Future<void> Function(int devisId);
 
 /// Suivi des demandes de devis rattachées au compte connecté.
 /// Chaque demande est servie par GET /api/devis/me, déjà filtrée côté serveur
 /// sur l'identifiant du compte : aucun filtrage local n'est nécessaire.
 class ClientMesDevisPage extends StatefulWidget {
-  const ClientMesDevisPage({super.key, this.loadDevis});
+  const ClientMesDevisPage({super.key, this.loadDevis, this.deleteDevis});
 
   final DevisLoader? loadDevis;
+  final DevisDeleter? deleteDevis;
 
   @override
   State<ClientMesDevisPage> createState() => _ClientMesDevisPageState();
@@ -18,6 +20,7 @@ class ClientMesDevisPage extends StatefulWidget {
 
 class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
   List<Map<String, dynamic>> _devis = [];
+  final Set<String> _devisEnSuppression = <String>{};
   bool _isLoading = true;
   String? _error;
 
@@ -92,6 +95,19 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     } catch (_) {
       return raw;
     }
+  }
+
+  String _formatLastUpdated(Object? updatedAt, Object? createdAt) {
+    final updated = DateTime.tryParse(_valeur(updatedAt));
+    final created = DateTime.tryParse(_valeur(createdAt));
+    final date = (updated ?? created)?.toLocal();
+    if (date == null) return '';
+
+    final day = date.day.toString().padLeft(2, '0');
+    final month = date.month.toString().padLeft(2, '0');
+    final hour = date.hour.toString().padLeft(2, '0');
+    final minute = date.minute.toString().padLeft(2, '0');
+    return 'Dernière mise à jour le $day/$month/${date.year} à $hour:$minute';
   }
 
   String _libelleStatut(String statut) {
@@ -334,6 +350,63 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     );
   }
 
+  Future<void> _deleteDevis(String id, String serviceName) async {
+    final devisId = int.tryParse(id);
+    if (devisId == null || _devisEnSuppression.contains(id)) return;
+
+    setState(() => _devisEnSuppression.add(id));
+    try {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          icon: const Icon(Icons.delete_outline, color: Color(0xFFDC2626)),
+          title: const Text('Supprimer cette demande ?'),
+          content: Text(
+            'La demande « $serviceName » sera supprimée définitivement de votre historique.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton.icon(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('Supprimer'),
+              style: FilledButton.styleFrom(
+                backgroundColor: const Color(0xFFDC2626),
+                foregroundColor: Colors.white,
+              ),
+            ),
+          ],
+        ),
+      );
+      if (!mounted || confirmed != true) return;
+
+      final deleter = widget.deleteDevis ?? ApiService.deleteMyDevis;
+      await deleter(devisId);
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Demande de devis supprimée.'),
+          backgroundColor: Color(0xFF059669),
+        ),
+      );
+      await _loadDevis();
+    } catch (error) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(_messageErreur(error)),
+          backgroundColor: const Color(0xFFDC2626),
+        ),
+      );
+    } finally {
+      if (mounted) setState(() => _devisEnSuppression.remove(id));
+    }
+  }
+
   Widget _buildDevisCard(Map<String, dynamic> devis) {
     final id = _valeur(devis['id'], fallback: '?');
     final serviceName = _valeur(
@@ -343,8 +416,13 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     final description = _valeur(devis['description']);
     final commentaire = _valeur(devis['commentaireAdmin']);
     final createdAt = _formatDate(devis['createdAt']);
-    final updatedAt = _formatDate(devis['updatedAt']);
+    final updatedAt = _formatLastUpdated(
+      devis['updatedAt'],
+      devis['createdAt'],
+    );
     final statut = _valeur(devis['statut'], fallback: 'en_attente');
+    final canDelete = statut == 'rejetee' || statut == 'termine';
+    final isDeleting = _devisEnSuppression.contains(id);
 
     return Card(
       margin: const EdgeInsets.only(bottom: 12),
@@ -387,7 +465,10 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
             ),
             const SizedBox(height: 16),
             _buildProgression(statut),
-            if (statut == 'approuvee' || statut == 'envoye')
+            if (statut == 'approuvee' ||
+                statut == 'envoye' ||
+                statut == 'en_cours' ||
+                statut == 'termine')
               _buildAmountDetails(devis),
             if (description.isNotEmpty) ...[
               const SizedBox(height: 16),
@@ -444,13 +525,68 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
                 ),
               ),
             ],
-            if (updatedAt.isNotEmpty) ...[
-              const SizedBox(height: 12),
-              Text(
-                'Dernière mise à jour le $updatedAt',
-                style: const TextStyle(fontSize: 11, color: Color(0xFF9CA3AF)),
-              ),
-            ],
+            const SizedBox(height: 14),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                if (updatedAt.isNotEmpty)
+                  Expanded(
+                    child: Row(
+                      children: [
+                        const Icon(
+                          Icons.schedule_outlined,
+                          size: 15,
+                          color: Color(0xFF6B7280),
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            updatedAt,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              height: 1.35,
+                              color: Color(0xFF6B7280),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                else
+                  const Spacer(),
+                const SizedBox(width: 8),
+                Tooltip(
+                  message: canDelete
+                      ? 'Supprimer cette demande terminée ou refusée'
+                      : 'Disponible après un refus ou la clôture du devis',
+                  child: OutlinedButton.icon(
+                    key: ValueKey('delete-devis-$id'),
+                    onPressed: canDelete && !isDeleting
+                        ? () => _deleteDevis(id, serviceName)
+                        : null,
+                    icon: const Icon(Icons.delete_outline, size: 16),
+                    label: Text(isDeleting ? 'Suppression…' : 'Supprimer'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFFDC2626),
+                      disabledForegroundColor: const Color(0xFF9CA3AF),
+                      side: BorderSide(
+                        color: canDelete
+                            ? const Color(0xFFDC2626).withValues(alpha: 0.45)
+                            : const Color(0xFFD1D5DB),
+                      ),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 9,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),

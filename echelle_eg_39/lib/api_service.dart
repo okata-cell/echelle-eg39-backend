@@ -1584,6 +1584,55 @@ class ApiService {
     }
   }
 
+  /// Supprimer un devis refusé ou terminé appartenant au client connecté.
+  static Future<void> deleteMyDevis(int devisId) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session requise. Veuillez vous reconnecter.',
+      );
+    }
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/devis/me/$devisId'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 200 || response.statusCode == 204) return;
+
+      final decoded = _decodeObject(response.body);
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message:
+            decoded?['error']?.toString() ??
+            'Impossible de supprimer cette demande de devis.',
+        statusCode: response.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message: 'Le serveur ne répond pas. Réessayez plus tard.',
+      );
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion.',
+      );
+    }
+  }
+
   /// Supprimer un devis (admin)
   static Future<void> deleteDevis(int devisId) async {
     final token = await ensureAuthenticated();

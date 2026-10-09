@@ -403,7 +403,7 @@ test('une erreur PostgreSQL pendant approbation renvoie une erreur contrôlée',
   assert.equal(JSON.stringify(body).includes('secret database details'), false);
 });
 
-test('la suppression du devis ne tente plus de supprimer un objet R2', async () => {
+test('la suppression admin ne tente plus de supprimer un objet R2', async () => {
   let query;
   pool.query = async (sql) => {
     query = sql;
@@ -416,4 +416,85 @@ test('la suppression du devis ne tente plus de supprimer un objet R2', async () 
   assert.equal(response.status, 200);
   assert.match(query, /DELETE FROM devis/);
   assert.doesNotMatch(query, /document_storage_key/);
+});
+
+test('un client peut supprimer uniquement ses devis rejetés ou terminés', async () => {
+  let capturedParams;
+  let capturedQuery;
+  pool.query = async (query, params) => {
+    capturedQuery = query;
+    capturedParams = params;
+    return { rows: [{ id: Number(params[0]) }] };
+  };
+
+  for (const id of [5, 6]) {
+    const response = await request(`/me/${id}`, {
+      method: 'DELETE',
+      token: tokenFor('client', 42),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(body.message, 'Demande de devis supprimée.');
+    assert.match(capturedQuery, /user_id = \$2/);
+    assert.match(capturedQuery, /statut IN \('rejetee', 'termine'\)/);
+    assert.deepEqual(capturedParams, [String(id), 42]);
+  }
+});
+
+test('un client ne peut pas supprimer un devis en attente, approuvé ou en cours', async () => {
+  let currentStatus;
+  let deleteAttempted = false;
+  pool.query = async (query) => {
+    if (/^DELETE FROM devis/.test(query)) {
+      deleteAttempted = true;
+      return { rows: [] };
+    }
+    if (/SELECT statut FROM devis/.test(query)) {
+      return { rows: [{ statut: currentStatus }] };
+    }
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  for (const statut of ['en_attente', 'approuvee', 'en_cours']) {
+    currentStatus = statut;
+    const response = await request('/me/5', {
+      method: 'DELETE',
+      token: tokenFor('client', 42),
+    });
+    const body = await response.json();
+    assert.equal(response.status, 409);
+    assert.match(body.error, /après un refus ou la fin du suivi/);
+  }
+  assert.equal(deleteAttempted, true);
+});
+
+test('la suppression client ne révèle pas les devis inexistants ou appartenant à autrui', async () => {
+  pool.query = async (query) => {
+    if (/^DELETE FROM devis/.test(query)) return { rows: [] };
+    if (/SELECT statut FROM devis/.test(query)) return { rows: [] };
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  const response = await request('/me/5', {
+    method: 'DELETE',
+    token: tokenFor('client', 24),
+  });
+  assert.equal(response.status, 404);
+  assert.deepEqual(await response.json(), { error: 'Devis non trouvé.' });
+});
+
+test('la suppression client est réservée à un client authentifié', async () => {
+  let queried = false;
+  pool.query = async () => {
+    queried = true;
+    throw new Error('aucune requête ne doit être exécutée');
+  };
+
+  assert.equal((await request('/me/5', { method: 'DELETE' })).status, 401);
+  assert.equal(
+    (await request('/me/5', { method: 'DELETE', token: tokenFor('admin') }))
+      .status,
+    403,
+  );
+  assert.equal(queried, false);
 });

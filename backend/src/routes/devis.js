@@ -229,6 +229,39 @@ router.get('/me', authMiddleware, clientMiddleware, async (req, res) => {
   }
 });
 
+// Le client peut retirer uniquement une demande refusée ou terminée.
+router.delete('/me/:id', authMiddleware, clientMiddleware, [
+  param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
+], async (req, res) => {
+  if (sendValidationErrors(req, res)) return;
+
+  try {
+    const deleted = await pool.query(
+      `DELETE FROM devis
+        WHERE id = $1 AND user_id = $2 AND statut IN ('rejetee', 'termine')
+        RETURNING id`,
+      [req.params.id, req.user.userId],
+    );
+    if (deleted.rows.length > 0) {
+      return res.json({ message: 'Demande de devis supprimée.' });
+    }
+
+    const owned = await pool.query(
+      'SELECT statut FROM devis WHERE id = $1 AND user_id = $2',
+      [req.params.id, req.user.userId],
+    );
+    if (owned.rows.length === 0) {
+      return res.status(404).json({ error: 'Devis non trouvé.' });
+    }
+    return res.status(409).json({
+      error: 'Cette demande ne peut être supprimée qu’après un refus ou la fin du suivi.',
+    });
+  } catch (error) {
+    console.error('Erreur suppression devis client:', error.name || 'Erreur inconnue');
+    return res.status(500).json({ error: 'Impossible de supprimer cette demande.' });
+  }
+});
+
 // Approuver une demande en attente et communiquer le montant au client.
 router.patch('/:id/approuver', authMiddleware, adminMiddleware, [
   param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
