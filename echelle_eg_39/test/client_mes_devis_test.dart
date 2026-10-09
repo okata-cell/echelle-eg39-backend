@@ -58,7 +58,14 @@ void main() {
 
     expect(find.text('Devis approuvé'), findsOneWidget);
     expect(find.text('Montant approuvé'), findsOneWidget);
+    expect(find.byKey(const ValueKey('approved-devis-details')), findsOneWidget);
     expect(find.text('1 250 000 FCFA'), findsOneWidget);
+    final approvalBadge = tester.widget<Text>(find.text('Devis approuvé'));
+    expect(approvalBadge.style?.fontWeight, FontWeight.w800);
+    expect(approvalBadge.style?.color, const Color(0xFF059669));
+    final amount = tester.widget<Text>(find.text('1 250 000 FCFA'));
+    expect(amount.style?.fontWeight, FontWeight.w900);
+    expect(amount.style?.fontSize, 21);
     expect(find.text('Accepter le devis'), findsNothing);
     expect(find.text('Refuser le devis'), findsNothing);
     expect(find.text('Ouvrir le PDF'), findsNothing);

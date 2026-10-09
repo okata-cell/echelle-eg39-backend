@@ -159,23 +159,28 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
 
   Widget _buildBadge(String statut) {
     final color = _couleurStatut(statut);
+    final isApproved = statut == 'approuvee';
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      padding: EdgeInsets.symmetric(
+        horizontal: isApproved ? 14 : 12,
+        vertical: isApproved ? 8 : 6,
+      ),
       decoration: BoxDecoration(
-        color: color.withValues(alpha: 0.1),
-        borderRadius: BorderRadius.circular(12),
+        color: color.withValues(alpha: isApproved ? 0.14 : 0.1),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: color.withValues(alpha: 0.22)),
       ),
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(_iconeStatut(statut), size: 14, color: color),
-          const SizedBox(width: 4),
+          Icon(_iconeStatut(statut), size: isApproved ? 16 : 14, color: color),
+          const SizedBox(width: 5),
           Text(
             _libelleStatut(statut),
             style: TextStyle(
               color: color,
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
+              fontSize: isApproved ? 13 : 12,
+              fontWeight: FontWeight.w800,
             ),
           ),
         ],
@@ -276,33 +281,52 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     final amount = _formatMontant(devis['montant']);
     if (amount.isEmpty) return const SizedBox.shrink();
 
+    const approvalGreen = Color(0xFF047857);
     return Container(
+      key: const ValueKey('approved-devis-details'),
       width: double.infinity,
       margin: const EdgeInsets.only(top: 16),
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFFF9FAFB),
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: const Color(0xFFE5E7EB)),
+        color: const Color(0xFFECFDF5),
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: approvalGreen.withValues(alpha: 0.24)),
+        boxShadow: [
+          BoxShadow(
+            color: approvalGreen.withValues(alpha: 0.07),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
-      child: Column(
+      child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          const Text(
-            'Montant approuvé',
-            style: TextStyle(
-              color: Color(0xFF111827),
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            amount,
-            style: const TextStyle(
-              color: Color(0xFF111827),
-              fontSize: 18,
-              fontWeight: FontWeight.w800,
+          const Icon(Icons.check_circle, color: approvalGreen, size: 22),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text(
+                  'Montant approuvé',
+                  style: TextStyle(
+                    color: approvalGreen,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w800,
+                  ),
+                ),
+                const SizedBox(height: 5),
+                Text(
+                  amount,
+                  style: const TextStyle(
+                    color: Color(0xFF064E3B),
+                    fontSize: 21,
+                    fontWeight: FontWeight.w900,
+                    height: 1.15,
+                  ),
+                ),
+              ],
             ),
           ),
         ],
