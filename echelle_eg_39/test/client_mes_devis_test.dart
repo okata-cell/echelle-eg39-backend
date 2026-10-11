@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echelle_eg_39/client_mes_devis.dart';
+import 'package:echelle_eg_39/service.dart';
+import 'package:echelle_eg_39/service_image_thumbnail.dart';
 
 Map<String, dynamic> devis({
   int id = 57,
@@ -33,11 +35,30 @@ Map<String, dynamic> devis({
 Widget pageAvec(DevisLoader loader, {DevisDeleter? deleteDevis, Key? key}) {
   return MaterialApp(
     key: key,
-    home: ClientMesDevisPage(loadDevis: loader, deleteDevis: deleteDevis),
+    home: ClientMesDevisPage(
+      loadDevis: loader,
+      deleteDevis: deleteDevis,
+      serviceImageResolver: (serviceId) =>
+          serviceId == '4' ? 'https://services.example.com/bornage.jpg' : null,
+    ),
   );
 }
 
 void main() {
+  test(
+    'le catalogue résout une image à partir de l’identifiant du service',
+    () {
+      expect(
+        ServiceScreen.imageUrlForId('4'),
+        ServiceScreen.catalog
+            .firstWhere((service) => service.id == '4')
+            .imageUrl,
+      );
+      expect(ServiceScreen.imageUrlForId('service-inconnu'), isNull);
+      expect(ServiceScreen.imageUrlForId(null), isNull);
+    },
+  );
+
   testWidgets('affiche les demandes du compte et leur statut', (tester) async {
     await tester.pumpWidget(
       pageAvec(() async => [devis(), devis(id: 58, statut: 'termine')]),
@@ -46,10 +67,59 @@ void main() {
 
     expect(find.text('Mes devis'), findsOneWidget);
     expect(find.text('Bornage de terrain'), findsNWidgets(2));
+    expect(
+      tester
+          .widget<ServiceImageThumbnail>(
+            find.byKey(const ValueKey('client-devis-service-image-57')),
+          )
+          .imageUrl,
+      'https://services.example.com/bornage.jpg',
+    );
     expect(find.text('Devis #57 · 25/09/2026'), findsOneWidget);
     expect(find.text('En attente'), findsOneWidget);
     expect(find.text('Terminée'), findsNWidgets(3));
     expect(find.text('Demande envoyée'), findsNWidgets(2));
+  });
+
+  testWidgets('la barre suit les cinq étapes réelles du devis', (tester) async {
+    final semantics = tester.ensureSemantics();
+    try {
+      const stages = <String, String>{
+        'en_attente': 'Demande envoyée',
+        'en_traitement': 'En traitement',
+        'approuvee': 'Décision rendue',
+        'rejetee': 'Décision rendue',
+        'en_cours': 'Service en cours',
+        'termine': 'Terminée',
+      };
+
+      for (final entry in stages.entries) {
+        await tester.pumpWidget(
+          pageAvec(
+            () async => [
+              devis(
+                id: 70,
+                statut: entry.key,
+                montant:
+                    entry.key == 'en_attente' || entry.key == 'en_traitement'
+                    ? null
+                    : 125000,
+              ),
+            ],
+            key: ValueKey(entry.key),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(
+          find.bySemanticsLabel('Étape actuelle : ${entry.value}'),
+          findsOneWidget,
+          reason: 'statut ${entry.key}',
+        );
+      }
+    } finally {
+      semantics.dispose();
+    }
   });
 
   testWidgets('une demande approuvée montre le montant communiqué', (
@@ -150,6 +220,7 @@ void main() {
       'rejetee': true,
       'termine': true,
       'en_attente': false,
+      'en_traitement': false,
       'approuvee': false,
       'en_cours': false,
       'envoye': false,

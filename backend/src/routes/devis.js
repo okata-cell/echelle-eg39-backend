@@ -9,6 +9,7 @@ const router = express.Router();
 // Les anciennes valeurs restent lisibles pour préserver l'historique.
 const DEVIS_STATUSES = [
   'en_attente',
+  'en_traitement',
   'approuvee',
   'rejetee',
   'en_cours',
@@ -17,15 +18,15 @@ const DEVIS_STATUSES = [
   'refusee',
   'termine',
 ];
-const ADMIN_MANAGED_STATUSES = ['en_cours', 'termine'];
+const ADMIN_MANAGED_STATUSES = ['en_traitement', 'en_cours', 'termine'];
 const DEVIS_TRANSITIONS = {
-  en_attente: [],
+  en_attente: ['en_traitement'],
+  en_traitement: [],
   approuvee: ['en_cours', 'termine'],
   rejetee: [],
   en_cours: ['termine'],
-  // Anciennes offres émises avant le nouveau workflow : aucune acceptation,
-  // aucun refus et aucune nouvelle émission ne sont encore proposés.
-  envoye: ['termine'],
+  // Les anciennes offres gardent leurs transitions historiques possibles.
+  envoye: ['en_cours', 'termine'],
   acceptee: ['en_cours', 'termine'],
   refusee: [],
   termine: [],
@@ -131,6 +132,18 @@ async function pendingRequestError(devisId) {
     return {
       status: 409,
       error: 'Cette demande n’est pas liée à un compte client.',
+    };
+  }
+  if (existing.rows[0].statut === 'en_attente') {
+    return {
+      status: 409,
+      error: 'Placez la demande en examen avant de rendre une décision.',
+    };
+  }
+  if (existing.rows[0].statut !== 'en_traitement') {
+    return {
+      status: 409,
+      error: 'Cette demande a déjà reçu une décision. Actualisez la liste.',
     };
   }
   return {
@@ -262,7 +275,7 @@ router.delete('/me/:id', authMiddleware, clientMiddleware, [
   }
 });
 
-// Approuver une demande en attente et communiquer le montant au client.
+// Approuver une demande en examen et communiquer le montant au client.
 router.patch('/:id/approuver', authMiddleware, adminMiddleware, [
   param('id').isInt({ min: 1 }).withMessage('Identifiant invalide'),
   body('montant')
@@ -276,7 +289,7 @@ router.patch('/:id/approuver', authMiddleware, adminMiddleware, [
     const updated = await pool.query(
       `UPDATE devis
           SET statut = 'approuvee', montant = $1, updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2 AND statut = 'en_attente' AND user_id IS NOT NULL
+        WHERE id = $2 AND statut = 'en_traitement' AND user_id IS NOT NULL
         RETURNING *`,
       [req.body.montant, req.params.id],
     );
@@ -320,7 +333,7 @@ router.patch('/:id/rejeter', authMiddleware, adminMiddleware, [
       `UPDATE devis
           SET statut = 'rejetee', commentaire_admin = $1,
               updated_at = CURRENT_TIMESTAMP
-        WHERE id = $2 AND statut = 'en_attente' AND user_id IS NOT NULL
+        WHERE id = $2 AND statut = 'en_traitement' AND user_id IS NOT NULL
         RETURNING *`,
       [req.body.raison, req.params.id],
     );

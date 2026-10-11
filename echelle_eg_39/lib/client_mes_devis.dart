@@ -1,18 +1,26 @@
 import 'package:flutter/material.dart';
 
 import 'api_service.dart';
+import 'service_image_thumbnail.dart';
 
 typedef DevisLoader = Future<List<Map<String, dynamic>>> Function();
 typedef DevisDeleter = Future<void> Function(int devisId);
+typedef ServiceImageResolver = String? Function(Object? serviceId);
 
 /// Suivi des demandes de devis rattachées au compte connecté.
 /// Chaque demande est servie par GET /api/devis/me, déjà filtrée côté serveur
 /// sur l'identifiant du compte : aucun filtrage local n'est nécessaire.
 class ClientMesDevisPage extends StatefulWidget {
-  const ClientMesDevisPage({super.key, this.loadDevis, this.deleteDevis});
+  const ClientMesDevisPage({
+    super.key,
+    this.loadDevis,
+    this.deleteDevis,
+    this.serviceImageResolver,
+  });
 
   final DevisLoader? loadDevis;
   final DevisDeleter? deleteDevis;
+  final ServiceImageResolver? serviceImageResolver;
 
   @override
   State<ClientMesDevisPage> createState() => _ClientMesDevisPageState();
@@ -24,20 +32,25 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
   bool _isLoading = true;
   String? _error;
 
-  // Étapes affichées au client, dans l'ordre d'avancement.
+  // Étapes affichées au client, alignées sur les statuts réellement pilotés.
   static const _etapes = [
     'Demande envoyée',
     'En traitement',
     'Décision rendue',
+    'Service en cours',
     'Terminée',
   ];
 
   static const _indexParStatut = <String, int>{
     'en_attente': 0,
+    'en_traitement': 1,
     'approuvee': 2,
-    'en_cours': 2,
+    'rejetee': 2,
     'envoye': 2,
-    'termine': 3,
+    'acceptee': 2,
+    'refusee': 2,
+    'en_cours': 3,
+    'termine': 4,
   };
 
   @override
@@ -114,6 +127,8 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     switch (statut) {
       case 'en_attente':
         return 'En attente';
+      case 'en_traitement':
+        return 'En traitement';
       case 'approuvee':
         return 'Devis approuvé';
       case 'acceptee':
@@ -137,6 +152,8 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     switch (statut) {
       case 'en_attente':
         return const Color(0xFFF59E0B);
+      case 'en_traitement':
+        return const Color(0xFF2563EB);
       case 'approuvee':
       case 'acceptee':
       case 'termine':
@@ -156,6 +173,8 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
     switch (statut) {
       case 'en_attente':
         return Icons.pending_actions;
+      case 'en_traitement':
+        return Icons.manage_search_outlined;
       case 'approuvee':
       case 'acceptee':
         return Icons.thumb_up_outlined;
@@ -205,84 +224,105 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
   }
 
   Widget _buildProgression(String statut) {
-    if (statut == 'rejetee' || statut == 'refusee') {
-      return Row(
-        children: [
-          const Icon(Icons.cancel, size: 16, color: Color(0xFFDC2626)),
-          const SizedBox(width: 6),
-          Expanded(
-            child: Text(
-              statut == 'refusee'
-                  ? 'Vous avez refusé cette offre'
-                  : 'Demande refusée par l\'administration',
-              style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Color(0xFFDC2626),
+    final isRejected = statut == 'rejetee' || statut == 'refusee';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildStepProgress(statut),
+        if (isRejected) ...[
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              const Icon(Icons.cancel, size: 16, color: Color(0xFFDC2626)),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Text(
+                  statut == 'refusee'
+                      ? 'Vous avez refusé cette offre'
+                      : 'Demande refusée par l’administration',
+                  style: const TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Color(0xFFDC2626),
+                  ),
+                ),
               ),
-            ),
+            ],
           ),
         ],
-      );
-    }
+      ],
+    );
+  }
 
+  Widget _buildStepProgress(String statut) {
     final indexActuel = _indexParStatut[statut] ?? 0;
     final color = _couleurStatut(statut);
 
-    return Row(
-      children: List.generate(_etapes.length, (index) {
-        final atteinte = index <= indexActuel;
-        return Expanded(
-          child: Row(
-            children: [
-              Column(
+    return Semantics(
+      container: true,
+      label: 'Étape actuelle : ${_etapes[indexActuel]}',
+      child: ExcludeSemantics(
+        child: Row(
+          children: List.generate(_etapes.length, (index) {
+            final atteinte = index <= indexActuel;
+            return Expanded(
+              child: Row(
                 children: [
-                  Container(
-                    width: 18,
-                    height: 18,
-                    decoration: BoxDecoration(
-                      color: atteinte ? color : const Color(0xFFE5E7EB),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(
-                      atteinte ? Icons.check : Icons.circle,
-                      size: atteinte ? 12 : 8,
-                      color: Colors.white,
+                  Expanded(
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 18,
+                          height: 18,
+                          decoration: BoxDecoration(
+                            color: atteinte ? color : const Color(0xFFE5E7EB),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            atteinte ? Icons.check : Icons.circle,
+                            size: atteinte ? 12 : 8,
+                            color: Colors.white,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          _etapes[index],
+                          maxLines: 2,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 9,
+                            height: 1.2,
+                            fontWeight: atteinte
+                                ? FontWeight.w700
+                                : FontWeight.w400,
+                            color: atteinte
+                                ? const Color(0xFF111827)
+                                : const Color(0xFF9CA3AF),
+                          ),
+                        ),
+                      ],
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    _etapes[index],
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 9,
-                      height: 1.2,
-                      fontWeight: atteinte ? FontWeight.w700 : FontWeight.w400,
-                      color: atteinte
-                          ? const Color(0xFF111827)
-                          : const Color(0xFF9CA3AF),
+                  if (index < _etapes.length - 1)
+                    Expanded(
+                      child: Container(
+                        height: 2,
+                        margin: const EdgeInsets.only(
+                          bottom: 16,
+                          left: 2,
+                          right: 2,
+                        ),
+                        color: index < indexActuel
+                            ? color
+                            : const Color(0xFFE5E7EB),
+                      ),
                     ),
-                  ),
                 ],
               ),
-              if (index < _etapes.length - 1)
-                Expanded(
-                  child: Container(
-                    height: 2,
-                    margin: const EdgeInsets.only(
-                      bottom: 16,
-                      left: 2,
-                      right: 2,
-                    ),
-                    color: index < indexActuel
-                        ? color
-                        : const Color(0xFFE5E7EB),
-                  ),
-                ),
-            ],
-          ),
-        );
-      }),
+            );
+          }),
+        ),
+      ),
     );
   }
 
@@ -421,6 +461,9 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
       devis['createdAt'],
     );
     final statut = _valeur(devis['statut'], fallback: 'en_attente');
+    final serviceImageUrl = widget.serviceImageResolver?.call(
+      devis['serviceId'],
+    );
     final canDelete = statut == 'rejetee' || statut == 'termine';
     final isDeleting = _devisEnSuppression.contains(id);
 
@@ -436,6 +479,14 @@ class _ClientMesDevisPageState extends State<ClientMesDevisPage> {
             Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                ServiceImageThumbnail(
+                  key: ValueKey('client-devis-service-image-$id'),
+                  imageUrl: serviceImageUrl,
+                  semanticLabel: 'Image du service $serviceName',
+                  width: 56,
+                  height: 56,
+                ),
+                const SizedBox(width: 10),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,

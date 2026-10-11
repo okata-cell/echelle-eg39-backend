@@ -13,6 +13,7 @@ import 'demo_flags.dart';
 import 'client_mes_demandes.dart';
 import 'client_mes_devis.dart';
 import 'data_manager.dart';
+import 'service.dart';
 import 'api_service.dart';
 import 'dart:async';
 
@@ -469,7 +470,10 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                    builder: (context) => const ClientMesDevisPage()),
+                  builder: (context) => ClientMesDevisPage(
+                    serviceImageResolver: ServiceScreen.imageUrlForId,
+                  ),
+                ),
               );
             },
             tooltip: 'Mes devis',

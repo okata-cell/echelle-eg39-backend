@@ -57,6 +57,9 @@ String adminStatusKey(Object? value) {
     case 'pending':
     case 'nouveau':
       return 'en_attente';
+    case 'en_traitement':
+    case 'en traitement':
+      return 'en_traitement';
     case 'approuvee':
     case 'approuvé':
     case 'approved':
@@ -94,6 +97,8 @@ String adminStatusLabel(Object? value) {
   switch (adminStatusKey(value)) {
     case 'en_attente':
       return 'En attente';
+    case 'en_traitement':
+      return 'En traitement';
     case 'approuvee':
       return 'Approuvée';
     case 'acceptee':
@@ -122,6 +127,8 @@ Color adminStatusColor(Object? value) {
   switch (adminStatusKey(value)) {
     case 'en_attente':
       return AdminPalette.safetyAmber;
+    case 'en_traitement':
+      return AdminPalette.blueprintBlue;
     case 'approuvee':
     case 'acceptee':
       return AdminPalette.approvalGreen;

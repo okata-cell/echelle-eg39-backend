@@ -164,6 +164,78 @@ test('GET /api/devis renvoie une liste sans signature de document', async () => 
   assert.equal('documentUrl' in body.devis[0], false);
 });
 
+test('l’administrateur peut démarrer l’examen d’une demande en attente', async () => {
+  let calls = 0;
+  pool.query = async (query, params) => {
+    calls += 1;
+    if (/SELECT id, statut/.test(query)) {
+      return { rows: [{ id: 5, statut: 'en_attente' }] };
+    }
+    if (/UPDATE devis/.test(query)) {
+      assert.deepEqual(params, ['en_traitement', '', '5', 'en_attente']);
+      return { rows: [devisRow({ statut: 'en_traitement' })] };
+    }
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  const response = await request('/5/statut', {
+    method: 'PATCH',
+    token: tokenFor('admin'),
+    body: { statut: 'en_traitement' },
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.equal(body.devis.statut, 'en_traitement');
+  assert.equal(calls, 2);
+});
+
+test('le filtre admin accepte le statut en_traitement', async () => {
+  let capturedQuery;
+  let capturedParams;
+  pool.query = async (query, params) => {
+    capturedQuery = query;
+    capturedParams = params;
+    return { rows: [devisRow({ statut: 'en_traitement' })] };
+  };
+
+  const response = await request('?statut=en_traitement', {
+    token: tokenFor('admin'),
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.match(capturedQuery, /d\.statut = ANY/);
+  assert.deepEqual(capturedParams, [['en_traitement']]);
+  assert.equal(body.devis[0].statut, 'en_traitement');
+});
+
+test('une décision est refusée tant que l’examen de la demande n’a pas commencé', async () => {
+  pool.query = async (query) => {
+    if (/^UPDATE devis/.test(query)) return { rows: [] };
+    if (/SELECT id, user_id, statut/.test(query)) {
+      return { rows: [devisRow({ statut: 'en_attente' })] };
+    }
+    throw new Error(`Requête inattendue: ${query}`);
+  };
+
+  const approval = await request('/5/approuver', {
+    method: 'PATCH',
+    token: tokenFor('admin'),
+    body: { montant: 125000 },
+  });
+  const rejection = await request('/5/rejeter', {
+    method: 'PATCH',
+    token: tokenFor('admin'),
+    body: { raison: 'Motif obligatoire' },
+  });
+
+  assert.equal(approval.status, 409);
+  assert.match((await approval.json()).error, /en examen/);
+  assert.equal(rejection.status, 409);
+  assert.match((await rejection.json()).error, /en examen/);
+});
+
 test('approuver enregistre le montant positif et notifie l’état côté client', async () => {
   let capturedQuery;
   let capturedParams;
@@ -184,7 +256,7 @@ test('approuver enregistre le montant positif et notifie l’état côté client
 
   assert.equal(response.status, 200);
   assert.match(capturedQuery, /statut = 'approuvee'/);
-  assert.match(capturedQuery, /WHERE id = \$2 AND statut = 'en_attente'/);
+  assert.match(capturedQuery, /WHERE id = \$2 AND statut = 'en_traitement'/);
   assert.doesNotMatch(capturedQuery, /document_storage_key|document_url|date_validite/);
   assert.deepEqual(capturedParams, [125000, '5']);
   assert.equal(body.devis.statut, 'approuvee');
@@ -298,7 +370,7 @@ test('rejeter enregistre le motif qui sera affiché au client', async () => {
   assert.equal(response.status, 200);
   assert.match(capturedQuery, /statut = 'rejetee'/);
   assert.match(capturedQuery, /commentaire_admin = \$1/);
-  assert.match(capturedQuery, /WHERE id = \$2 AND statut = 'en_attente'/);
+  assert.match(capturedQuery, /WHERE id = \$2 AND statut = 'en_traitement'/);
   assert.deepEqual(capturedParams, ['Budget insuffisant', '5']);
   assert.equal(body.devis.statut, 'rejetee');
   assert.equal(body.devis.commentaireAdmin, 'Budget insuffisant');
@@ -353,7 +425,7 @@ test('le suivi ne peut pas contourner l’approbation tarifée ou le rejet motiv
     throw new Error('validation attendue');
   };
 
-  for (const statut of ['approuvee', 'rejetee', 'envoye', 'acceptee', 'refusee']) {
+  for (const statut of ['en_attente', 'approuvee', 'rejetee', 'envoye', 'acceptee', 'refusee']) {
     const response = await request('/5/statut', {
       method: 'PATCH',
       token: tokenFor('admin'),

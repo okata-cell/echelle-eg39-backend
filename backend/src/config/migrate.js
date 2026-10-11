@@ -213,7 +213,7 @@ async function migrate() {
         telephone VARCHAR(20),
         email VARCHAR(255),
         statut VARCHAR(20) DEFAULT 'en_attente'
-          CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'envoye', 'termine')),
+          CHECK (statut IN ('en_attente', 'en_traitement', 'approuvee', 'rejetee', 'en_cours', 'envoye', 'termine')),
         commentaire_admin TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -248,7 +248,7 @@ async function migrate() {
     );
     await client.query(`
       ALTER TABLE devis ADD CONSTRAINT devis_statut_check
-      CHECK (statut IN ('en_attente', 'approuvee', 'rejetee', 'en_cours', 'envoye', 'acceptee', 'refusee', 'termine'))
+      CHECK (statut IN ('en_attente', 'en_traitement', 'approuvee', 'rejetee', 'en_cours', 'envoye', 'acceptee', 'refusee', 'termine'))
     `);
     await client.query('ALTER TABLE devis DROP CONSTRAINT IF EXISTS devis_montant_check');
     await client.query(`

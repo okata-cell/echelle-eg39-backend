@@ -4,9 +4,25 @@ import 'admin/admin_components.dart';
 import 'admin/admin_devis_approval_dialog.dart';
 import 'admin/admin_tokens.dart';
 import 'api_service.dart';
+import 'service.dart';
+import 'service_image_thumbnail.dart';
+
+typedef AdminDevisLoader = Future<List<Map<String, dynamic>>> Function();
+typedef AdminDevisStatusUpdater =
+    Future<Map<String, dynamic>> Function(int devisId, String statut);
+typedef AdminServiceImageResolver = String? Function(Object? serviceId);
 
 class AdminDevisPage extends StatefulWidget {
-  const AdminDevisPage({super.key});
+  const AdminDevisPage({
+    super.key,
+    this.loadDevis,
+    this.updateDevisStatut,
+    this.serviceImageResolver,
+  });
+
+  final AdminDevisLoader? loadDevis;
+  final AdminDevisStatusUpdater? updateDevisStatut;
+  final AdminServiceImageResolver? serviceImageResolver;
 
   @override
   State<AdminDevisPage> createState() => _AdminDevisPageState();
@@ -17,7 +33,7 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
   final Set<int> _busyDevisIds = <int>{};
   bool _isLoading = true;
   String? _errorMessage;
-  String _filterStatut = 'en_attente';
+  String _filterStatut = 'a_examiner';
 
   @override
   void initState() {
@@ -34,7 +50,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     }
 
     try {
-      final devis = await ApiService.getDevis();
+      final loader = widget.loadDevis ?? ApiService.getDevis;
+      final devis = await loader();
       if (!mounted) return;
       setState(() {
         _devis = devis;
@@ -55,6 +72,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     return _devis.where((devis) {
       final status = adminStatusKey(devis['statut']);
       switch (_filterStatut) {
+        case 'a_examiner':
+          return status == 'en_attente' || status == 'en_traitement';
         case 'suivi':
           return status == 'approuvee' ||
               status == 'envoye' ||
@@ -69,6 +88,12 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
 
   int _countFor(String filter) {
     if (filter == 'tous') return _devis.length;
+    if (filter == 'a_examiner') {
+      return _devis.where((devis) {
+        final status = adminStatusKey(devis['statut']);
+        return status == 'en_attente' || status == 'en_traitement';
+      }).length;
+    }
     if (filter == 'suivi') {
       return _devis.where((devis) {
         final status = adminStatusKey(devis['statut']);
@@ -152,7 +177,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     if (!_startMutation(devisId)) return;
 
     try {
-      await ApiService.updateDevisStatut(devisId, newStatus);
+      final updater = widget.updateDevisStatut ?? ApiService.updateDevisStatut;
+      await updater(devisId, newStatus);
       if (mounted) {
         showAdminMessage(
           context,
@@ -355,6 +381,24 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
     final isBusy = _busyDevisIds.contains(devisId);
 
     if (isPending) {
+      return Align(
+        alignment: AlignmentDirectional.centerEnd,
+        child: OutlinedButton.icon(
+          onPressed: isBusy
+              ? null
+              : () => _updateStatut(devisId, 'en_traitement'),
+          icon: const Icon(Icons.manage_search_outlined, size: 18),
+          label: const Text('Commencer l’examen'),
+          style: OutlinedButton.styleFrom(
+            foregroundColor: AdminPalette.blueprintBlue,
+            side: const BorderSide(color: AdminPalette.blueprintBlue),
+            minimumSize: const Size(0, 44),
+          ),
+        ),
+      );
+    }
+
+    if (status == 'en_traitement') {
       return AdminDecisionBar(
         isBusy: isBusy,
         approveLabel: 'Approuver le devis',
@@ -373,9 +417,14 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
           PopupMenuButton<String>(
             tooltip: 'Modifier le suivi',
             onSelected: (value) => _updateStatut(devisId, value),
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'en_cours', child: Text('En cours')),
-              PopupMenuItem(value: 'termine', child: Text('Terminé')),
+            itemBuilder: (context) => [
+              if (status != 'en_cours')
+                const PopupMenuItem(
+                  value: 'en_cours',
+                  child: Text('Service en cours'),
+                ),
+              if (status == 'en_cours')
+                const PopupMenuItem(value: 'termine', child: Text('Terminé')),
             ],
             child: const Icon(
               Icons.more_horiz,
@@ -400,6 +449,9 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       devis['serviceName'],
       fallback: 'Service non renseigné',
     );
+    final imageResolver =
+        widget.serviceImageResolver ?? ServiceScreen.imageUrlForId;
+    final serviceImageUrl = imageResolver(devis['serviceId']);
     final requester = _displayValue(
       devis['nom'],
       fallback: 'Client non renseigné',
@@ -411,6 +463,13 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
       status: devis['statut'],
       reference: 'Devis #$id',
       title: serviceName,
+      leading: ServiceImageThumbnail(
+        key: ValueKey('admin-devis-service-image-$id'),
+        imageUrl: serviceImageUrl,
+        semanticLabel: 'Image du service $serviceName',
+        width: 64,
+        height: 64,
+      ),
       requester: requesterLine,
       meta: 'Demande de service · ${adminStatusLabel(devis['statut'])}',
       details: _buildContactDetails(devis),
@@ -441,10 +500,10 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
             hasScrollBody: false,
             child: AdminEmptyState(
               icon: Icons.request_quote_outlined,
-              title: _filterStatut == 'en_attente'
-                  ? 'Aucun devis en attente'
+              title: _filterStatut == 'a_examiner'
+                  ? 'Aucune demande à examiner'
                   : 'Aucun devis pour ce filtre',
-              message: _filterStatut == 'en_attente'
+              message: _filterStatut == 'a_examiner'
                   ? 'Les nouvelles demandes apparaîtront ici.'
                   : 'Changez de filtre ou actualisez la file.',
             ),
@@ -488,8 +547,8 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
           SliverToBoxAdapter(
             child: AdminMetricCluster(
               primary: AdminMetric(
-                label: 'Demandes à traiter',
-                value: _countFor('en_attente'),
+                label: 'Demandes à examiner',
+                value: _countFor('a_examiner'),
                 icon: Icons.pending_actions_outlined,
               ),
               secondary: [
@@ -512,9 +571,19 @@ class _AdminDevisPageState extends State<AdminDevisPage> {
               onChanged: (value) => setState(() => _filterStatut = value),
               options: [
                 AdminFilterOption(
+                  value: 'a_examiner',
+                  label: 'À examiner',
+                  count: _countFor('a_examiner'),
+                ),
+                AdminFilterOption(
                   value: 'en_attente',
                   label: 'En attente',
                   count: _countFor('en_attente'),
+                ),
+                AdminFilterOption(
+                  value: 'en_traitement',
+                  label: 'En traitement',
+                  count: _countFor('en_traitement'),
                 ),
                 AdminFilterOption(
                   value: 'approuvee',
