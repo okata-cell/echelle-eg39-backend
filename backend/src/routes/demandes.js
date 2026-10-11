@@ -60,7 +60,8 @@ router.get('/', authMiddleware, async (req, res) => {
   }
 });
 
-// Supprimer une demande terminée, livrée ou rejetée.
+// Le client peut supprimer une demande clôturée ; l'admin peut aussi supprimer
+// une demande approuvée depuis sa file de ventes.
 router.delete('/:id', authMiddleware, async (req, res) => {
   try {
     const { id } = req.params;
@@ -79,7 +80,10 @@ router.delete('/:id', authMiddleware, async (req, res) => {
       return res.status(403).json({ error: 'Non autorisé' });
     }
 
-    if (!['termine', 'livree', 'rejetee'].includes(demande.statut)) {
+    const deletableStatuses = ['termine', 'livree', 'rejetee'];
+    if (req.user.role === 'admin') deletableStatuses.push('approuvee');
+
+    if (!deletableStatuses.includes(demande.statut)) {
       return res.status(400).json({
         error: 'Impossible de supprimer une demande en cours ou en attente',
       });
