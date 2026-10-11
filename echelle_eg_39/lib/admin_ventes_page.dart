@@ -3,13 +3,20 @@ import 'package:flutter/material.dart';
 import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
 import 'api_service.dart';
+import 'equipment_request_image.dart';
+import 'service_image_thumbnail.dart';
+
+typedef AdminPurchaseRequestsLoader =
+    Future<List<Map<String, dynamic>>> Function();
 
 /// File admin des demandes d’achat.
 ///
 /// Le nom historique est conservé car le dashboard et d’autres écrans
 /// l’utilisent déjà comme point d’entrée.
 class AdminVentesPageFixed extends StatefulWidget {
-  const AdminVentesPageFixed({super.key});
+  const AdminVentesPageFixed({super.key, this.loadDemandes});
+
+  final AdminPurchaseRequestsLoader? loadDemandes;
 
   @override
   State<AdminVentesPageFixed> createState() => _AdminVentesPageFixedState();
@@ -37,7 +44,8 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
     }
 
     try {
-      final demandes = await ApiService.getDemandesAchat();
+      final loader = widget.loadDemandes ?? ApiService.getDemandesAchat;
+      final demandes = await loader();
       if (!mounted) return;
       setState(() {
         _demandes = demandes;
@@ -310,6 +318,14 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
       requester: client,
       meta: 'Demande d’achat · ${adminStatusLabel(demande['statut'])}',
       amount: formatAdminAmount(demande['total']),
+      leading: ServiceImageThumbnail(
+        key: ValueKey('admin-purchase-image-$id'),
+        imageUrl: resolveEquipmentRequestImageUrl(demande),
+        semanticLabel: 'Image de $product',
+        width: 50,
+        height: 50,
+        borderRadius: AdminRadii.field,
+      ),
       details: _buildDetails(demande),
       footer: _buildFooter(demande, id),
     );

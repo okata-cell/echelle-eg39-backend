@@ -1,8 +1,47 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:echelle_eg_39/appareil_images.dart';
+import 'package:echelle_eg_39/equipment_request_image.dart';
 import 'package:echelle_eg_39/purchase_request_image.dart';
 
 void main() {
+  group('resolveEquipmentRequestImageUrl', () {
+    test('prefers the stored device photo', () {
+      expect(
+        resolveEquipmentRequestImageUrl({
+          'appareilCode': 'APP-001',
+          'appareilId': 2039,
+          'imageUrl': ' https://example.com/device.jpg ',
+        }),
+        'https://example.com/device.jpg',
+      );
+    });
+
+    test('uses the stable device code before the database ID', () {
+      expect(
+        resolveEquipmentRequestImageUrl({
+          'appareilCode': 'APP-001',
+          'appareilId': 2039,
+        }),
+        AppareilImages.getImageUrlForAppareilId('APP-001'),
+      );
+    });
+
+    test('supports legacy snake-case fields and falls back by type', () {
+      expect(
+        resolveEquipmentRequestImageUrl({
+          'appareil_id': 'APP-001',
+          'appareil_type': 'GPS',
+        }),
+        AppareilImages.getImageUrlForAppareilId('APP-001'),
+      );
+      expect(
+        resolveEquipmentRequestImageUrl({'appareil_type': 'GPS'}),
+        AppareilImages.getImageUrlForType('GPS'),
+      );
+      expect(resolveEquipmentRequestImageUrl({}), isNull);
+    });
+  });
+
   group('resolvePurchaseRequestImageUrl', () {
     test('uses the image URL returned by the purchase API', () {
       final imageUrl = resolvePurchaseRequestImageUrl({

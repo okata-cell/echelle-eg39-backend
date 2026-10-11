@@ -1,11 +1,17 @@
 import 'package:flutter/material.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
-import 'purchase_request_image.dart';
+import 'equipment_request_image.dart';
+import 'service_image_thumbnail.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+typedef ClientPurchaseRequestsLoader =
+    Future<List<Map<String, dynamic>>> Function();
+
 class ClientMesDemandesPage extends StatefulWidget {
-  const ClientMesDemandesPage({super.key});
+  const ClientMesDemandesPage({super.key, this.loadDemandes});
+
+  final ClientPurchaseRequestsLoader? loadDemandes;
 
   @override
   State<ClientMesDemandesPage> createState() => _ClientMesDemandesPageState();
@@ -44,7 +50,8 @@ class _ClientMesDemandesPageState extends State<ClientMesDemandesPage> {
         _error = null;
       });
       
-      final demandes = await ApiService.getDemandesAchat();
+      final loader = widget.loadDemandes ?? ApiService.getDemandesAchat;
+      final demandes = await loader();
       if (mounted) {
         setState(() {
           _demandesFromAPI = demandes;
@@ -198,7 +205,7 @@ class _ClientMesDemandesPageState extends State<ClientMesDemandesPage> {
     // Support both API response format and local model format.
     final produitNom =
         (demande['appareilNom'] ?? demande['produitNom'] ?? 'Produit').toString();
-    final imageUrl = resolvePurchaseRequestImageUrl(demande);
+    final imageUrl = resolveEquipmentRequestImageUrl(demande);
     final statut = demande['statut']?.toString() ?? 'en_attente';
     final quantite = demande['quantite'] ?? 1;
     final produitPrix = demande['appareilPrix'] ?? demande['produitPrix'] ?? 0;
@@ -221,41 +228,13 @@ class _ClientMesDemandesPageState extends State<ClientMesDemandesPage> {
             // En-tête avec produit et statut
             Row(
               children: [
-                Semantics(
-                  image: true,
-                  label: 'Image de $produitNom',
-                  child: SizedBox(
-                    width: 64,
-                    height: 64,
-                    child: ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: Image.network(
-                        imageUrl,
-                        fit: BoxFit.cover,
-                        loadingBuilder: (context, child, progress) {
-                          if (progress == null) return child;
-                          return Container(
-                            color: const Color(0xFFF3F4F6),
-                            alignment: Alignment.center,
-                            child: const SizedBox(
-                              width: 20,
-                              height: 20,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          );
-                        },
-                        errorBuilder: (context, error, stackTrace) =>
-                            Container(
-                              color: const Color(0xFFF3F4F6),
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                Icons.image_not_supported_outlined,
-                                color: Color(0xFF9CA3AF),
-                              ),
-                            ),
-                      ),
-                    ),
-                  ),
+                ServiceImageThumbnail(
+                  key: ValueKey('client-purchase-image-$id'),
+                  imageUrl: imageUrl,
+                  semanticLabel: 'Image de $produitNom',
+                  width: 64,
+                  height: 64,
+                  borderRadius: 8,
                 ),
                 const SizedBox(width: 12),
                 Expanded(

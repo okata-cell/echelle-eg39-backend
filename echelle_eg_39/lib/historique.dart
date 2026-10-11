@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:pdf/pdf.dart';
-import 'appareil_images.dart';
+import 'equipment_request_image.dart';
 import 'location_status.dart';
+import 'service_image_thumbnail.dart';
 import 'package:pdf/widgets.dart' as pw;
 import 'package:printing/printing.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -274,7 +275,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
           invoiceNumber: location['code']?.toString(),
           adminComment: location['commentaireAdmin']?.toString(),
           clientEmail: location['clientEmail']?.toString(),
-          imageUrl: location['imageUrl']?.toString(),
+          imageUrl: resolveEquipmentRequestImageUrl(location),
         ));
       }
 
@@ -290,6 +291,7 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
           invoiceNumber: demande['code']?.toString(),
           adminComment: demande['commentaireAdmin']?.toString(),
           clientEmail: demande['clientEmail']?.toString(),
+          imageUrl: resolveEquipmentRequestImageUrl(demande),
         ));
       }
 
@@ -2256,38 +2258,15 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // Image equipment
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
-                  child: Image.network(
-                    transaction.imageUrl ??
-                        AppareilImages.getImageUrlForType(transaction.title),
-                    width: 56,
-                    height: 56,
-                    fit: BoxFit.cover,
-                    loadingBuilder: (context, child, loadingProgress) {
-                      if (loadingProgress == null) return child;
-                      return Container(
-                        width: 56,
-                        height: 56,
-                        color: typeConfig['bgColor'],
-                        child: Icon(typeConfig['icon'],
-                          color: typeConfig['iconColor'], size: 24),
-                      );
-                    },
-                    errorBuilder: (context, error, stackTrace) {
-                      return Container(
-                        width: 56,
-                        height: 56,
-                        decoration: BoxDecoration(
-                          color: typeConfig['bgColor'],
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: Icon(typeConfig['icon'],
-                          color: typeConfig['iconColor'], size: 24),
-                      );
-                    },
+                ServiceImageThumbnail(
+                  key: ValueKey(
+                    'history-transaction-image-${transaction.type}-${transaction.id}',
                   ),
+                  imageUrl: transaction.imageUrl,
+                  semanticLabel: 'Image de ${transaction.title}',
+                  width: 56,
+                  height: 56,
+                  borderRadius: 12,
                 ),
                 const SizedBox(width: 12),
                 Expanded(

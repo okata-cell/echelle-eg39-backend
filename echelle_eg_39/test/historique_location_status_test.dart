@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:echelle_eg_39/historique.dart';
+import 'package:echelle_eg_39/service_image_thumbnail.dart';
 
 Map<String, dynamic> location({
   required int id,
@@ -45,6 +46,68 @@ void main() {
 
   setUp(() {
     SharedPreferences.setMockInitialValues({});
+  });
+
+  testWidgets('chaque location et vente affiche la photo de son appareil', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      historyPage(
+        loadLocations: () async => [
+          {
+            ...location(id: 81, name: 'GPS E600', status: 'en_attente'),
+            'appareilCode': 'APP-001',
+            'imageUrl': 'https://example.com/rental-gps.jpg',
+          },
+        ],
+        loadPurchases: () async => [
+          {
+            'id': 82,
+            'appareilNom': 'Niveau de test',
+            'appareilCode': 'APP-002',
+            'appareilType': 'GPS',
+            'imageUrl': 'https://example.com/sale-level.jpg',
+            'createdAt': '2030-06-11T12:00:00.000Z',
+            'quantite': 1,
+            'total': 250000,
+            'statut': 'en_attente',
+          },
+        ],
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    expect(
+      tester
+          .widget<ServiceImageThumbnail>(
+            find.byKey(const ValueKey('history-transaction-image-location-81')),
+          )
+          .imageUrl,
+      'https://example.com/rental-gps.jpg',
+    );
+    final purchaseImageKey = const ValueKey(
+      'history-transaction-image-achat-82',
+    );
+    await tester.scrollUntilVisible(
+      find.byKey(purchaseImageKey),
+      300,
+      scrollable: find
+          .byWidgetPredicate(
+            (widget) =>
+                widget is Scrollable &&
+                widget.axisDirection == AxisDirection.down,
+          )
+          .last,
+    );
+    expect(
+      tester
+          .widget<ServiceImageThumbnail>(
+            find.byKey(const ValueKey('history-transaction-image-achat-82')),
+          )
+          .imageUrl,
+      'https://example.com/sale-level.jpg',
+    );
+    await tester.pumpWidget(const SizedBox.shrink());
   });
 
   testWidgets('actualise le statut serveur et affiche le motif de refus', (
@@ -133,11 +196,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(calls, 1);
 
-    await tester.fling(
-      find.text('GPS actualisé'),
-      const Offset(0, 300),
-      1000,
-    );
+    await tester.fling(find.text('GPS actualisé'), const Offset(0, 300), 1000);
     await tester.pumpAndSettle();
     expect(calls, 2);
 

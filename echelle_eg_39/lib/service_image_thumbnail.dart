@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 
-/// Compact, accessible service artwork with a stable fallback for broken URLs.
+/// Compact, accessible request thumbnail with a stable fallback for broken URLs.
 class ServiceImageThumbnail extends StatelessWidget {
   const ServiceImageThumbnail({
     super.key,

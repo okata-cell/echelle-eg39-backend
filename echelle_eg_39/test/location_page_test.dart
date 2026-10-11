@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:echelle_eg_39/LocationsMenu.dart';
+import 'package:echelle_eg_39/service_image_thumbnail.dart';
 
 void main() {
   testWidgets(
@@ -174,6 +175,43 @@ void main() {
     await tester.pumpAndSettle();
     expect(loadCount, 2);
     expect(find.text('LOCATION #1'), findsOneWidget);
+
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('chaque location affiche la photo de son appareil', (
+    tester,
+  ) async {
+    final locations = [
+      {
+        ..._location(41, 'en_attente'),
+        'appareilCode': 'APP-001',
+        'imageUrl': 'https://example.com/gps-41.jpg',
+      },
+      {
+        ..._location(42, 'en_attente'),
+        'appareilCode': 'APP-002',
+        'imageUrl': 'https://example.com/gps-42.jpg',
+      },
+    ];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: LocationPage(loadLocations: () async => locations),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final firstImage = tester.widget<ServiceImageThumbnail>(
+      find.byKey(const ValueKey('admin-location-image-id:41')),
+    );
+    final secondImage = tester.widget<ServiceImageThumbnail>(
+      find.byKey(const ValueKey('admin-location-image-id:42')),
+    );
+    expect(firstImage.imageUrl, 'https://example.com/gps-41.jpg');
+    expect(secondImage.imageUrl, 'https://example.com/gps-42.jpg');
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

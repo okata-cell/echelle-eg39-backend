@@ -21,6 +21,7 @@ function mapLocation(location) {
     clientPhone: location.phone,
     clientTelephone: location.phone,
     appareilId: location.appareil_id,
+    appareilCode: location.appareil_code,
     appareilNom: location.appareil_nom,
     appareilType: location.appareil_type,
     imageUrl: location.appareil_image_url,
@@ -52,7 +53,8 @@ async function listLocations(req, res, { adminOnly = false } = {}) {
     const { statut } = req.query;
     let query = `
       SELECT l.*, u.first_name, u.last_name, u.email, u.phone,
-             a.type AS appareil_type, a.image_url AS appareil_image_url
+             a.code AS appareil_code, a.type AS appareil_type,
+             a.image_url AS appareil_image_url
         FROM locations l
         JOIN users u ON l.user_id = u.id
         LEFT JOIN appareils a ON l.appareil_id = a.id

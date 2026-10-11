@@ -417,6 +417,50 @@ test('approuve une location quand PostgreSQL renvoie ses dates en objets Date', 
   assert.equal(database.releaseCount, 1);
 });
 
+test('le répertoire admin expose le code et l’image de chaque appareil loué', async () => {
+  let capturedQuery = '';
+  pool.query = async (query, params) => {
+    capturedQuery = query;
+    assert.deepEqual(params, []);
+    return { rows: [makeLocation({
+      appareil_code: 'APP-2039',
+      appareil_image_url: 'https://example.com/gps-2039.jpg',
+    })] };
+  };
+
+  const response = await fetch(`${baseUrl}/admin`, {
+    headers: { Authorization: `Bearer ${tokenFor('admin', 7)}` },
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.match(capturedQuery, /a\.code AS appareil_code/);
+  assert.equal(body.locations[0].appareilCode, 'APP-2039');
+  assert.equal(body.locations[0].imageUrl, 'https://example.com/gps-2039.jpg');
+});
+
+test('le répertoire admin des locations renvoie le code et la photo appareil', async () => {
+  let capturedQuery = '';
+  pool.query = async (query, params) => {
+    capturedQuery = query;
+    assert.deepEqual(params, []);
+    return { rows: [makeLocation({
+      appareil_code: 'APP-2039',
+      appareil_image_url: 'https://example.com/gps-2039.jpg',
+    })] };
+  };
+
+  const response = await fetch(`${baseUrl}/admin`, {
+    headers: { Authorization: `Bearer ${tokenFor('admin', 7)}` },
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.match(capturedQuery, /a\.code AS appareil_code/);
+  assert.equal(body.locations[0].appareilCode, 'APP-2039');
+  assert.equal(body.locations[0].imageUrl, 'https://example.com/gps-2039.jpg');
+});
+
 test('le répertoire admin des locations reste inaccessible à un client', async () => {
   pool.query = async () => { throw new Error('La base ne doit pas être appelée'); };
   const response = await fetch(`${baseUrl}/admin`, {

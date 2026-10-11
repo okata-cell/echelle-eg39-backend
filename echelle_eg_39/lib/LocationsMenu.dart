@@ -4,7 +4,8 @@ import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
 import 'admin/location_queue_filter.dart';
 import 'api_service.dart';
-import 'appareil_images.dart';
+import 'equipment_request_image.dart';
+import 'service_image_thumbnail.dart';
 
 typedef AdminLocationsLoader = Future<List<Map<String, dynamic>>> Function();
 typedef LocationDecision = Future<Object?> Function(int locationId);
@@ -388,29 +389,17 @@ class _LocationPageState extends State<LocationPage> {
   }
 
   Widget _buildEquipmentLeading(Map<String, dynamic> location) {
-    final fallbackUrl = AppareilImages.getImageUrl(
-      location['appareilId']?.toString() ?? '',
-      location['appareilType']?.toString() ?? '',
+    final equipmentName = _display(
+      location['appareilNom'],
+      fallback: 'appareil',
     );
-    final imageUrl = location['imageUrl']?.toString();
-
-    return SizedBox(
+    return ServiceImageThumbnail(
+      key: ValueKey('admin-location-image-${_locationIdentityKey(location)}'),
+      imageUrl: resolveEquipmentRequestImageUrl(location),
+      semanticLabel: 'Image de $equipmentName',
       width: 50,
       height: 50,
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(AdminRadii.field),
-        child: Image.network(
-          imageUrl == null || imageUrl.isEmpty ? fallbackUrl : imageUrl,
-          fit: BoxFit.cover,
-          errorBuilder: (context, error, stackTrace) => Container(
-            color: AdminPalette.blueprintBlue.withValues(alpha: 0.1),
-            child: const Icon(
-              Icons.gps_fixed,
-              color: AdminPalette.blueprintBlue,
-            ),
-          ),
-        ),
-      ),
+      borderRadius: AdminRadii.field,
     );
   }
 
