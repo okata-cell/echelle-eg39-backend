@@ -1691,15 +1691,32 @@ class ApiService {
 
       print('📡 getPromotions status: ${response.statusCode}');
 
-      if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return List<Map<String, dynamic>>.from(data['promotions']);
-      } else {
-        throw Exception(
-          jsonDecode(response.body)['error'] ??
-              'Erreur lors de la récupération des promotions',
-        );
+      final data = _decodeObject(response.body);
+      final promotions = data?['promotions'];
+      if (response.statusCode == 200 && promotions is List) {
+        return promotions
+            .whereType<Map>()
+            .map((promotion) => Map<String, dynamic>.from(promotion))
+            .toList(growable: false);
       }
+
+      final message = switch (response.statusCode) {
+        401 => 'Votre session a expiré. Reconnectez-vous puis réessayez.',
+        403 =>
+          'Un compte administrateur est requis pour consulter les promotions.',
+        _ =>
+          data?['error']?.toString() ??
+              (response.statusCode == 200
+                  ? 'Réponse de la liste promotions invalide.'
+                  : 'Erreur lors de la récupération des promotions.'),
+      };
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message: message,
+        statusCode: response.statusCode,
+      );
     } on TimeoutException {
       throw const ApiException(
         type: ApiErrorType.serverUnavailable,
