@@ -51,7 +51,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
     _startCarouselAutoScroll();
     // Vérifier et afficher la promotion après un court délai
     Future.delayed(const Duration(seconds: 2), () {
-      PromotionPopup.checkAndShowPromotion(context);
+      if (mounted) PromotionPopup.checkAndShowPromotion(context);
     });
   }
 
@@ -357,7 +357,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
                   height: 280,
                   child: PageView.builder(
                     controller: PageController(viewportFraction: 0.85),
-                    itemCount: _allServices.length > 5 ? 5 : _allServices.length,
+                    itemCount: _allServices.length,
                     itemBuilder: (context, index) {
                       final service = _allServices[index];
                       return _buildServiceCard(service);
@@ -840,49 +840,6 @@ class _ModernHomePageState extends State<ModernHomePage> {
     );
   }
 
-  // Liste des services pour le carrousel
-  List<Service> get _allServices {
-    return [
-      Service(
-        id: '1',
-        name: 'Levée de détail',
-        description: 'Relevé précis des éléments du terrain avec coordonnées X, Y.',
-        category: 'Levés topographiques',
-        imageUrl: 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400',
-        features: ['Précision centimétrique', 'Données 3D', 'Format DWG/PDF'],
-      ),
-      Service(
-        id: '2',
-        name: 'Bornage de terrain',
-        description: 'Matérialisation des limites de propriété par des bornes.',
-        category: 'Travaux cadastraux',
-        imageUrl: 'https://images.unsplash.com/photo-1560518883-ce09059eeffa?w=400',
-        features: ['Bornes officielles', 'Documents légaux', 'Plan cadastral'],
-      ),
-      Service(
-        id: '3',
-        name: 'Implantation',
-        description: 'Implantation de bâtiments et ouvrages sur le terrain.',
-        category: 'Implantation',
-        imageUrl: 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=400',
-        features: ['Implantation précise', 'Contrôle qualité', 'Rapport détaillé'],
-      ),
-      Service(
-        id: '4',
-        name: 'Cartographie',
-        description: 'Réalisation de plans et cartes topographiques.',
-        category: 'Cartographie',
-        imageUrl: 'https://images.unsplash.com/photo-1454165804606-c3d57bc86b40?w=400',
-        features: ['Plans numériques', 'Géoréférencement', 'Format CAO/DAO'],
-      ),
-      Service(
-        id: '5',
-        name: 'Modélisation 3D',
-        description: 'Création de modèles numériques de terrain.',
-        category: 'Modélisation 3D',
-        imageUrl: 'https://images.unsplash.com/photo-1487958449943-2429e8be8625?w=400',
-        features: ['Nuage de points', 'Maillage 3D', 'Texturing'],
-      ),
-    ];
-  }
+  // Reuse the catalog shown on the full services page so image URLs stay in sync.
+  List<Service> get _allServices => ServiceScreen.catalog;
 }

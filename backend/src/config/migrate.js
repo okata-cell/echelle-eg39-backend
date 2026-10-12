@@ -156,6 +156,26 @@ async function migrate() {
       )
     `);
 
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS promotions (
+        id SERIAL PRIMARY KEY,
+        titre VARCHAR(255) NOT NULL,
+        description TEXT NOT NULL,
+        image_url TEXT,
+        image_storage_path TEXT,
+        date_debut DATE NOT NULL,
+        date_fin DATE NOT NULL,
+        actif BOOLEAN DEFAULT true,
+        frequence VARCHAR(50) DEFAULT 'chaque_ouverture'
+          CHECK (frequence IN ('chaque_ouverture', 'une_fois_par_jour', 'une_seule_fois')),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(
+      'ALTER TABLE promotions ADD COLUMN IF NOT EXISTS image_storage_path TEXT',
+    );
+
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_appareils_code ON appareils(code)');
@@ -168,6 +188,10 @@ async function migrate() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_reset_codes_user ON password_reset_codes(user_id)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_reset_codes_code ON password_reset_codes(code)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_reset_codes_contact ON password_reset_codes(contact)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_promotions_actif ON promotions(actif)');
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_promotions_dates ON promotions(date_debut, date_fin)',
+    );
 
     const adminEmail = process.env.ADMIN_EMAIL || 'admin@echelle-eg39.com';
     const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';

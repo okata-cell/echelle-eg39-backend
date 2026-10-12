@@ -1,11 +1,41 @@
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 
 import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
+import 'admin/promotion_editor_dialog.dart';
 import 'api_service.dart';
+import 'service_image_thumbnail.dart';
+
+typedef PromotionLoader = Future<List<Map<String, dynamic>>> Function();
+typedef PromotionImageUploader =
+    Future<Map<String, dynamic>> Function(XFile image);
+typedef PromotionCreator =
+    Future<Map<String, dynamic>> Function(Map<String, dynamic> promotion);
+typedef PromotionToggler =
+    Future<Map<String, dynamic>> Function(int promotionId, bool activate);
+typedef PromotionDeleter = Future<void> Function(int promotionId);
+typedef PromotionImageDeleter = Future<void> Function(String storagePath);
 
 class AdminPromotionsPage extends StatefulWidget {
-  const AdminPromotionsPage({super.key});
+  const AdminPromotionsPage({
+    super.key,
+    this.loadPromotions,
+    this.uploadImage,
+    this.pickImage,
+    this.createPromotion,
+    this.togglePromotion,
+    this.deletePromotion,
+    this.deletePromotionImage,
+  });
+
+  final PromotionLoader? loadPromotions;
+  final PromotionImageUploader? uploadImage;
+  final PromotionImagePicker? pickImage;
+  final PromotionCreator? createPromotion;
+  final PromotionToggler? togglePromotion;
+  final PromotionDeleter? deletePromotion;
+  final PromotionImageDeleter? deletePromotionImage;
 
   @override
   State<AdminPromotionsPage> createState() => _AdminPromotionsPageState();
@@ -33,7 +63,8 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
     }
 
     try {
-      final promotions = await ApiService.getPromotions();
+      final loader = widget.loadPromotions ?? ApiService.getPromotions;
+      final promotions = await loader();
       if (!mounted) return;
       setState(() {
         _promotions = promotions;
@@ -48,235 +79,98 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
     }
   }
 
-  List<Map<String, dynamic>> get _visiblePromotions {
-    if (_filterStatut == 'tous') return _promotions;
-    return _promotions.where((promo) {
-      final isActive = promo['actif'] == true;
-      final now = DateTime.now();
-      final dateDebut = DateTime.tryParse(promo['date_debut']?.toString() ?? '') ?? now;
-      final dateFin = DateTime.tryParse(promo['date_fin']?.toString() ?? '') ?? now;
-      final isInPeriod = now.isAfter(dateDebut) && now.isBefore(dateFin);
-      
-      switch (_filterStatut) {
-        case 'actives':
-          return isActive && isInPeriod;
-        case 'inactives':
-          return !isActive || !isInPeriod;
-        default:
-          return true;
-      }
-    }).toList();
+  bool _isInActivePeriod(Map<String, dynamic> promotion, DateTime today) {
+    final start = DateTime.tryParse(promotion['date_debut']?.toString() ?? '');
+    final end = DateTime.tryParse(promotion['date_fin']?.toString() ?? '');
+    if (start == null || end == null) return false;
+
+    final todayOnly = DateTime(today.year, today.month, today.day);
+    final startOnly = DateTime(start.year, start.month, start.day);
+    final endOnly = DateTime(end.year, end.month, end.day);
+    return !todayOnly.isBefore(startOnly) && !todayOnly.isAfter(endOnly);
   }
 
-  int _countFor(String filter) {
-    if (filter == 'tous') return _promotions.length;
-    return _visiblePromotions.length;
+  bool _matchesFilter(Map<String, dynamic> promotion, String filter) {
+    if (filter == 'tous') return true;
+    final isActive = promotion['actif'] == true;
+    final isInPeriod = _isInActivePeriod(promotion, DateTime.now());
+    if (filter == 'actives') return isActive && isInPeriod;
+    if (filter == 'inactives') return !isActive || !isInPeriod;
+    return true;
   }
+
+  List<Map<String, dynamic>> get _visiblePromotions => _promotions
+      .where((promotion) => _matchesFilter(promotion, _filterStatut))
+      .toList();
+
+  int _countFor(String filter) => _promotions
+      .where((promotion) => _matchesFilter(promotion, filter))
+      .length;
 
   Future<void> _showCreatePromotionDialog() async {
-    final titreController = TextEditingController();
-    final descriptionController = TextEditingController();
-    final imageUrlController = TextEditingController();
-    DateTime? dateDebut;
-    DateTime? dateFin;
-    bool actif = true;
-    String frequence = 'chaque_ouverture';
-
-    // ignore: unused_local_variable
-    final _ = imageUrlController;
-
-    // ignore: unused_local_variable
-    final _ = imageUrlController;
-
-    final result = await showDialog<Map<String, dynamic>>(
+    final created = await showDialog<bool>(
       context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (context, setState) {
-          return AlertDialog(
-            title: const Text(
-              'Créer une promotion',
-              style: TextStyle(fontWeight: FontWeight.w800),
-            ),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  TextField(
-                    controller: titreController,
-                    decoration: const InputDecoration(
-                      labelText: 'Titre',
-                      hintText: 'Promotion spéciale GPS',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: descriptionController,
-                    decoration: const InputDecoration(
-                      labelText: 'Description',
-                      hintText: 'Profitez de -20% sur...',
-                      border: OutlineInputBorder(),
-                    ),
-                    maxLines: 3,
-                  ),
-                  const SizedBox(height: 12),
-                  TextField(
-                    controller: imageUrlController,
-                    decoration: const InputDecoration(
-                      labelText: 'URL de l\'image',
-                      hintText: 'https://...',
-                      border: OutlineInputBorder(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now(),
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
-                            );
-                            if (picked != null) {
-                              setState(() => dateDebut = picked);
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            dateDebut == null
-                                ? 'Date de début'
-                                : '${dateDebut!.day}/${dateDebut!.month}/${dateDebut!.year}',
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: TextButton.icon(
-                          onPressed: () async {
-                            final picked = await showDatePicker(
-                              context: context,
-                              initialDate: DateTime.now().add(const Duration(days: 30)),
-                              firstDate: DateTime.now(),
-                              lastDate: DateTime.now().add(const Duration(days: 365)),
-                            );
-                            if (picked != null) {
-                              setState(() => dateFin = picked);
-                            }
-                          },
-                          icon: const Icon(Icons.calendar_today),
-                          label: Text(
-                            dateFin == null
-                                ? 'Date de fin'
-                                : '${dateFin!.day}/${dateFin!.month}/${dateFin!.year}',
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  SwitchListTile(
-                    title: const Text('Afficher automatiquement'),
-                    subtitle: const Text('La promotion apparaîtra dans l\'app'),
-                    value: actif,
-                    onChanged: (value) => setState(() => actif = value),
-                  ),
-                  const SizedBox(height: 12),
-                  const Text(
-                    'Fréquence d\'affichage',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                  Column(
-                    children: [
-                      RadioListTile<String>(
-                        title: const Text('À chaque ouverture'),
-                        value: 'chaque_ouverture',
-                        groupValue: frequence,
-                        onChanged: (value) => setState(() => frequence = value!),
-                      ),
-                      RadioListTile<String>(
-                        title: const Text('Une fois par jour'),
-                        value: 'une_fois_par_jour',
-                        groupValue: frequence,
-                        onChanged: (value) => setState(() => frequence = value!),
-                      ),
-                      RadioListTile<String>(
-                        title: const Text('Une seule fois'),
-                        value: 'une_seule_fois',
-                        groupValue: frequence,
-                        onChanged: (value) => setState(() => frequence = value!),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.pop(dialogContext),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: () {
-                  if (titreController.text.trim().isEmpty ||
-                      descriptionController.text.trim().isEmpty ||
-                      dateDebut == null ||
-                      dateFin == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Veuillez remplir tous les champs obligatoires'),
-                        backgroundColor: AdminPalette.destructiveRed,
-                      ),
-                    );
-                    return;
-                  }
-                  Navigator.pop(dialogContext, {
-                    'titre': titreController.text.trim(),
-                    'description': descriptionController.text.trim(),
-                    'image_url': imageUrlController.text.trim(),
-                    'date_debut': dateDebut!.toIso8601String().split('T')[0],
-                    'date_fin': dateFin!.toIso8601String().split('T')[0],
-                    'actif': actif,
-                    'frequence': frequence,
-                  });
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: AdminPalette.blueprintBlue,
-                  foregroundColor: Colors.white,
-                ),
-                child: const Text('Publier'),
-              ),
-            ],
-          );
-        },
+      builder: (_) => PromotionEditorDialog(
+        onSubmit: _createPromotion,
+        pickImage: widget.pickImage,
       ),
     );
 
-    if (result == null) return;
+    if (created != true || !mounted) return;
+    showAdminMessage(
+      context,
+      'Promotion créée avec succès.',
+      backgroundColor: AdminPalette.approvalGreen,
+    );
+    await _loadPromotions();
+  }
+
+  Future<void> _createPromotion(PromotionDraft draft) async {
+    String? imageUrl;
+    String? storagePath;
 
     try {
-      await ApiService.createPromotion(result);
-      if (mounted) {
-        showAdminMessage(
-          context,
-          'Promotion créée avec succès',
-          backgroundColor: AdminPalette.approvalGreen,
-        );
-        await _loadPromotions();
+      if (draft.image != null) {
+        final uploader = widget.uploadImage ?? ApiService.uploadPromotionImage;
+        final uploaded = await uploader(draft.image!);
+        imageUrl = uploaded['imageUrl']?.toString();
+        storagePath = uploaded['storagePath']?.toString();
+        if (imageUrl == null || storagePath == null) {
+          throw Exception('Le serveur n’a pas renvoyé le visuel téléversé.');
+        }
       }
-    } catch (error) {
-      if (mounted) {
-        showAdminMessage(
-          context,
-          'Erreur: $error',
-          backgroundColor: AdminPalette.destructiveRed,
-        );
+
+      final creator = widget.createPromotion ?? ApiService.createPromotion;
+      await creator({
+        'titre': 'Offre du moment',
+        'description': draft.description,
+        'image_url': imageUrl,
+        'image_storage_path': storagePath,
+        'date_debut': _dateOnly(draft.startDate),
+        'date_fin': _dateOnly(draft.endDate),
+        'actif': draft.active,
+        'frequence': draft.frequency,
+      });
+    } catch (_) {
+      if (storagePath != null) {
+        try {
+          final removeImage =
+              widget.deletePromotionImage ?? ApiService.deletePromotionImage;
+          await removeImage(storagePath);
+        } catch (cleanupError) {
+          debugPrint(
+            'Image de promotion à nettoyer manuellement : $cleanupError',
+          );
+        }
       }
+      rethrow;
     }
   }
+
+  String _dateOnly(DateTime date) =>
+      '${date.year.toString().padLeft(4, '0')}-'
+      '${date.month.toString().padLeft(2, '0')}-'
+      '${date.day.toString().padLeft(2, '0')}';
 
   Future<void> _togglePromotion(int promotionId, bool currentStatus) async {
     if (_busyPromotionIds.contains(promotionId)) return;
@@ -284,7 +178,8 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
     setState(() => _busyPromotionIds.add(promotionId));
 
     try {
-      await ApiService.togglePromotion(promotionId, !currentStatus);
+      final toggle = widget.togglePromotion ?? ApiService.togglePromotion;
+      await toggle(promotionId, !currentStatus);
       if (mounted) {
         showAdminMessage(
           context,
@@ -338,7 +233,8 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
     setState(() => _busyPromotionIds.add(promotionId));
 
     try {
-      await ApiService.deletePromotion(promotionId);
+      final delete = widget.deletePromotion ?? ApiService.deletePromotion;
+      await delete(promotionId);
       if (mounted) {
         showAdminMessage(
           context,
@@ -376,6 +272,13 @@ class _AdminPromotionsPageState extends State<AdminPromotionsPage> {
     final isBusy = _busyPromotionIds.contains(id);
 
     return AdminWorkItemCard(
+      leading: ServiceImageThumbnail(
+        imageUrl: imageUrl,
+        semanticLabel: 'Visuel de la promotion $titre',
+        width: 52,
+        height: 52,
+        borderRadius: AdminRadii.field,
+      ),
       status: actif ? 'active' : 'inactive',
       reference: 'PROMO-$id',
       title: titre,

@@ -51,6 +51,7 @@ dependencies:
 
   # HTTP requests
   http: ^1.6.0
+  http_parser: ^4.1.2
 
   # Shared preferences for local storage
   shared_preferences: ^2.5.5

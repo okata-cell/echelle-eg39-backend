@@ -2,6 +2,8 @@ import 'dart:async';
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:http_parser/http_parser.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'models_admin_client.dart';
@@ -1812,10 +1814,117 @@ class ApiService {
     }
   }
 
+  /// Téléverser un visuel de promotion avec la session admin existante.
+  static Future<Map<String, dynamic>> uploadPromotionImage(XFile image) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session administrateur requise.',
+      );
+    }
+
+    final extension = image.name.split('.').last.toLowerCase();
+    final extensionSubtype = switch (extension) {
+      'jpg' || 'jpeg' => 'jpeg',
+      'png' => 'png',
+      'webp' => 'webp',
+      _ => null,
+    };
+    final mimeSubtype = switch (image.mimeType?.toLowerCase()) {
+      'image/jpeg' => 'jpeg',
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      _ => null,
+    };
+    final subtype = extensionSubtype ?? mimeSubtype;
+    if (subtype == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Choisissez une image JPEG, PNG ou WebP.',
+      );
+    }
+
+    try {
+      final request =
+          http.MultipartRequest('POST', Uri.parse('$baseUrl/promotions/image'))
+            ..headers['Authorization'] = 'Bearer $token'
+            ..files.add(
+              http.MultipartFile.fromBytes(
+                'image',
+                await image.readAsBytes(),
+                filename: image.name,
+                contentType: MediaType('image', subtype),
+              ),
+            );
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+      final decoded = _decodeObject(response.body);
+      if (response.statusCode == 201 && decoded != null) return decoded;
+
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message:
+            decoded?['error']?.toString() ?? 'Impossible d’envoyer l’image.',
+        statusCode: response.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message: 'Le téléversement a pris trop de temps. Réessayez.',
+      );
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible d’envoyer l’image. Vérifiez votre connexion.',
+      );
+    }
+  }
+
+  /// Nettoyer un visuel envoyé si la création de la promotion échoue.
+  static Future<void> deletePromotionImage(String storagePath) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session administrateur requise.',
+      );
+    }
+
+    final response = await http.delete(
+      Uri.parse('$baseUrl/promotions/image'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'storagePath': storagePath}),
+    );
+    if (response.statusCode == 200 || response.statusCode == 204) return;
+
+    final decoded = _decodeObject(response.body);
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message:
+          decoded?['error']?.toString() ?? 'Impossible de supprimer l’image.',
+      statusCode: response.statusCode,
+    );
+  }
+
   /// Récupérer la promotion active à afficher (client)
   static Future<Map<String, dynamic>?> getActivePromotion() async {
     try {
-      final response = await http.get(Uri.parse('$baseUrl/promotions/active'));
+      final response = await http
+          .get(Uri.parse('$baseUrl/promotions/active'))
+          .timeout(const Duration(seconds: 8));
 
       print('📡 getActivePromotion status: ${response.statusCode}');
 

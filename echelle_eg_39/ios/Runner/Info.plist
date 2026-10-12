@@ -26,6 +26,10 @@
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSCameraUsageDescription</key>
+	<string>ÉCHELLE EG39 utilise l’appareil photo pour créer des visuels de promotion.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>ÉCHELLE EG39 accède à votre galerie pour choisir un visuel de promotion.</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
