@@ -7,7 +7,7 @@ const { after, before, test } = require('node:test');
 process.env.JWT_SECRET = 'test-only-promotions-secret';
 
 const pool = require('../src/config/database');
-const firebaseStorage = require('../src/services/firebase_storage');
+const cloudinaryStorage = require('../src/services/cloudinary_storage');
 const promotionsRouter = require('../src/routes/promotions');
 
 const app = express();
@@ -22,8 +22,8 @@ let originalDelete;
 
 before(async () => {
   originalQuery = pool.query;
-  originalUpload = firebaseStorage.uploadPromotionImage;
-  originalDelete = firebaseStorage.deletePromotionImage;
+  originalUpload = cloudinaryStorage.uploadPromotionImage;
+  originalDelete = cloudinaryStorage.deletePromotionImage;
   server = http.createServer(app);
   await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
   baseUrl = `http://127.0.0.1:${server.address().port}/api/promotions`;
@@ -31,8 +31,8 @@ before(async () => {
 
 after(async () => {
   pool.query = originalQuery;
-  firebaseStorage.uploadPromotionImage = originalUpload;
-  firebaseStorage.deletePromotionImage = originalDelete;
+  cloudinaryStorage.uploadPromotionImage = originalUpload;
+  cloudinaryStorage.deletePromotionImage = originalDelete;
   if (server) await new Promise((resolve) => server.close(resolve));
   await pool.end();
 });
@@ -46,8 +46,8 @@ function promotionRow(overrides = {}) {
     id: 18,
     titre: 'Offre du moment',
     description: 'Remise spéciale sur les GPS',
-    image_url: 'https://images.example.com/promo.png',
-    image_storage_path: 'promotions/banner.png',
+    image_url: 'https://res.cloudinary.com/demo/image/upload/promo.png',
+    image_storage_path: 'promotions/banner',
     date_debut: '2026-10-01',
     date_fin: '2026-10-31',
     actif: true,
@@ -106,8 +106,8 @@ test('la création fixe le titre et conserve switch et fréquence sélectionnés
     body: {
       titre: 'Ce titre client doit être ignoré',
       description: 'Remise spéciale sur les GPS',
-      image_url: 'https://images.example.com/promo.png',
-      image_storage_path: 'promotions/banner.png',
+      image_url: 'https://res.cloudinary.com/demo/image/upload/promo.png',
+      image_storage_path: 'promotions/banner',
       date_debut: '2026-10-01',
       date_fin: '2026-10-31',
       actif: false,
@@ -164,9 +164,9 @@ test('l’upload photo est réservé à un admin authentifié', async () => {
 
 test('l’upload refuse un contenu dont la signature ne correspond pas au MIME', async () => {
   let uploads = 0;
-  firebaseStorage.uploadPromotionImage = async () => {
+  cloudinaryStorage.uploadPromotionImage = async () => {
     uploads++;
-    return { imageUrl: 'https://images.example.com/banner.png', storagePath: 'promotions/banner.png' };
+    return { imageUrl: 'https://res.cloudinary.com/demo/banner.png', storagePath: 'promotions/banner' };
   };
 
   const response = await apiRequest('/image', {
@@ -178,15 +178,15 @@ test('l’upload refuse un contenu dont la signature ne correspond pas au MIME',
   assert.equal(uploads, 0);
 });
 
-test('l’upload admin renvoie l’URL et le chemin Storage de la photo', async () => {
+test('l’upload admin renvoie l’URL et le public ID Cloudinary du visuel', async () => {
   let uploadedBuffer;
   let uploadedType;
-  firebaseStorage.uploadPromotionImage = async (buffer, contentType) => {
+  cloudinaryStorage.uploadPromotionImage = async (buffer, contentType) => {
     uploadedBuffer = buffer;
     uploadedType = contentType;
     return {
-      imageUrl: 'https://firebasestorage.googleapis.com/promo.png?token=test',
-      storagePath: 'promotions/generated.png',
+      imageUrl: 'https://res.cloudinary.com/demo/image/upload/promotions/banner.png',
+      storagePath: 'promotions/generated-banner',
     };
   };
 
@@ -200,14 +200,14 @@ test('l’upload admin renvoie l’URL et le chemin Storage de la photo', async 
   assert.equal(response.status, 201);
   assert.equal(uploadedType, 'image/png');
   assert.deepEqual(uploadedBuffer, pngHeader);
-  assert.equal(body.storagePath, 'promotions/generated.png');
-  assert.match(body.imageUrl, /^https:\/\//);
+  assert.equal(body.storagePath, 'promotions/generated-banner');
+  assert.match(body.imageUrl, /^https:\/\/res\.cloudinary\.com\//);
 });
 
-test('l’upload signale une configuration Firebase absente', async () => {
-  firebaseStorage.uploadPromotionImage = async () => {
+test('l’upload signale une configuration Cloudinary absente', async () => {
+  cloudinaryStorage.uploadPromotionImage = async () => {
     const error = new Error('not configured');
-    error.code = 'FIREBASE_STORAGE_NOT_CONFIGURED';
+    error.code = 'CLOUDINARY_STORAGE_NOT_CONFIGURED';
     throw error;
   };
 
@@ -219,21 +219,21 @@ test('l’upload signale une configuration Firebase absente', async () => {
   const body = await response.json();
 
   assert.equal(response.status, 503);
-  assert.equal(body.code, 'FIREBASE_STORAGE_NOT_CONFIGURED');
+  assert.equal(body.code, 'CLOUDINARY_STORAGE_NOT_CONFIGURED');
 });
 
-test('la suppression retire aussi la photo associée au Storage', async () => {
+test('la suppression retire aussi la photo associée à Cloudinary', async () => {
   let deletedPath;
   pool.query = async (query, params) => {
     assert.match(query, /DELETE FROM promotions/);
     assert.deepEqual(params, ['18']);
     return { rows: [promotionRow()] };
   };
-  firebaseStorage.deletePromotionImage = async (path) => {
+  cloudinaryStorage.deletePromotionImage = async (path) => {
     deletedPath = path;
   };
 
   const response = await apiRequest('/18', { method: 'DELETE', role: 'admin' });
   assert.equal(response.status, 200);
-  assert.equal(deletedPath, 'promotions/banner.png');
+  assert.equal(deletedPath, 'promotions/banner');
 });

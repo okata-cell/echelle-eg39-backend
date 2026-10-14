@@ -4,7 +4,7 @@ const router = express.Router();
 const pool = require('../config/database');
 const { businessToday } = require('../utils/rental_dates');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
-const firebaseStorage = require('../services/firebase_storage');
+const cloudinaryStorage = require('../services/cloudinary_storage');
 
 const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
 const allowedContentTypes = new Set(['image/jpeg', 'image/png', 'image/webp']);
@@ -40,10 +40,10 @@ function signatureMatchesImage(buffer, contentType) {
   return false;
 }
 
-function firebaseStorageError(res, error) {
-  if (error.code === 'FIREBASE_STORAGE_NOT_CONFIGURED') {
+function storageError(res, error) {
+  if (error.code === 'CLOUDINARY_STORAGE_NOT_CONFIGURED') {
     return res.status(503).json({
-      error: 'Firebase Storage doit être configuré sur le serveur.',
+      error: 'Cloudinary doit être configuré sur le serveur.',
       code: error.code,
     });
   }
@@ -107,11 +107,11 @@ router.post(
     }
 
     try {
-      const uploaded = await firebaseStorage.uploadPromotionImage(buffer, mimetype);
+      const uploaded = await cloudinaryStorage.uploadPromotionImage(buffer, mimetype);
       return res.status(201).json(uploaded);
     } catch (error) {
       console.error('Erreur téléversement image promotion:', error);
-      return firebaseStorageError(res, error);
+      return storageError(res, error);
     }
   },
 );
@@ -124,11 +124,11 @@ router.delete('/image', authMiddleware, adminMiddleware, async (req, res) => {
   }
 
   try {
-    await firebaseStorage.deletePromotionImage(storagePath);
+    await cloudinaryStorage.deletePromotionImage(storagePath);
     return res.json({ message: 'Image de promotion supprimée' });
   } catch (error) {
     console.error('Erreur suppression image promotion:', error);
-    return firebaseStorageError(res, error);
+    return storageError(res, error);
   }
 });
 
@@ -242,7 +242,7 @@ router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
     const storagePath = result.rows[0].image_storage_path;
     if (storagePath) {
       try {
-        await firebaseStorage.deletePromotionImage(storagePath);
+        await cloudinaryStorage.deletePromotionImage(storagePath);
       } catch (error) {
         console.error('Image promotion non nettoyée:', error);
       }
