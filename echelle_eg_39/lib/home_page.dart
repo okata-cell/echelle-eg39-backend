@@ -7,6 +7,7 @@ import 'service.dart';
 import 'location.dart';
 import 'profile.dart';
 import 'promotion_popup.dart';
+import 'offline_registration_banner.dart';
 
 class ModernHomePage extends StatefulWidget {
   const ModernHomePage({super.key});
@@ -216,6 +217,9 @@ class _ModernHomePageState extends State<ModernHomePage> {
                   ),
                 ),
               ),
+
+              // ── Inscription hors ligne en attente de synchronisation ─────
+              const SliverToBoxAdapter(child: OfflineRegistrationBanner()),
 
               // ── Section: Nos appareils disponibles ───────────────────────
               SliverToBoxAdapter(
