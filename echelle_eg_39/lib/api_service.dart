@@ -40,7 +40,7 @@ class ApiService {
   // static const String baseUrl = 'http://10.0.2.2:3000/api'; // Android emulator
   // static const String baseUrl = 'http://localhost:3000/api'; // iOS simulator / web
 
-  static Map<String, dynamic>? _decodeObject(String responseBody) {
+  static Map<String, dynamic>? decodeObject(String responseBody) {
     try {
       final decoded = jsonDecode(responseBody);
       return decoded is Map<String, dynamic> ? decoded : null;
@@ -187,58 +187,68 @@ class ApiService {
     String phone,
     String password,
   ) async {
+    late final http.Response response;
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/register'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({
-          'firstName': firstName,
-          'lastName': lastName,
-          'email': email,
-          'phone': phone,
-          'password': password,
-        }),
+      response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/register'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'firstName': firstName,
+              'lastName': lastName,
+              'email': email,
+              'phone': phone,
+              'password': password,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
       );
-
-      print('📡 Status Code: ${response.statusCode}');
-      print('📡 Response Body: ${response.body}');
-
-      if (response.statusCode == 201) {
-        final data = jsonDecode(response.body);
-        await setToken(data['token']);
-        return data;
-      } else {
-        // Tenter de décoder la réponse pour obtenir le message d'erreur
-        try {
-          final errorData = jsonDecode(response.body);
-
-          // Gérer le cas des erreurs de validation (tableau d'erreurs)
-          if (errorData['errors'] != null && errorData['errors'] is List) {
-            final errors = errorData['errors'] as List;
-            final errorMessages = errors
-                .map((e) => e['msg'] ?? e['message'] ?? 'Erreur inconnue')
-                .join(', ');
-            throw Exception(errorMessages);
-          }
-
-          // Gérer le cas d'une erreur simple
-          if (errorData['error'] != null) {
-            throw Exception(errorData['error']);
-          }
-
-          throw Exception('Erreur ${response.statusCode}: ${response.body}');
-        } catch (e) {
-          if (e is Exception) rethrow;
-          throw Exception('Erreur serveur (${response.statusCode})');
-        }
-      }
-    } catch (e) {
-      if (e is Exception) rethrow;
-      print('❌ Erreur réseau: $e');
-      throw Exception(
-        'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+    } on http.ClientException {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
+      );
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
       );
     }
+
+    if (response.statusCode == 201) {
+      final data = decodeObject(response.body);
+      final token = data?['token'];
+      if (data == null || token is! String || token.isEmpty) {
+        throw const ApiException(
+          type: ApiErrorType.request,
+          message: 'Réponse d’inscription invalide.',
+          statusCode: 201,
+        );
+      }
+      await setToken(token);
+      return data;
+    }
+
+    final errorData = decodeObject(response.body);
+    final validationErrors = errorData?['errors'];
+    final message = validationErrors is List
+        ? validationErrors
+              .whereType<Map>()
+              .map((error) => error['msg'] ?? error['message'] ?? 'Erreur inconnue')
+              .join(', ')
+        : errorData?['error']?.toString() ?? 'Échec de la création du compte.';
+
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: message,
+      statusCode: response.statusCode,
+    );
   }
 
   static Future<Map<String, dynamic>> getMe() async {
@@ -1283,7 +1293,7 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 15));
 
-      final decoded = _decodeObject(response.body);
+      final decoded = decodeObject(response.body);
       if (response.statusCode == 200 && decoded != null) return decoded;
       throw ApiException(
         type: response.statusCode >= 500
@@ -1342,7 +1352,7 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 15));
 
-      final decoded = _decodeObject(response.body);
+      final decoded = decodeObject(response.body);
       if (response.statusCode == 200 && decoded != null) return decoded;
       throw ApiException(
         type: response.statusCode >= 500
@@ -1609,7 +1619,7 @@ class ApiService {
 
       if (response.statusCode == 200 || response.statusCode == 204) return;
 
-      final decoded = _decodeObject(response.body);
+      final decoded = decodeObject(response.body);
       throw ApiException(
         type: response.statusCode >= 500
             ? ApiErrorType.serverUnavailable
@@ -1691,7 +1701,7 @@ class ApiService {
 
       print('📡 getPromotions status: ${response.statusCode}');
 
-      final data = _decodeObject(response.body);
+      final data = decodeObject(response.body);
       final promotions = data?['promotions'];
       if (response.statusCode == 200 && promotions is List) {
         return promotions
@@ -1879,7 +1889,7 @@ class ApiService {
         const Duration(seconds: 60),
       );
       final response = await http.Response.fromStream(streamedResponse);
-      final decoded = _decodeObject(response.body);
+      final decoded = decodeObject(response.body);
       if (response.statusCode == 201 && decoded != null) return decoded;
 
       throw ApiException(
@@ -1925,7 +1935,7 @@ class ApiService {
     );
     if (response.statusCode == 200 || response.statusCode == 204) return;
 
-    final decoded = _decodeObject(response.body);
+    final decoded = decodeObject(response.body);
     throw ApiException(
       type: response.statusCode >= 500
           ? ApiErrorType.serverUnavailable

@@ -9,6 +9,7 @@ class AdminClient {
     this.createdAt,
     this.isLocalRegistration = false,
     this.isActive = true,
+    this.syncStatus = 'pending',
   });
 
   final String id;
@@ -20,6 +21,7 @@ class AdminClient {
   final String? createdAt;
   final bool isLocalRegistration;
   final bool isActive;
+  final String syncStatus;
 
   AdminClient copyWith({
     String? firstName,
@@ -38,6 +40,7 @@ class AdminClient {
       createdAt: createdAt,
       isLocalRegistration: isLocalRegistration,
       isActive: isActive ?? this.isActive,
+      syncStatus: syncStatus,
     );
   }
 
@@ -81,6 +84,7 @@ class AdminClient {
       phone: phone,
       role: role,
       isLocalRegistration: true,
+      syncStatus: parts[2].isEmpty ? 'needs_review' : 'pending',
     );
   }
 }

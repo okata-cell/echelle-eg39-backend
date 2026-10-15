@@ -99,52 +99,22 @@ class _SplashScreenState extends State<SplashScreen> {
   // 🔄 Méthode de synchronisation au démarrage (en arrière-plan)
   Future<void> _attemptStartupSync() async {
     try {
-      // Vérifier si l'API est disponible avec un timeout court
-      final apiAvailable = await SyncService.isApiAvailable().timeout(
-        const Duration(seconds: 3),
-        onTimeout: () {
-          print('⚠️ API check timed out');
-          return false;
-        },
-      );
-      
-      if (apiAvailable) {
-        print('🔄 API disponible au démarrage, vérification synchronisation...');
-        
-        // Synchroniser les utilisateurs en attente (avec timeout)
-        await SyncService.syncPendingUsers().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            print('⚠️ syncPendingUsers timed out');
-            return SyncResult(success: false, syncedCount: 0, message: 'Timeout');
-          },
-        );
-        
-        // Synchroniser les utilisateurs locaux (avec timeout)
-        await SyncService.syncLocalUsers().timeout(
-          const Duration(seconds: 5),
-          onTimeout: () {
-            print('⚠️ syncLocalUsers timed out');
-            return SyncResult(success: false, syncedCount: 0, message: 'Timeout');
-          },
-        );
-        
-        print('✅ Synchronisation au démarrage terminée');
-      } else {
-        print('⚠️ API non disponible au démarrage, synchronisation reportée');
-      }
-    } catch (e) {
-      print('❌ Erreur synchronisation au démarrage: $e');
-      // Ne pas bloquer - continuer même en cas d'erreur
+      // The encrypted queue keeps offline registrations safe and retries only
+      // requests that can still succeed. Per-request timeouts live in SyncService.
+      await SyncService.syncPendingUsers();
+    } catch (_) {
+      // A sync issue must never block launching the app or expose credentials.
     }
   }
 
   Future<void> _checkSession() async {
     // Lancer la synchronisation en arrière-plan (ne pas attendre)
     _attemptStartupSync();
-    
+
     final prefs = await SharedPreferences.getInstance();
-    
+    // Remove the obsolete plaintext credential left by earlier app versions.
+    await prefs.remove('userPassword');
+
     // === CORRECTION: Vérifier d'abord si Firebase Auth a un utilisateur connecté ===
     // Cela permet de restaurer la session même après fermeture de l'app
     // Vérifier que Firebase est prêt avant d'utiliser FirebaseAuth
@@ -154,29 +124,30 @@ class _SplashScreenState extends State<SplashScreen> {
         if (firebaseUser != null) {
           // Utilisateur Firebase connecté - restaurer la session
           print('✅ Firebase session found: ${firebaseUser.email}');
-          
-          String identifier = firebaseUser.email ?? firebaseUser.phoneNumber ?? '';
-          String password = prefs.getString('userPassword') ?? '';
+
+          String identifier =
+              firebaseUser.email ?? firebaseUser.phoneNumber ?? '';
           bool isAdmin = prefs.getBool('isAdmin') ?? false;
-          
+
           // Sauvegarder pour restauration permanente (identifiant uniquement, pas le mot de passe)
           if (prefs.getString('saved_identifier') == null) {
             await prefs.setString('saved_identifier', identifier);
             await prefs.setBool('saved_isAdmin', isAdmin);
           }
-          
+
           await prefs.setBool('isLoggedIn', true);
           await prefs.setBool('isAdmin', isAdmin);
           await prefs.setString('userIdentifier', identifier);
           await prefs.setString('userEmail', identifier);
-          
+
           if (!mounted) return;
-          
+
           // Naviguer vers l'écran principal
           Navigator.pushReplacement(
             context,
             MaterialPageRoute(
-              builder: (_) => isAdmin ? const AdminDashBoard() : const MainScreen(),
+              builder: (_) =>
+                  isAdmin ? const AdminDashBoard() : const MainScreen(),
             ),
           );
           return;

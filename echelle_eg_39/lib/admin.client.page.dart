@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
 import 'admin_clients_service.dart';
 import 'login.page.dart';
 import 'models_admin_client.dart';
+import 'offline_registration_store.dart';
 
 typedef AdminClientsLoader = Future<List<AdminClient>> Function();
 typedef AdminClientUpdater =
@@ -20,15 +20,22 @@ typedef AdminClientStatusUpdater =
     Future<AdminClient> Function({required String id, required bool isActive});
 
 Future<List<AdminClient>> loadOfflineAdminClients() async {
-  final prefs = await SharedPreferences.getInstance();
-  final registrations = <String>[
-    ...?prefs.getStringList('registered_users'),
-    ...?prefs.getStringList('pending_sync_users'),
-  ];
-
-  return registrations
-      .map(AdminClient.tryParseLocalRegistration)
-      .whereType<AdminClient>()
+  final accounts = await OfflineRegistrationStore.instance.localAccounts();
+  return accounts
+      .where((entry) => entry.role != 'admin')
+      .map(
+        (entry) => AdminClient(
+          id: entry.id,
+          firstName: entry.firstName,
+          lastName: entry.lastName,
+          email: entry.email,
+          phone: entry.phone,
+          role: entry.role,
+          createdAt: entry.createdAt,
+          isLocalRegistration: true,
+          syncStatus: entry.status,
+        ),
+      )
       .toList(growable: false);
 }
 
@@ -458,7 +465,9 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
                         borderRadius: BorderRadius.circular(20),
                       ),
                       child: Text(
-                        'À synchroniser',
+                        client.syncStatus == 'needs_review'
+                            ? 'À vérifier'
+                            : 'À synchroniser',
                         style: Theme.of(context).textTheme.labelSmall?.copyWith(
                           color: AdminPalette.safetyAmber,
                           fontWeight: FontWeight.w800,
