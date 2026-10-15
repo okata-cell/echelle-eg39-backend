@@ -3,6 +3,7 @@ import 'package:google_fonts/google_fonts.dart';
 import 'api_service.dart';
 import 'client_mes_devis.dart';
 import 'login.page.dart';
+import 'quote_request_dialog.dart';
 
 class Service {
   final String id;
@@ -1117,7 +1118,24 @@ class _ServiceScreenState extends State<ServiceScreen> {
         );
         return;
       }
-      _showQuoteDialog(service);
+
+      final requesterName = quoteRequestNameFromProfile(profile);
+      if (requesterName.isEmpty) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Complétez votre nom dans votre profil pour demander un devis.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      await _showQuoteDialog(
+        service,
+        requesterName: requesterName,
+        initialTelephone: profile['phone']?.toString().trim() ?? '',
+      );
     } catch (error) {
       if (!mounted) return;
       if (error is ApiException && error.statusCode == 401) {
@@ -1133,294 +1151,51 @@ class _ServiceScreenState extends State<ServiceScreen> {
     }
   }
 
-  void _showQuoteDialog(Service service) {
-    final descriptionCtrl = TextEditingController();
-    final nomCtrl = TextEditingController();
-    final telephoneCtrl = TextEditingController();
-    final emailCtrl = TextEditingController();
-    final formKey = GlobalKey<FormState>();
-    bool isSubmitting = false;
-
-    // Capturés avant tout await : le context du dialogue est invalide après pop.
+  Future<void> _showQuoteDialog(
+    Service service, {
+    required String requesterName,
+    String initialTelephone = '',
+  }) async {
     final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
-    showDialog(
+    final submitted = await showDialog<bool>(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) {
-          return Dialog(
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
-            ),
-            child: Container(
-              padding: const EdgeInsets.all(24),
-              child: Form(
-                key: formKey,
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        Container(
-                          width: 48,
-                          height: 48,
-                          decoration: BoxDecoration(
-                            color: _getCategoryColor(
-                              service.category,
-                            ).withValues(alpha: 0.1),
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          child: Icon(
-                            Icons.build,
-                            color: _getCategoryColor(service.category),
-                            size: 24,
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'Demande de devis',
-                                style: const TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF111827),
-                                ),
-                              ),
-                              Text(
-                                service.name,
-                                style: const TextStyle(
-                                  fontSize: 14,
-                                  color: Color(0xFF6B7280),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 24),
-
-                    // Form Fields
-                    const Text(
-                      'Description du projet',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: descriptionCtrl,
-                      maxLines: 3,
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'La description est requise';
-                        }
-                        if (value.trim().length < 10) {
-                          return 'Décrivez votre projet en détail (min. 10 caractères)';
-                        }
-                        return null;
-                      },
-                      decoration: InputDecoration(
-                        hintText: 'Décrivez votre projet en détail...',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-
-                    const Text(
-                      'Informations de contact',
-                      style: TextStyle(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF111827),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: nomCtrl,
-                      decoration: InputDecoration(
-                        hintText: 'Votre nom complet *',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Le nom est requis';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: telephoneCtrl,
-                      keyboardType: TextInputType.phone,
-                      decoration: InputDecoration(
-                        hintText: 'Téléphone *',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      validator: (value) {
-                        if (value == null || value.trim().isEmpty) {
-                          return 'Le téléphone est requis';
-                        }
-                        return null;
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                    TextFormField(
-                      controller: emailCtrl,
-                      keyboardType: TextInputType.emailAddress,
-                      decoration: InputDecoration(
-                        hintText: 'Email',
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      validator: (value) {
-                        final email = value?.trim() ?? '';
-                        if (email.isNotEmpty) {
-                          final emailRegex = RegExp(
-                            r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$',
-                          );
-                          if (!emailRegex.hasMatch(email)) {
-                            return 'Email invalide';
-                          }
-                        }
-                        return null;
-                      },
-                    ),
-
-                    const SizedBox(height: 24),
-
-                    // Buttons
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            onPressed: isSubmitting
-                                ? null
-                                : () => Navigator.pop(context),
-                            style: OutlinedButton.styleFrom(
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              side: const BorderSide(color: Color(0xFFD1D5DB)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: const Text(
-                              'Annuler',
-                              style: TextStyle(color: Color(0xFF6B7280)),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: ElevatedButton(
-                            onPressed: isSubmitting
-                                ? null
-                                : () async {
-                                    if (formKey.currentState!.validate()) {
-                                      setDialogState(() => isSubmitting = true);
-                                      try {
-                                        await ApiService.createDevis(
-                                          serviceId: service.id,
-                                          serviceName: service.name,
-                                          description: descriptionCtrl.text
-                                              .trim(),
-                                          nom: nomCtrl.text.trim(),
-                                          telephone: telephoneCtrl.text.trim(),
-                                          email: emailCtrl.text.trim().isEmpty
-                                              ? null
-                                              : emailCtrl.text.trim(),
-                                        );
-                                        if (mounted) {
-                                          navigator.pop();
-                                          messenger.showSnackBar(
-                                            SnackBar(
-                                              content: const Text(
-                                                'Demande de devis envoyée avec succès !',
-                                              ),
-                                              backgroundColor: Colors.green,
-                                              action: SnackBarAction(
-                                                label: 'Suivre',
-                                                textColor: Colors.white,
-                                                onPressed: () {
-                                                  navigator.push(
-                                                    MaterialPageRoute(
-                                                      builder: (_) =>
-                                                          ClientMesDevisPage(
-                                                            serviceImageResolver:
-                                                                ServiceScreen
-                                                                    .imageUrlForId,
-                                                          ),
-                                                    ),
-                                                  );
-                                                },
-                                              ),
-                                            ),
-                                          );
-                                        }
-                                      } catch (e) {
-                                        if (mounted) {
-                                          messenger.showSnackBar(
-                                            SnackBar(
-                                              content: Text('Erreur: $e'),
-                                              backgroundColor: Colors.red,
-                                            ),
-                                          );
-                                        }
-                                      } finally {
-                                        if (mounted) {
-                                          setDialogState(
-                                            () => isSubmitting = false,
-                                          );
-                                        }
-                                      }
-                                    }
-                                  },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: const Color(0xFF2563EB),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(8),
-                              ),
-                            ),
-                            child: isSubmitting
-                                ? const SizedBox(
-                                    width: 20,
-                                    height: 20,
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2,
-                                      color: Colors.white,
-                                    ),
-                                  )
-                                : const Text(
-                                    'Envoyer',
-                                    style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            ),
+      builder: (_) => QuoteRequestDialog(
+        serviceName: service.name,
+        requesterName: requesterName,
+        initialTelephone: initialTelephone,
+        categoryColor: _getCategoryColor(service.category),
+        onSubmit: (request) async {
+          await ApiService.createDevis(
+            serviceId: service.id,
+            serviceName: service.name,
+            description: request.description,
+            nom: request.requesterName,
+            telephone: request.telephone,
           );
         },
+      ),
+    );
+
+    if (!mounted || submitted != true) return;
+    messenger.showSnackBar(
+      SnackBar(
+        content: const Text('Demande de devis envoyée avec succès !'),
+        backgroundColor: const Color(0xFF059669),
+        action: SnackBarAction(
+          label: 'Suivre',
+          textColor: Colors.white,
+          onPressed: () {
+            navigator.push(
+              MaterialPageRoute(
+                builder: (_) => ClientMesDevisPage(
+                  serviceImageResolver: ServiceScreen.imageUrlForId,
+                ),
+              ),
+            );
+          },
+        ),
       ),
     );
   }
