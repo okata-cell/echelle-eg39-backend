@@ -17,6 +17,34 @@ const _equipmentResponse = <Map<String, dynamic>>[
   },
 ];
 
+Future<void> _tapDatePicker(
+  WidgetTester tester, {
+  required bool isReturnDate,
+}) async {
+  final key = isReturnDate
+      ? 'location-return-date-2039'
+      : 'location-start-date-2039';
+  final picker = find.byKey(ValueKey(key));
+  await tester.scrollUntilVisible(
+    picker,
+    180,
+    scrollable: _verticalListFinder().first,
+  );
+  await tester.tap(picker);
+}
+
+Finder _verticalListFinder() => find.byWidgetPredicate(
+  (widget) =>
+      widget is Scrollable && widget.axisDirection == AxisDirection.down,
+);
+
+void _useMobileViewport(WidgetTester tester) {
+  tester.view.physicalSize = const Size(375, 844);
+  tester.view.devicePixelRatio = 1;
+  addTearDown(tester.view.resetPhysicalSize);
+  addTearDown(tester.view.resetDevicePixelRatio);
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -27,9 +55,111 @@ void main() {
     });
   });
 
+  testWidgets('la fiche met en avant la photo et garde louer désactivé', (
+    tester,
+  ) async {
+    _useMobileViewport(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LocationScreen(
+          today: () => DateTime(2026, 10, 1),
+          loadAppareils: ({disponible}) async => _equipmentResponse,
+          checkAvailability:
+              ({
+                required appareilId,
+                required dateDebut,
+                required dateFin,
+              }) async => {'disponible': true},
+          createLocation: (appareilId, dateDebut, dateFin) async => {},
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final photo = find.byKey(const ValueKey('location-equipment-photo-2039'));
+    expect(photo, findsOneWidget);
+    expect(find.text('GPS de test'), findsOneWidget);
+    expect(find.text('Disponible'), findsOneWidget);
+    expect(find.text('Prix / jour'), findsOneWidget);
+    expect(find.textContaining('FCFA'), findsOneWidget);
+    expect(
+      find.text(
+        'La disponibilité de la période sera vérifiée après le choix du retour.',
+      ),
+      findsOneWidget,
+    );
+    expect(
+      tester
+          .widget<ElevatedButton>(
+            find.byKey(const ValueKey('location-rent-2039')),
+          )
+          .onPressed,
+      isNull,
+    );
+
+    final image = tester.widget<Image>(
+      find.descendant(of: photo, matching: find.byType(Image)),
+    );
+    expect((image.image as NetworkImage).url, 'https://example.test/gps.png');
+
+    await tester.tap(find.byTooltip('Agrandir la photo'));
+    await tester.pumpAndSettle();
+    expect(
+      find.text('Pincez pour zoomer • Double-tap pour agrandir'),
+      findsOneWidget,
+    );
+    await tester.tap(find.byIcon(Icons.close));
+    await tester.pumpAndSettle();
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
+  testWidgets('la recherche se filtre et son effacement vide le champ', (
+    tester,
+  ) async {
+    _useMobileViewport(tester);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: LocationScreen(
+          loadAppareils: ({disponible}) async => [
+            ..._equipmentResponse,
+            {
+              'id': 2040,
+              'nom': 'Niveau de test',
+              'type': 'Niveau',
+              'prixLocation': 18000,
+              'prixVente': 900000,
+              'disponible': true,
+              'imageUrl': 'https://example.test/level.png',
+            },
+          ],
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final search = find.byType(TextField);
+    await tester.enterText(search, 'GPS');
+    await tester.pumpAndSettle();
+    expect(find.text('GPS de test'), findsOneWidget);
+    expect(find.text('Niveau de test'), findsNothing);
+
+    await tester.tap(find.byTooltip('Effacer la recherche'));
+    await tester.pumpAndSettle();
+    expect(tester.widget<TextField>(search).controller!.text, isEmpty);
+    expect(find.text('GPS de test'), findsOneWidget);
+    await tester.scrollUntilVisible(
+      find.text('Niveau de test'),
+      220,
+      scrollable: _verticalListFinder().first,
+    );
+    expect(find.text('Niveau de test'), findsOneWidget);
+    await tester.pumpWidget(const SizedBox.shrink());
+  });
+
   testWidgets('les dates sont choisies et un conflit désactive louer', (
     tester,
   ) async {
+    _useMobileViewport(tester);
     var availabilityCalls = 0;
     var createCalls = 0;
     final today = DateTime(2026, 10, 1);
@@ -62,16 +192,16 @@ void main() {
     final rentButton = find.widgetWithText(ElevatedButton, 'Louer');
     expect(rentButton, findsOneWidget);
     expect(tester.widget<ElevatedButton>(rentButton).onPressed, isNull);
-    expect(find.text('Début : 01/10/2026'), findsOneWidget);
+    expect(find.text('01/10/2026'), findsOneWidget);
 
-    await tester.tap(find.text('Début : 01/10/2026'));
+    await _tapDatePicker(tester, isReturnDate: false);
     await tester.pumpAndSettle();
     await tester.tap(find.text('3').last);
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
-    expect(find.text('Début : 03/10/2026'), findsOneWidget);
+    expect(find.text('03/10/2026'), findsOneWidget);
 
-    await tester.tap(find.text('Choisir la date de retour'));
+    await _tapDatePicker(tester, isReturnDate: true);
     await tester.pumpAndSettle();
     await tester.tap(find.text('5').last);
     await tester.tap(find.text('Continuer'));
@@ -89,6 +219,7 @@ void main() {
   });
 
   testWidgets('envoie la plage choisie au backend', (tester) async {
+    _useMobileViewport(tester);
     final today = DateTime(2026, 10, 1);
     final createdPayload = <String>[];
     final availabilityRanges = <String>[];
@@ -123,13 +254,13 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Début : 01/10/2026'));
+    await _tapDatePicker(tester, isReturnDate: false);
     await tester.pumpAndSettle();
     await tester.tap(find.text('3').last);
     await tester.tap(find.text('Continuer'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Choisir la date de retour'));
+    await _tapDatePicker(tester, isReturnDate: true);
     await tester.pumpAndSettle();
     await tester.tap(find.text('5').last);
     await tester.tap(find.text('Continuer'));
@@ -150,6 +281,7 @@ void main() {
   testWidgets(
     'une erreur de route de prévisualisation laisse envoyer la demande',
     (tester) async {
+      _useMobileViewport(tester);
       final today = DateTime(2026, 10, 1);
       var createCalls = 0;
 
@@ -175,12 +307,12 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('Début : 01/10/2026'));
+      await _tapDatePicker(tester, isReturnDate: false);
       await tester.pumpAndSettle();
       await tester.tap(find.text('3').last);
       await tester.tap(find.text('Continuer'));
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Choisir la date de retour'));
+      await _tapDatePicker(tester, isReturnDate: true);
       await tester.pumpAndSettle();
       await tester.tap(find.text('5').last);
       await tester.tap(find.text('Continuer'));
@@ -206,6 +338,7 @@ void main() {
   testWidgets('un conflit confirmé par le POST est montré au client', (
     tester,
   ) async {
+    _useMobileViewport(tester);
     final today = DateTime(2026, 10, 1);
     var createCalls = 0;
 
@@ -233,7 +366,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(find.text('Choisir la date de retour'));
+    await _tapDatePicker(tester, isReturnDate: true);
     await tester.pumpAndSettle();
     await tester.tap(find.text('5').last);
     await tester.tap(find.text('Continuer'));

@@ -1,15 +1,20 @@
+import 'dart:convert';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'dart:io';
-import 'login.page.dart';
+import 'package:url_launcher/url_launcher.dart';
 
-/// Dialog de support chat pour l'assistance rapide
+import 'login.page.dart';
+import 'profile_api.dart';
+
+/// Fil de messages du support, conservé localement à l’écran et transmis à l’API.
 class ChatSupportDialog extends StatefulWidget {
-  const ChatSupportDialog({super.key});
+  const ChatSupportDialog({super.key, required this.profileApi});
+
+  final ProfileApi profileApi;
 
   @override
   State<ChatSupportDialog> createState() => _ChatSupportDialogState();
@@ -17,240 +22,80 @@ class ChatSupportDialog extends StatefulWidget {
 
 class _ChatSupportDialogState extends State<ChatSupportDialog> {
   final TextEditingController _messageController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   final List<ChatMessage> _messages = [
     ChatMessage(
-      text: 'Bonjour ! Comment puis-je vous aider aujourd\'hui ?',
+      text:
+          'Bonjour. Écrivez votre demande : elle sera transmise à l’équipe ÉCHELLE EG39.',
       isBot: true,
       timestamp: DateTime.now(),
     ),
   ];
+  bool _isSending = false;
+  String? _sendError;
 
   @override
   void dispose() {
     _messageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
-  void _sendMessage() {
-    if (_messageController.text.trim().isEmpty) return;
-
+  Future<void> _sendMessage() async {
     final messageText = _messageController.text.trim();
-    final userMessage = ChatMessage(
-      text: messageText,
-      isBot: false,
-      timestamp: DateTime.now(),
-    );
+    if (messageText.isEmpty || _isSending) return;
 
     setState(() {
-      _messages.add(userMessage);
+      _isSending = true;
+      _sendError = null;
     });
-
-    _messageController.clear();
-
-    // Simulation de réponse du bot après un délai
-    Future.delayed(const Duration(seconds: 1), () {
+    try {
+      await widget.profileApi.submitSupportMessage(message: messageText);
       if (!mounted) return;
-      
-      final botResponse = _generateBotResponse(messageText);
+      final timestamp = DateTime.now();
       setState(() {
-        _messages.add(botResponse);
+        _messages
+          ..add(
+            ChatMessage(text: messageText, isBot: false, timestamp: timestamp),
+          )
+          ..add(
+            ChatMessage(
+              text:
+                  'Votre message a été transmis au support. L’équipe vous recontactera via les coordonnées de votre compte.',
+              isBot: true,
+              timestamp: DateTime.now(),
+            ),
+          );
+        _sendError = null;
       });
-    });
-  }
-
-  ChatMessage _generateBotResponse(String userMessage) {
-    final lowerMessage = userMessage.toLowerCase();
-    
-    // Salutations
-    if (lowerMessage.contains('bonjour') || lowerMessage.contains('salut') || lowerMessage.contains('hello')) {
-      return ChatMessage(
-        text: 'Bonjour ! Bienvenue chez ÉCHELLE EG39, votre partenaire en équipements de topographie. Comment puis-je vous aider aujourd\'hui ?',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('merci') || lowerMessage.contains('remercie')) {
-      return ChatMessage(
-        text: 'Je vous en prie ! C\'est un plaisir de vous aider. N\'hésitez pas si vous avez d\'autres questions !',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('au revoir') || lowerMessage.contains('bye') || (lowerMessage.contains('salut') && lowerMessage.contains('plus'))) {
-      return ChatMessage(
-        text: 'Au revoir ! À bientôt chez ÉCHELLE EG39. N\'oubliez pas de consulter nos équipements disponibles !',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Informations sur l'entreprise
-    else if (lowerMessage.contains('entreprise') || lowerMessage.contains('société') || lowerMessage.contains('qui êtes-vous')) {
-      return ChatMessage(
-        text: 'ÉCHELLE EG39 est une entreprise spécialisée dans la vente et location d\'équipements de topographie. Nous proposons GPS, Théodolites, Niveaux et station totales pour les professionnels du secteur.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('où') || lowerMessage.contains('localisation') || lowerMessage.contains('adresse') || lowerMessage.contains('situe')) {
-      return ChatMessage(
-        text: 'Nous sommes situés au Togo plus precisement a Lomé, quartier aflao gagli et intervenons dans toute la sous-région ouest-africaine. Contactez-nous pour connaître notre adresse exacte et nos points de service.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('contact') || lowerMessage.contains('téléphone') || lowerMessage.contains('mail') || lowerMessage.contains('email')) {
-      return ChatMessage(
-        text: 'Vous pouvez nous joindre via l\'application ou consulter la section "Contact" dans le menu principal. Nous sommes disponibles du lundi au vendredi de 8h à 18h.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('horaire') || lowerMessage.contains('ouverture') || lowerMessage.contains('fermeture')) {
-      return ChatMessage(
-        text: 'Nos horaires : Lundi à Vendredi de 8h à 18h, Samedi de 9h à 15h. Nous sommes fermés le dimanche et les jours fériés.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Services et équipements
-    else if (lowerMessage.contains('service') || lowerMessage.contains('prestation')) {
-      return ChatMessage(
-        text: 'Nous proposons : Location d\'équipements, Vente de matériel neuf, Maintenance et SAV, Formation sur les équipements, Conseil technique personnalisé.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('équipement') || lowerMessage.contains('matériel') || lowerMessage.contains('produit')) {
-      return ChatMessage(
-        text: 'Nos équipements : GPS de précision, Théodolites électroniques, Niveaux automatiques, Stations totales, Accessoires de topographie. Consultez notre catalogue !',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Questions spécifiques sur les produits
-    else if (lowerMessage.contains('gps')) {
-      return ChatMessage(
-        text: 'Nous proposons des GPS e-survey E300, E600, E800 et autres modèles haute précision. Ils sont disponibles à la location ou à l\'achat avec garantie.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('théodolite') || lowerMessage.contains('theodolite')) {
-      return ChatMessage(
-        text: 'Nos théodolites Leica et Stonex offrent une précision maximale pour vos relevés. Disponibles en location avec opérateur si nécessaire.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('niveau') || lowerMessage.contains('nivellement')) {
-      return ChatMessage(
-        text: 'Les niveaux automatiques Leica et Stonex sont parfaits pour le nivellement de précision. Disponibles à la location ou à l\'achat.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('station totale') || lowerMessage.contains('total station')) {
-      return ChatMessage(
-        text: 'Nos stations totales combinent théodolite et distancemètre pour des mesures ultra-précises. Idéales pour l\'implantation et le bornage.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Prix et tarifs
-    else if (lowerMessage.contains('prix') || lowerMessage.contains('tarif') || lowerMessage.contains('coût')) {
-      return ChatMessage(
-        text: 'Nos tarifs varient selon l\'équipement et la durée. Contactez-nous pour un devis personnalisé. Location à partir de 15 000 FCFA/jour selon l\'équipement.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('location') || lowerMessage.contains('louer')) {
-      return ChatMessage(
-        text: 'Pour la location d\'équipements, consultez la section "Location" de notre application. Nous avons GPS, Théodolites, Niveaux et Stations totales disponibles.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('achat') || lowerMessage.contains('acheter')) {
-      return ChatMessage(
-        text: 'Pour acheter des équipements, rendez-vous dans la section "Vente". Tous nos produits neufs bénéficient d\'une garantie de 2 ans.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Disponibilité et livraison
-    else if (lowerMessage.contains('disponibilité') || lowerMessage.contains('stock') || lowerMessage.contains('disponible')) {
-      return ChatMessage(
-        text: 'Pour vérifier la disponibilité d\'un équipement, utilisez la fonction de recherche dans les sections Location ou Vente. Stock mis à jour en temps réel.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('livraison') || lowerMessage.contains('livrer') || lowerMessage.contains('transport')) {
-      return ChatMessage(
-        text: 'Nous livrons dans tout le Sénégal et en Afrique de l\'Ouest. Frais de livraison calculés selon la destination. Livraison gratuite dans Dakar pour les achats > 500 000 FCFA.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Support et assistance
-    else if (lowerMessage.contains('garantie') || lowerMessage.contains('sav') || lowerMessage.contains('réparation')) {
-      return ChatMessage(
-        text: 'Tous nos équipements neufs sont garantis 2 ans. Notre SAV assure la maintenance et les réparations. Pièces d\'origine disponibles.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('formation') || lowerMessage.contains('apprentissage')) {
-      return ChatMessage(
-        text: 'Nous proposons la formation sur nos équipements : initiation GPS, perfectionnement théodolite, utilisation stations totales. Formation sur site possible.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    } else if (lowerMessage.contains('aide') || lowerMessage.contains('help') || lowerMessage.contains('problème')) {
-      return ChatMessage(
-        text: 'Je suis là pour vous aider ! Vous pouvez aussi consulter notre FAQ dans l\'application ou contacter notre support technique au +221 XX XXX XX XX.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Questions sur l'application
-    else if (lowerMessage.contains('application') || lowerMessage.contains('app')) {
-      return ChatMessage(
-        text: 'Notre de consulter nos équipements EG39 vous permet application ÉCHELLE, faire des réservations, suivre vos commandes et accéder à notre support 24h/24.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Questions métier
-    else if (lowerMessage.contains('topographie') || lowerMessage.contains('géomètre') || lowerMessage.contains('implantation')) {
-      return ChatMessage(
-        text: 'Spécialistes de la topographie, nous accompagnons les géomètres, BTP et projets d\'infrastructure. Équipements de haute précision pour tous vos besoins.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
-    }
-    
-    // Réponse par défaut améliorée
-    else {
-      return ChatMessage(
-        text: 'Je n\'ai pas bien compris votre question, mais je suis là pour vous aider ! Vous pouvez me demander nos services, équipements, tarifs, ou me poser toute question sur ÉCHELLE EG39. Vous pouvez aussi consulter notre FAQ ou appeler notre support au +228 90 01 43 29.',
-        isBot: true,
-        timestamp: DateTime.now(),
-      );
+      _messageController.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (_scrollController.hasClients) {
+          _scrollController.animateTo(
+            _scrollController.position.maxScrollExtent,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        }
+      });
+    } on ProfileApiException catch (error) {
+      if (mounted) setState(() => _sendError = error.message);
+    } finally {
+      if (mounted) setState(() => _isSending = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Dialog(
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(16),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       child: SizedBox(
         height: 500,
         width: MediaQuery.of(context).size.width * 0.9,
         child: Column(
           children: [
             _buildHeader(),
-            Expanded(
-              child: _buildMessagesList(),
-            ),
+            Expanded(child: _buildMessagesList()),
             _buildMessageInput(),
           ],
         ),
@@ -299,11 +144,8 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
                   ),
                 ),
                 Text(
-                  'En ligne',
-                  style: TextStyle(
-                    color: Color(0xFFBFDBFE),
-                    fontSize: 12,
-                  ),
+                  'Votre message sera envoyé au support',
+                  style: TextStyle(color: Color(0xFFBFDBFE), fontSize: 12),
                 ),
               ],
             ),
@@ -319,6 +161,7 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
 
   Widget _buildMessagesList() {
     return ListView.builder(
+      controller: _scrollController,
       padding: const EdgeInsets.all(16),
       itemCount: _messages.length,
       itemBuilder: (context, index) {
@@ -332,8 +175,8 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
-        mainAxisAlignment: message.isBot 
-            ? MainAxisAlignment.start 
+        mainAxisAlignment: message.isBot
+            ? MainAxisAlignment.start
             : MainAxisAlignment.end,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -342,8 +185,8 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: message.isBot 
-                    ? const Color(0xFF2563EB) 
+                color: message.isBot
+                    ? const Color(0xFF2563EB)
                     : const Color(0xFF059669),
                 shape: BoxShape.circle,
               ),
@@ -359,8 +202,8 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
               decoration: BoxDecoration(
-                color: message.isBot 
-                    ? const Color(0xFFF3F4F6) 
+                color: message.isBot
+                    ? const Color(0xFFF3F4F6)
                     : const Color(0xFF2563EB),
                 borderRadius: BorderRadius.circular(12),
               ),
@@ -370,8 +213,8 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
                   Text(
                     message.text,
                     style: TextStyle(
-                      color: message.isBot 
-                          ? const Color(0xFF111827) 
+                      color: message.isBot
+                          ? const Color(0xFF111827)
                           : Colors.white,
                       fontSize: 14,
                     ),
@@ -381,8 +224,8 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
                     '${message.timestamp.hour.toString().padLeft(2, '0')}:'
                     '${message.timestamp.minute.toString().padLeft(2, '0')}',
                     style: TextStyle(
-                      color: message.isBot 
-                          ? const Color(0xFF6B7280) 
+                      color: message.isBot
+                          ? const Color(0xFF6B7280)
                           : const Color(0xFFBFDBFE),
                       fontSize: 10,
                     ),
@@ -397,8 +240,8 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
               width: 32,
               height: 32,
               decoration: BoxDecoration(
-                color: message.isBot 
-                    ? const Color(0xFF2563EB) 
+                color: message.isBot
+                    ? const Color(0xFF2563EB)
                     : const Color(0xFF059669),
                 shape: BoxShape.circle,
               ),
@@ -419,39 +262,62 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
       padding: const EdgeInsets.all(16),
       decoration: const BoxDecoration(
         color: Color(0xFFF9FAFB),
-        border: Border(
-          top: BorderSide(color: Color(0xFFE5E7EB)),
-        ),
+        border: Border(top: BorderSide(color: Color(0xFFE5E7EB))),
       ),
-      child: Row(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
         children: [
-          Expanded(
-            child: TextField(
-              controller: _messageController,
-              decoration: InputDecoration(
-                hintText: 'Tapez votre message...',
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(20),
-                ),
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+          if (_sendError != null)
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
+              child: Align(
+                alignment: Alignment.centerLeft,
+                child: Text(
+                  _sendError!,
+                  style: const TextStyle(
+                    color: Color(0xFFB42318),
+                    fontSize: 12,
+                  ),
                 ),
               ),
-              onSubmitted: (_) => _sendMessage(),
             ),
-          ),
-          const SizedBox(width: 8),
-          CircleAvatar(
-            backgroundColor: const Color(0xFF2563EB),
-            child: IconButton(
-              onPressed: _sendMessage,
-              icon: const Icon(
-                Icons.send,
-                color: Colors.white,
-                size: 18,
+          Row(
+            children: [
+              Expanded(
+                child: TextField(
+                  controller: _messageController,
+                  readOnly: _isSending,
+                  decoration: InputDecoration(
+                    hintText: 'Tapez votre message…',
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 8,
+                    ),
+                  ),
+                  onSubmitted: (_) => _sendMessage(),
+                ),
               ),
-            ),
+              const SizedBox(width: 8),
+              CircleAvatar(
+                backgroundColor: const Color(0xFF2563EB),
+                child: IconButton(
+                  onPressed: _isSending ? null : _sendMessage,
+                  tooltip: 'Envoyer le message au support',
+                  icon: _isSending
+                      ? const SizedBox.square(
+                          dimension: 18,
+                          child: CircularProgressIndicator(
+                            strokeWidth: 2,
+                            color: Colors.white,
+                          ),
+                        )
+                      : const Icon(Icons.send, color: Colors.white, size: 18),
+                ),
+              ),
+            ],
           ),
         ],
       ),
@@ -472,44 +338,292 @@ class ChatMessage {
   });
 }
 
-/// Écran de profil utilisateur
-/// Affiche les informations de l'utilisateur et les options de gestion du compte
+/// Écran de profil utilisateur connecté.
 class ProfilScreen extends StatefulWidget {
-  const ProfilScreen({super.key});
+  const ProfilScreen({super.key, this.profileApi});
+
+  final ProfileApi? profileApi;
 
   @override
   State<ProfilScreen> createState() => _ProfilScreenState();
 }
 
-
 class _ProfilScreenState extends State<ProfilScreen> {
-  File? _selectedImage;
+  static const _profileCacheKey = 'profile_cache';
+
   final ImagePicker _picker = ImagePicker();
-  String _userName = 'Utilisateur';
-  String _userEmail = 'user@exemple.com';
-  String _userPhone = '+228 90 01 43 29';
-  String _userAddress = 'Lomé, Aflao Gagli';
-  String _userCompany = 'ÉCHELLE EG39';
-  String _userJobTitle = 'Géomètre-Topographe';
-  String _userIndustry = 'Topographie';
-  String _userBirthDate = '01/01/1990';
+  final TextEditingController _personalFirstNameController =
+      TextEditingController();
+  final TextEditingController _personalLastNameController =
+      TextEditingController();
+  final TextEditingController _personalEmailController = TextEditingController();
+  final TextEditingController _personalPasswordController =
+      TextEditingController();
+  late final ProfileApi _profileApi = widget.profileApi ?? ProfileApi();
+  ProfileRecord? _profile;
+  Uint8List? _selectedAvatarBytes;
+  bool _isLoadingProfile = true;
+  bool _isSavingProfile = false;
+  String? _profileError;
+  String _userName = '';
+  String _userEmail = '';
+  String _userPhone = '';
+  String _userAddress = '';
+  String _userCity = '';
+  String _userCountry = 'Togo';
+  String _userCompany = '';
   String _contactPreference = 'Email';
   bool _notificationsEnabled = true;
   bool _smsEnabled = true;
   bool _callsEnabled = false;
+
+  String get _addressSummary => [
+    _userAddress,
+    _userCity,
+    _userCountry,
+  ].where((part) => part.trim().isNotEmpty).join(', ');
+
+  @override
+  void initState() {
+    super.initState();
+    _loadProfile();
+  }
+
+  @override
+  void dispose() {
+    _personalFirstNameController.dispose();
+    _personalLastNameController.dispose();
+    _personalEmailController.dispose();
+    _personalPasswordController.dispose();
+    if (widget.profileApi == null) _profileApi.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadProfile() async {
+    setState(() {
+      _isLoadingProfile = true;
+      _profileError = null;
+    });
+    await _loadLocalPreferences();
+
+    try {
+      final profile = await _profileApi.loadProfile();
+      await _applyProfile(profile, cache: true);
+      if (mounted) setState(() => _isLoadingProfile = false);
+    } on ProfileApiException catch (error) {
+      await _loadCachedProfile();
+      if (!mounted) return;
+      setState(() {
+        _profileError = error.message;
+        _isLoadingProfile = false;
+      });
+    } catch (_) {
+      await _loadCachedProfile();
+      if (!mounted) return;
+      setState(() {
+        _profileError = 'Impossible de lire les données du profil.';
+        _isLoadingProfile = false;
+      });
+    }
+  }
+
+  Future<void> _loadLocalPreferences() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _contactPreference =
+          prefs.getString('profile.contactPreference') ?? 'Email';
+      _notificationsEnabled = prefs.getBool('profile.notifications') ?? true;
+      _smsEnabled = prefs.getBool('profile.sms') ?? true;
+      _callsEnabled = prefs.getBool('profile.calls') ?? false;
+    });
+  }
+
+  Future<void> _applyProfile(
+    ProfileRecord profile, {
+    required bool cache,
+  }) async {
+    if (!mounted) return;
+    setState(() {
+      _profile = profile;
+      _userName = profile.fullName;
+      _userEmail = profile.email;
+      _userPhone = profile.phone;
+      _userCompany = profile.company;
+      _userAddress = profile.address;
+      _userCity = profile.city;
+      _userCountry = profile.country;
+      _selectedAvatarBytes = profile.avatarData == null
+          ? null
+          : base64Decode(profile.avatarData!);
+    });
+
+    if (cache) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _profileCacheKey,
+        jsonEncode({
+          'id': profile.id,
+          'firstName': profile.firstName,
+          'lastName': profile.lastName,
+          'email': profile.email,
+          'phone': profile.phone,
+          'company': profile.company,
+          'address': profile.address,
+          'city': profile.city,
+          'country': profile.country,
+          'role': profile.role,
+        }),
+      );
+      await prefs.setString('userName', profile.fullName);
+      await prefs.setString('userEmail', profile.email);
+      await prefs.setString('userPhone', profile.phone);
+    }
+  }
+
+  Future<void> _loadCachedProfile() async {
+    final prefs = await SharedPreferences.getInstance();
+    final cached = prefs.getString(_profileCacheKey);
+    if (cached == null) return;
+    try {
+      final decoded = jsonDecode(cached);
+      if (decoded is Map<String, dynamic>) {
+        await _applyProfile(ProfileRecord.fromJson(decoded), cache: false);
+      }
+    } on FormatException {
+      await prefs.remove(_profileCacheKey);
+    } catch (_) {
+      await prefs.remove(_profileCacheKey);
+    }
+  }
+
+  Future<bool> _saveProfile({
+    String? firstName,
+    String? lastName,
+    String? email,
+    String? phone,
+    String? company,
+    String? address,
+    String? city,
+    String? country,
+    String? currentPassword,
+    required String successMessage,
+  }) async {
+    final profile = _profile;
+    if (profile == null || _isSavingProfile) return false;
+
+    setState(() {
+      _isSavingProfile = true;
+      _profileError = null;
+    });
+    try {
+      final updated = await _profileApi.updateProfile(
+        firstName: firstName ?? profile.firstName,
+        lastName: lastName ?? profile.lastName,
+        email: email ?? profile.email,
+        phone: phone ?? profile.phone,
+        company: company ?? profile.company,
+        address: address ?? profile.address,
+        city: city ?? profile.city,
+        country: country ?? profile.country,
+        currentPassword: currentPassword,
+      );
+      await _applyProfile(updated, cache: true);
+      if (mounted) _showProfileMessage(successMessage);
+      return true;
+    } on ProfileApiException catch (error) {
+      if (mounted) _showProfileMessage(error.message, isError: true);
+      return false;
+    } finally {
+      if (mounted) setState(() => _isSavingProfile = false);
+    }
+  }
+
+  void _showProfileMessage(String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor: isError
+              ? const Color(0xFFB42318)
+              : const Color(0xFF1D1D1F),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
-        child: SingleChildScrollView(
-          child: Column(
-            children: [
-              _buildHeader(),
-              _buildContent(context),
-            ],
-          ),
+        child: _isLoadingProfile && _profile == null
+            ? const Center(
+                child: CircularProgressIndicator(color: Color(0xFF2563EB)),
+              )
+            : _profile == null
+            ? _buildProfileLoadError()
+            : SingleChildScrollView(
+                child: Column(
+                  children: [
+                    _buildHeader(),
+                    if (_profileError != null) _buildProfileErrorBanner(),
+                    if (_isLoadingProfile)
+                      const LinearProgressIndicator(minHeight: 2),
+                    _buildContent(context),
+                  ],
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildProfileLoadError() {
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.all(28),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 42,
+              color: Color(0xFF6B7280),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _profileError ?? 'Impossible de charger votre profil.',
+              textAlign: TextAlign.center,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 12),
+            FilledButton.icon(
+              onPressed: _loadProfile,
+              icon: const Icon(Icons.refresh),
+              label: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildProfileErrorBanner() {
+    return Material(
+      color: const Color(0xFFFEF3F2),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(16, 10, 8, 10),
+        child: Row(
+          children: [
+            Expanded(
+              child: Text(
+                'Synchronisation impossible. Les données déjà sauvegardées restent visibles.',
+                style: const TextStyle(color: Color(0xFFB42318), fontSize: 13),
+              ),
+            ),
+            TextButton(onPressed: _loadProfile, child: const Text('Réessayer')),
+          ],
         ),
       ),
     );
@@ -546,10 +660,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
         decoration: BoxDecoration(
           color: Colors.white,
           shape: BoxShape.circle,
-          border: Border.all(
-            color: Colors.white,
-            width: 3,
-          ),
+          border: Border.all(color: Colors.white, width: 3),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.1),
@@ -560,20 +671,41 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ),
         child: Stack(
           children: [
-            _selectedImage != null
-                ? ClipOval(
-                    child: Image.file(
-                      _selectedImage!,
-                      width: 80,
-                      height: 80,
-                      fit: BoxFit.cover,
-                    ),
-                  )
-                : const Icon(
+            if (_selectedAvatarBytes != null)
+              ClipOval(
+                child: Image.memory(
+                  _selectedAvatarBytes!,
+                  width: 80,
+                  height: 80,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, _, _) => const Icon(
                     Icons.person,
                     size: 40,
                     color: Color(0xFF2563EB),
                   ),
+                ),
+              )
+            else
+              Center(
+                child: Text(
+                  _userName.trim().isEmpty
+                      ? '…'
+                      : _userName
+                            .trim()
+                            .split(RegExp(r'\\s+'))
+                            .take(2)
+                            .map(
+                              (part) =>
+                                  part.isEmpty ? '' : part[0].toUpperCase(),
+                            )
+                            .join(),
+                  style: const TextStyle(
+                    color: Color(0xFF2563EB),
+                    fontSize: 24,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ),
             Positioned(
               bottom: 0,
               right: 0,
@@ -612,10 +744,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
             children: [
               const Text(
                 'Choisir une photo de profil',
-                style: TextStyle(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                ),
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
               ),
               const SizedBox(height: 16),
               Row(
@@ -631,6 +760,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     label: 'Caméra',
                     onTap: () => _pickImage(ImageSource.camera),
                   ),
+                  if (_selectedAvatarBytes != null)
+                    _buildImagePickerOption(
+                      icon: Icons.delete_outline,
+                      label: 'Supprimer',
+                      onTap: _deleteProfileImage,
+                    ),
                 ],
               ),
             ],
@@ -661,19 +796,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
               color: const Color(0xFFF3F4F6),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Icon(
-              icon,
-              size: 30,
-              color: const Color(0xFF2563EB),
-            ),
+            child: Icon(icon, size: 30, color: const Color(0xFF2563EB)),
           ),
           const SizedBox(height: 8),
           Text(
             label,
-            style: const TextStyle(
-              fontSize: 14,
-              fontWeight: FontWeight.w500,
-            ),
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500),
           ),
         ],
       ),
@@ -683,142 +811,116 @@ class _ProfilScreenState extends State<ProfilScreen> {
   /// Sélectionne une image depuis la source spécifiée
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final XFile? image = await _picker.pickImage(
+      final image = await _picker.pickImage(
         source: source,
-        maxWidth: 800,
-        maxHeight: 800,
-        imageQuality: 85,
+        maxWidth: 600,
+        maxHeight: 600,
+        imageQuality: 70,
       );
+      if (image == null || !mounted) return;
 
-      if (image != null) {
-        setState(() {
-          _selectedImage = File(image.path);
-        });
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Photo de profil mise à jour !'),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
+      final bytes = await image.readAsBytes();
+      final mimeType = switch (image.mimeType?.toLowerCase() ??
+          image.name.split('.').last.toLowerCase()) {
+        'image/jpeg' || 'jpg' || 'jpeg' => 'image/jpeg',
+        'image/png' || 'png' => 'image/png',
+        'image/webp' || 'webp' => 'image/webp',
+        _ => null,
+      };
+      if (mimeType == null) {
+        _showProfileMessage(
+          'Choisissez une image JPEG, PNG ou WebP.',
+          isError: true,
+        );
+        return;
       }
-    } catch (e) {
+      if (bytes.lengthInBytes > ProfileApi.maxAvatarBytes) {
+        _showProfileMessage('La photo doit peser 1 Mo maximum.', isError: true);
+        return;
+      }
+
+      setState(() => _isSavingProfile = true);
+      try {
+        final profile = await _profileApi.updateAvatar(
+          bytes: bytes,
+          mimeType: mimeType,
+        );
+        await _applyProfile(profile, cache: true);
+        if (mounted) _showProfileMessage('Photo de profil enregistrée.');
+      } on ProfileApiException catch (error) {
+        if (mounted) _showProfileMessage(error.message, isError: true);
+      } finally {
+        if (mounted) setState(() => _isSavingProfile = false);
+      }
+    } catch (_) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur lors de la sélection: $e'),
-            backgroundColor: Colors.red,
-          ),
+        _showProfileMessage(
+          'Impossible de sélectionner cette photo.',
+          isError: true,
         );
       }
     }
   }
 
-  /// Construit les informations utilisateur
-  Widget _buildUserInfo() {
-    return Column(
-      children: [
-        Text(
-          _userName,
-          style: GoogleFonts.poppins(
-            fontSize: 22,
-            fontWeight: FontWeight.w700,
-            color: Colors.white,
-          ),
-        ),
-        const SizedBox(height: 4),
-        Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text(
-              _userEmail,
-              style: GoogleFonts.poppins(
-                fontSize: 14,
-                color: const Color(0xFFBFDBFE),
-              ),
-            ),
-            const SizedBox(width: 8),
-            GestureDetector(
-              onTap: _showEditProfileDialog,
-              child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: const BoxDecoration(
-                  color: Colors.white24,
-                  shape: BoxShape.circle,
-                ),
-                child: const Icon(
-                  Icons.edit,
-                  size: 14,
-                  color: Colors.white,
-                ),
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+  Future<void> _deleteProfileImage() async {
+    try {
+      await _profileApi.deleteAvatar();
+      if (!mounted) return;
+      setState(() => _selectedAvatarBytes = null);
+      _showProfileMessage('Photo de profil supprimée.');
+    } on ProfileApiException catch (error) {
+      if (mounted) _showProfileMessage(error.message, isError: true);
+    }
   }
 
-  /// Affiche le dialog d'édition du profil
-  void _showEditProfileDialog() {
-    final nameController = TextEditingController(text: _userName);
-    final emailController = TextEditingController(text: _userEmail);
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Modifier le profil'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
+  /// Construit les informations réelles renvoyées par le compte connecté.
+  Widget _buildUserInfo() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 20),
+      child: Column(
+        children: [
+          Text(
+            _userName,
+            textAlign: TextAlign.center,
+            style: GoogleFonts.poppins(
+              fontSize: 22,
+              fontWeight: FontWeight.w700,
+              color: Colors.white,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom d\'utilisateur',
-                  border: OutlineInputBorder(),
+              Flexible(
+                child: Text(
+                  _userEmail,
+                  overflow: TextOverflow.ellipsis,
+                  style: GoogleFonts.poppins(
+                    fontSize: 14,
+                    color: const Color(0xFFBFDBFE),
+                  ),
                 ),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
+              const SizedBox(width: 8),
+              IconButton(
+                tooltip: 'Modifier les informations personnelles',
+                onPressed: () => _showPersonalInfoDialog(context),
+                style: IconButton.styleFrom(
+                  backgroundColor: Colors.white24,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size(32, 32),
+                  maximumSize: const Size(32, 32),
+                  padding: EdgeInsets.zero,
                 ),
-                keyboardType: TextInputType.emailAddress,
+                icon: const Icon(Icons.edit_outlined, size: 16),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _userName = nameController.text.isEmpty ? _userName : nameController.text;
-                  _userEmail = emailController.text.isEmpty ? _userEmail : emailController.text;
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Profil mis à jour !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Sauvegarder'),
-            ),
-          ],
-        );
-      },
+        ],
+      ),
     );
   }
-
-
 
   /// Construit le contenu principal de l'écran
   Widget _buildContent(BuildContext context) {
@@ -844,94 +946,80 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   /// Section "Mon compte"
   Widget _buildAccountSection(BuildContext context) {
-    return _buildSection(
-      'Mon compte',
-      [
-        _buildMenuItem(
-          context,
-          Icons.person,
-          'Informations personnelles',
-          () => _showPersonalInfoDialog(context),
-        ),
-        _buildMenuItem(
-          context,
-          Icons.phone,
-          'Numéro de téléphone',
-          () => _showPhoneDialog(context),
-          trailing: _userPhone,
-        ),
-        _buildMenuItem(
-          context,
-          Icons.location_on,
-          'Adresse de l\'entreprise ',
-          () => _showAddressDialog(context),
-          trailing: _userAddress,
-        ),
-        _buildMenuItem(
-          context,
-          Icons.business,
-          'Informations professionnelles',
-          () => _showProfessionalInfoDialog(context),
-          trailing: _userCompany,
-        ),
-        _buildMenuItem(
-          context,
-          Icons.lock,
-          'Mot de passe',
-          () => _showPasswordDialog(context),
-          trailing: '••••••••',
-        ),
-        _buildMenuItem(
-          context,
-          Icons.cake,
-          'Date de naissance',
-          () => _showBirthDateDialog(context),
-          trailing: _userBirthDate,
-        ),
-        _buildMenuItem(
-          context,
-          Icons.contact_phone,
-          'Préférences de contact',
-          () => _showContactPreferencesDialog(context),
-          trailing: _contactPreference,
-        ),
-        _buildMenuItem(
-          context,
-          Icons.settings,
-          'Paramètres',
-          () => _showSettingsDialog(context),
-        ),
-      ],
-    );
+    return _buildSection('Mon compte', [
+      _buildMenuItem(
+        context,
+        Icons.person,
+        'Informations personnelles',
+        () => _showPersonalInfoDialog(context),
+      ),
+      _buildMenuItem(
+        context,
+        Icons.phone,
+        'Numéro de téléphone',
+        () => _showPhoneDialog(context),
+        trailing: _userPhone,
+      ),
+      _buildMenuItem(
+        context,
+        Icons.location_on,
+        'Adresse de l’entreprise',
+        () => _showAddressDialog(context),
+        trailing: _addressSummary,
+      ),
+      _buildMenuItem(
+        context,
+        Icons.business,
+        'Entreprise',
+        () => _showProfessionalInfoDialog(context),
+        trailing: _userCompany,
+      ),
+      _buildMenuItem(
+        context,
+        Icons.lock,
+        'Mot de passe',
+        () => _showPasswordDialog(context),
+        trailing: '••••••••',
+      ),
+      _buildMenuItem(
+        context,
+        Icons.contact_phone,
+        'Préférences de contact',
+        () => _showContactPreferencesDialog(context),
+        trailing: _contactPreference,
+      ),
+      _buildMenuItem(
+        context,
+        Icons.settings,
+        'Paramètres',
+        () => _showSettingsDialog(context),
+      ),
+    ]);
   }
-
 
   /// Section "Support"
   Widget _buildSupportSection(BuildContext context) {
-    return _buildSection(
-      'Support',
-      [
-        _buildMenuItem(
-          context,
-          Icons.chat,
-          'Chat Support',
-          () => _showChatSupportDialog(context),
-        ),
-        _buildMenuItem(
-          context,
-          Icons.help_center,
-          'Centre d\'aide',
-          () => _showHelpCenterDialog(context),
-        ),
+    return _buildSection('Support', [
+      _buildMenuItem(
+        context,
+        Icons.chat,
+        'Chat Support',
+        () => _showChatSupportDialog(context),
+      ),
+      _buildMenuItem(
+        context,
+        Icons.help_center,
+        'Centre d\'aide',
+        () => _showHelpCenterDialog(context),
+      ),
 
-        _buildMenuItem(
-          context,
-          Icons.info_outline,
-          'À propos',
-          () => _showAboutDialog(context),
-        ),
-      ],
-    );
+      _buildMenuItem(
+        context,
+        Icons.info_outline,
+        'À propos',
+        () => _showAboutDialog(context),
+      ),
+    ]);
   }
 
   /// Informations de l'application
@@ -979,7 +1067,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
       child: ElevatedButton.icon(
         onPressed: () => _showLogoutDialog(context),
         icon: const Icon(Icons.logout),
-        label: Text('Se déconnecter', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
+        label: Text(
+          'Se déconnecter',
+          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+        ),
         style: ElevatedButton.styleFrom(
           backgroundColor: const Color(0xFFFEE2E2),
           foregroundColor: const Color(0xFFDC2626),
@@ -996,7 +1087,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
   /// Fonction pour se déconnecter et supprimer la session
   Future<void> logout() async {
     final prefs = await SharedPreferences.getInstance();
-    
+
     // Supprimer toutes les données de session
     await prefs.remove('token');
     await prefs.remove('isLoggedIn');
@@ -1006,18 +1097,20 @@ class _ProfilScreenState extends State<ProfilScreen> {
     await prefs.remove('userEmail');
     await prefs.remove('userPhone');
     await prefs.remove('userName');
-    
-    print('✅ Session utilisateur supprimée');
-    
+    await prefs.remove('temp_reset_token');
+    await prefs.remove(_profileCacheKey);
+
+    debugPrint('User session cleared');
+
     if (!mounted) return;
-    
+
     // Naviguer vers la page de connexion en supprimant l'historique
     Navigator.pushAndRemoveUntil(
       context,
       MaterialPageRoute(builder: (context) => const LoginPage()),
       (route) => false,
     );
-    
+
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(
         content: Text('Déconnexion réussie !'),
@@ -1053,9 +1146,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   /// Affiche le dialog de support chat
   void _showChatSupportDialog(BuildContext context) {
-    showDialog(
+    showDialog<void>(
       context: context,
-      builder: (context) => const ChatSupportDialog(),
+      builder: (context) => ChatSupportDialog(profileApi: _profileApi),
     );
   }
 
@@ -1094,7 +1187,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-
   /// Construit un élément de menu
   Widget _buildMenuItem(
     BuildContext context,
@@ -1104,6 +1196,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
     String? trailing,
   }) {
     return InkWell(
+      key: ValueKey('profile-menu-$title'),
       onTap: onTap,
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
@@ -1152,544 +1245,578 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   // Dialogs pour les nouvelles fonctionnalités
 
-  void _showPersonalInfoDialog(BuildContext context) {
-    final nameController = TextEditingController(text: _userName);
-    final emailController = TextEditingController(text: _userEmail);
+  Future<void> _showPersonalInfoDialog(BuildContext context) async {
+    final profile = _profile;
+    if (profile == null) return;
 
-    showDialog(
+    final firstNameController = _personalFirstNameController
+      ..text = profile.firstName;
+    final lastNameController = _personalLastNameController
+      ..text = profile.lastName;
+    final emailController = _personalEmailController..text = profile.email;
+    final passwordController = _personalPasswordController..clear();
+    final formKey = GlobalKey<FormState>();
+
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Informations personnelles'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: nameController,
-                decoration: const InputDecoration(
-                  labelText: 'Nom d\'utilisateur',
-                  border: OutlineInputBorder(),
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Informations personnelles'),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      key: const ValueKey('profile-first-name'),
+                      controller: firstNameController,
+                      decoration: const InputDecoration(labelText: 'Prénom'),
+                      textCapitalization: TextCapitalization.words,
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty
+                          ? 'Saisissez votre prénom.'
+                          : null,
+                    ),
+                    TextFormField(
+                      key: const ValueKey('profile-last-name'),
+                      controller: lastNameController,
+                      decoration: const InputDecoration(labelText: 'Nom'),
+                      textCapitalization: TextCapitalization.words,
+                      validator: (value) =>
+                          value == null || value.trim().isEmpty
+                          ? 'Saisissez votre nom.'
+                          : null,
+                    ),
+                    TextFormField(
+                      controller: emailController,
+                      decoration: const InputDecoration(
+                        labelText: 'Adresse e-mail',
+                      ),
+                      keyboardType: TextInputType.emailAddress,
+                      validator: (value) {
+                        final email = value?.trim() ?? '';
+                        return RegExp(
+                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
+                            ).hasMatch(email)
+                            ? null
+                            : 'Saisissez une adresse e-mail valide.';
+                      },
+                    ),
+                    const SizedBox(height: 12),
+                    TextFormField(
+                      controller: passwordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Mot de passe actuel',
+                        helperText: 'Requis si vous changez votre e-mail.',
+                      ),
+                      obscureText: true,
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: emailController,
-                decoration: const InputDecoration(
-                  labelText: 'Email',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.emailAddress,
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (!(formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        final contactChanged =
+                            emailController.text.trim() != profile.email;
+                        if (contactChanged && passwordController.text.isEmpty) {
+                          _showProfileMessage(
+                            'Saisissez votre mot de passe actuel pour changer l’e-mail.',
+                            isError: true,
+                          );
+                          return;
+                        }
+                        setDialogState(() => isSubmitting = true);
+                        final saved = await _saveProfile(
+                          firstName: firstNameController.text,
+                          lastName: lastNameController.text,
+                          email: emailController.text,
+                          currentPassword: passwordController.text,
+                          successMessage:
+                              'Informations personnelles enregistrées.',
+                        );
+                        if (dialogContext.mounted && saved) {
+                          Navigator.pop(dialogContext);
+                        }
+                        if (dialogContext.mounted && !saved) {
+                          setDialogState(() => isSubmitting = false);
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Enregistrer'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _userName = nameController.text.isEmpty ? _userName : nameController.text;
-                  _userEmail = emailController.text.isEmpty ? _userEmail : emailController.text;
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Informations mises à jour !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Sauvegarder'),
-            ),
-          ],
         );
       },
     );
+    passwordController.clear();
   }
 
-  void _showPhoneDialog(BuildContext context) {
-    final phoneController = TextEditingController(text: _userPhone);
+  Future<void> _showPhoneDialog(BuildContext context) async {
+    final profile = _profile;
+    if (profile == null) return;
+    final phoneController = TextEditingController(text: profile.phone);
+    final passwordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
-    showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Numéro de téléphone'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: phoneController,
-                decoration: const InputDecoration(
-                  labelText: 'Numéro de téléphone',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.phone,
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Numéro de téléphone'),
+            content: Form(
+              key: formKey,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextFormField(
+                    controller: phoneController,
+                    decoration: const InputDecoration(labelText: 'Téléphone'),
+                    keyboardType: TextInputType.phone,
+                    validator: (value) {
+                      final digits = (value ?? '').replaceAll(
+                        RegExp(r'[^0-9+]'),
+                        '',
+                      );
+                      return digits.length >= 8 && digits.length <= 20
+                          ? null
+                          : 'Saisissez un numéro valide.';
+                    },
+                  ),
+                  const SizedBox(height: 8),
+                  const Text(
+                    'Indiquez l’indicatif pays; le numéro sert à vos coordonnées de compte.',
+                    style: TextStyle(fontSize: 12, color: Colors.grey),
+                  ),
+                  TextFormField(
+                    controller: passwordController,
+                    decoration: const InputDecoration(
+                      labelText: 'Mot de passe actuel',
+                      helperText: 'Requis si vous changez votre numéro.',
+                    ),
+                    obscureText: true,
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Ce numéro sera utilisé pour les notifications SMS',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (!(formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        final contactChanged =
+                            phoneController.text.trim() != profile.phone;
+                        if (contactChanged && passwordController.text.isEmpty) {
+                          _showProfileMessage(
+                            'Saisissez votre mot de passe actuel pour changer le numéro.',
+                            isError: true,
+                          );
+                          return;
+                        }
+                        setDialogState(() => isSubmitting = true);
+                        final saved = await _saveProfile(
+                          phone: phoneController.text,
+                          currentPassword: passwordController.text,
+                          successMessage: 'Numéro de téléphone enregistré.',
+                        );
+                        if (dialogContext.mounted && saved) {
+                          Navigator.pop(dialogContext);
+                        }
+                        if (dialogContext.mounted && !saved) {
+                          setDialogState(() => isSubmitting = false);
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Enregistrer'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _userPhone = phoneController.text.isEmpty ? _userPhone : phoneController.text;
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Numéro mis à jour !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Sauvegarder'),
-            ),
-          ],
         );
       },
     );
+    phoneController.dispose();
+    passwordController.dispose();
   }
 
-  void _showAddressDialog(BuildContext context) {
-    final addressController = TextEditingController(text: _userAddress);
+  Future<void> _showAddressDialog(BuildContext context) async {
+    final profile = _profile;
+    if (profile == null) return;
+    final addressController = TextEditingController(text: profile.address);
+    final cityController = TextEditingController(text: profile.city);
+    final countryController = TextEditingController(text: profile.country);
 
-    showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Adresse de l\'entreprise'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: addressController,
-                decoration: const InputDecoration(
-                  labelText: 'Adresse complète',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 3,
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Adresse de l’entreprise'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextField(
+                    controller: addressController,
+                    decoration: const InputDecoration(
+                      labelText: 'Adresse complète',
+                    ),
+                    maxLines: 2,
+                  ),
+                  TextField(
+                    controller: cityController,
+                    decoration: const InputDecoration(labelText: 'Ville'),
+                  ),
+                  TextField(
+                    controller: countryController,
+                    decoration: const InputDecoration(labelText: 'Pays'),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              const Text(
-                'Cette adresse utilisée pour localiser l\'entreprise ',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() => isSubmitting = true);
+                        final saved = await _saveProfile(
+                          address: addressController.text,
+                          city: cityController.text,
+                          country: countryController.text,
+                          successMessage: 'Adresse enregistrée.',
+                        );
+                        if (dialogContext.mounted && saved) {
+                          Navigator.pop(dialogContext);
+                        }
+                        if (dialogContext.mounted && !saved) {
+                          setDialogState(() => isSubmitting = false);
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Enregistrer'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _userAddress = addressController.text.isEmpty ? _userAddress : addressController.text;
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Adresse mise à jour !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Sauvegarder'),
-            ),
-          ],
         );
       },
     );
+    addressController.dispose();
+    cityController.dispose();
+    countryController.dispose();
   }
 
-  void _showProfessionalInfoDialog(BuildContext context) {
-    final companyController = TextEditingController(text: _userCompany);
-    final jobTitleController = TextEditingController(text: _userJobTitle);
-    final industryController = TextEditingController(text: _userIndustry);
-
-    showDialog(
+  Future<void> _showProfessionalInfoDialog(BuildContext context) async {
+    final controller = TextEditingController(text: _userCompany);
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Informations professionnelles'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: companyController,
-                decoration: const InputDecoration(
-                  labelText: 'Entreprise',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: jobTitleController,
-                decoration: const InputDecoration(
-                  labelText: 'Poste',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: industryController,
-                decoration: const InputDecoration(
-                  labelText: 'Secteur d\'activité',
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Informations professionnelles'),
+        content: TextField(
+          controller: controller,
+          maxLength: 255,
+          decoration: const InputDecoration(labelText: 'Entreprise'),
+          textCapitalization: TextCapitalization.words,
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Annuler'),
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _userCompany = companyController.text.isEmpty ? _userCompany : companyController.text;
-                  _userJobTitle = jobTitleController.text.isEmpty ? _userJobTitle : jobTitleController.text;
-                  _userIndustry = industryController.text.isEmpty ? _userIndustry : industryController.text;
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Informations professionnelles mises à jour !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Sauvegarder'),
-            ),
-          ],
-        );
-      },
+          FilledButton(
+            onPressed: () async {
+              final saved = await _saveProfile(
+                company: controller.text,
+                successMessage: 'Entreprise enregistrée.',
+              );
+              if (dialogContext.mounted && saved) Navigator.pop(dialogContext);
+            },
+            child: const Text('Enregistrer'),
+          ),
+        ],
+      ),
     );
+    controller.dispose();
   }
 
-  void _showPasswordDialog(BuildContext context) {
+  Future<void> _showPasswordDialog(BuildContext context) async {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
     final confirmPasswordController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
 
-    showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Changer le mot de passe'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: currentPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'Mot de passe actuel',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: newPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'Nouveau mot de passe',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: confirmPasswordController,
-                decoration: const InputDecoration(
-                  labelText: 'Confirmer le mot de passe',
-                  border: OutlineInputBorder(),
-                ),
-                obscureText: true,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Le mot de passe doit contenir au moins 8 caractères',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                if (newPasswordController.text != confirmPasswordController.text) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Les mots de passe ne correspondent pas'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                  return;
-                }
-                if (newPasswordController.text.length < 8) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Le mot de passe doit contenir au moins 8 caractères'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                  return;
-                }
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Mot de passe changé avec succès !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Changer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showBirthDateDialog(BuildContext context) {
-    final birthDateController = TextEditingController(text: _userBirthDate);
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Date de naissance'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: birthDateController,
-                decoration: const InputDecoration(
-                  labelText: 'Date de naissance (JJ/MM/AAAA)',
-                  border: OutlineInputBorder(),
-                ),
-                keyboardType: TextInputType.datetime,
-              ),
-              const SizedBox(height: 8),
-              const Text(
-                'Utilisé pour vous offrir des offres spéciales à votre anniversaire',
-                style: TextStyle(fontSize: 12, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                setState(() {
-                  _userBirthDate = birthDateController.text.isEmpty ? _userBirthDate : birthDateController.text;
-                });
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Date de naissance mise à jour !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Sauvegarder'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  void _showContactPreferencesDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Préférences de contact'),
-          content: StatefulBuilder(
-            builder: (context, setState) {
-              return Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Comment préférez-vous être contacté ?',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  RadioListTile<String>(
-                    title: const Text('Email'),
-                    value: 'Email',
-                    groupValue: _contactPreference,
-                    onChanged: (value) {
-                      setState(() {
-                        _contactPreference = value!;
-                      });
-                    },
-                  ),
-                  RadioListTile<String>(
-                    title: const Text('SMS'),
-                    value: 'SMS',
-                    groupValue: _contactPreference,
-                    onChanged: (value) {
-                      setState(() {
-                        _contactPreference = value!;
-                      });
-                    },
-                  ),
-                  RadioListTile<String>(
-                    title: const Text('Appels téléphoniques'),
-                    value: 'Appels',
-                    groupValue: _contactPreference,
-                    onChanged: (value) {
-                      setState(() {
-                        _contactPreference = value!;
-                      });
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  const Text(
-                    'Notifications :',
-                    style: TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 8),
-                  CheckboxListTile(
-                    title: const Text('Notifications push'),
-                    value: _notificationsEnabled,
-                    onChanged: (value) {
-                      setState(() {
-                        _notificationsEnabled = value!;
-                      });
-                    },
-                  ),
-                  CheckboxListTile(
-                    title: const Text('SMS'),
-                    value: _smsEnabled,
-                    onChanged: (value) {
-                      setState(() {
-                        _smsEnabled = value!;
-                      });
-                    },
-                  ),
-                  CheckboxListTile(
-                    title: const Text('Appels'),
-                    value: _callsEnabled,
-                    onChanged: (value) {
-                      setState(() {
-                        _callsEnabled = value!;
-                      });
-                    },
-                  ),
-                ],
-              );
-            },
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(
-                    content: Text('Préférences de contact mises à jour !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Sauvegarder'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-
-
-  void _showSettingsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Paramètres'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ListTile(
-                title: const Text('Notifications'),
-                subtitle: const Text('Gérer les notifications de l\'application'),
-                trailing: Switch(
-                  value: _notificationsEnabled,
-                  onChanged: (value) {
-                    setState(() {
-                      _notificationsEnabled = value;
-                    });
-                  },
-                ),
-              ),
-              const Divider(),
-              ListTile(
-                title: const Text('Mode sombre'),
-                subtitle: const Text('Utiliser le thème sombre'),
-                trailing: Switch(
-                  value: false,
-                  onChanged: (value) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Fonctionnalité bientôt disponible'),
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Changer le mot de passe'),
+            content: Form(
+              key: formKey,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    TextFormField(
+                      controller: currentPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Mot de passe actuel',
                       ),
-                    );
-                  },
+                      obscureText: true,
+                      validator: (value) => value == null || value.isEmpty
+                          ? 'Saisissez votre mot de passe actuel.'
+                          : null,
+                    ),
+                    TextFormField(
+                      controller: newPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Nouveau mot de passe',
+                        helperText:
+                            '6 caractères minimum, avec une lettre et un chiffre.',
+                      ),
+                      obscureText: true,
+                      validator: (value) {
+                        final password = value ?? '';
+                        if (password.length < 6 ||
+                            !RegExp(r'[a-zA-Z]').hasMatch(password) ||
+                            !RegExp(r'[0-9]').hasMatch(password)) {
+                          return 'Ajoutez au moins 6 caractères, une lettre et un chiffre.';
+                        }
+                        return null;
+                      },
+                    ),
+                    TextFormField(
+                      controller: confirmPasswordController,
+                      decoration: const InputDecoration(
+                        labelText: 'Confirmer le mot de passe',
+                      ),
+                      obscureText: true,
+                      validator: (value) => value != newPasswordController.text
+                          ? 'Les mots de passe ne correspondent pas.'
+                          : null,
+                    ),
+                  ],
                 ),
               ),
-              const Divider(),
-              ListTile(
-                title: const Text('Langue'),
-                subtitle: const Text('Français'),
-                trailing: const Icon(Icons.arrow_forward_ios),
-                onTap: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Fonctionnalité bientôt disponible'),
-                    ),
-                  );
-                },
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (!(formKey.currentState?.validate() ?? false)) {
+                          return;
+                        }
+                        setDialogState(() => isSubmitting = true);
+                        try {
+                          await _profileApi.changePassword(
+                            currentPassword: currentPasswordController.text,
+                            newPassword: newPasswordController.text,
+                          );
+                          if (!dialogContext.mounted) {
+                            return;
+                          }
+                          Navigator.pop(dialogContext);
+                          if (mounted) {
+                            _showProfileMessage('Mot de passe modifié.');
+                          }
+                        } on ProfileApiException catch (error) {
+                          if (mounted) {
+                            _showProfileMessage(error.message, isError: true);
+                          }
+                          if (dialogContext.mounted) {
+                            setDialogState(() => isSubmitting = false);
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Enregistrer'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
         );
       },
     );
+    currentPasswordController.dispose();
+    newPasswordController.dispose();
+    confirmPasswordController.dispose();
   }
 
+  Future<void> _showContactPreferencesDialog(BuildContext context) async {
+    var preference = _contactPreference;
+    var notifications = _notificationsEnabled;
+    var sms = _smsEnabled;
+    var calls = _callsEnabled;
 
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Préférences de contact'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Moyen de contact préféré'),
+                ),
+                RadioGroup<String>(
+                  groupValue: preference,
+                  onChanged: (value) {
+                    if (value != null) setDialogState(() => preference = value);
+                  },
+                  child: const Column(
+                    children: [
+                      RadioListTile<String>(
+                        title: Text('E-mail'),
+                        value: 'Email',
+                      ),
+                      RadioListTile<String>(title: Text('SMS'), value: 'SMS'),
+                      RadioListTile<String>(
+                        title: Text('Appel téléphonique'),
+                        value: 'Appels',
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(),
+                SwitchListTile(
+                  title: const Text('Notifications push'),
+                  value: notifications,
+                  onChanged: (value) =>
+                      setDialogState(() => notifications = value),
+                ),
+                SwitchListTile(
+                  title: const Text('Recevoir les SMS'),
+                  value: sms,
+                  onChanged: (value) => setDialogState(() => sms = value),
+                ),
+                SwitchListTile(
+                  title: const Text('Recevoir les appels'),
+                  value: calls,
+                  onChanged: (value) => setDialogState(() => calls = value),
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
 
+    if (!mounted || saved != true) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('profile.contactPreference', preference);
+    await prefs.setBool('profile.notifications', notifications);
+    await prefs.setBool('profile.sms', sms);
+    await prefs.setBool('profile.calls', calls);
+    setState(() {
+      _contactPreference = preference;
+      _notificationsEnabled = notifications;
+      _smsEnabled = sms;
+      _callsEnabled = calls;
+    });
+    _showProfileMessage('Préférences enregistrées sur cet appareil.');
+  }
+
+  Future<void> _showSettingsDialog(BuildContext context) async {
+    var notifications = _notificationsEnabled;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Paramètres'),
+          content: SwitchListTile(
+            title: const Text('Notifications push'),
+            subtitle: const Text('Préférence enregistrée sur cet appareil.'),
+            value: notifications,
+            onChanged: (value) => setDialogState(() => notifications = value),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('Annuler'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: const Text('Enregistrer'),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (!mounted || saved != true) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('profile.notifications', notifications);
+    setState(() => _notificationsEnabled = notifications);
+    _showProfileMessage('Préférence enregistrée sur cet appareil.');
+  }
 
   // Méthodes pour le centre d'aide - Déclarées d'abord pour éviter les erreurs
 
@@ -1715,17 +1842,11 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ),
         title: Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(
-            fontSize: 14,
-            color: Colors.grey,
-          ),
+          style: const TextStyle(fontSize: 14, color: Colors.grey),
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
@@ -1733,14 +1854,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Construit un élément FAQ
+  /// FAQ consultable : chaque question révèle sa réponse au toucher.
   Widget _buildFAQItem(String question, String answer) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        title: Text(question, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(answer),
-        onTap: () {},
+      child: ExpansionTile(
+        title: Text(
+          question,
+          style: const TextStyle(fontWeight: FontWeight.w600),
+        ),
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [Text(answer)],
       ),
     );
   }
@@ -1764,16 +1888,18 @@ class _ProfilScreenState extends State<ProfilScreen> {
     try {
       // Nettoyer le titre pour en faire une requête de recherche efficace
       String searchQuery = _generateSearchQuery(videoTitle);
-      
+
       // Créer l'URL de recherche YouTube
-      String youtubeSearchUrl = 'https://www.youtube.com/results?search_query=${Uri.encodeComponent(searchQuery)}';
+      String youtubeSearchUrl =
+          'https://www.youtube.com/results?search_query=${Uri.encodeComponent(searchQuery)}';
       Uri searchUri = Uri.parse(youtubeSearchUrl);
-      
+
       if (await canLaunchUrl(searchUri)) {
         await launchUrl(searchUri, mode: LaunchMode.externalApplication);
       } else {
         // Fallback: recherche générique sur la topographie
-        String fallbackUrl = 'https://www.youtube.com/results?search_query=topographie+gps+formation';
+        String fallbackUrl =
+            'https://www.youtube.com/results?search_query=topographie+gps+formation';
         Uri fallbackUri = Uri.parse(fallbackUrl);
         if (await canLaunchUrl(fallbackUri)) {
           await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
@@ -1781,7 +1907,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
       }
     } catch (e) {
       // En cas d'erreur, ouvrir une recherche YouTube générique
-      String fallbackUrl = 'https://www.youtube.com/results?search_query=tutoriel+topographie+gps';
+      String fallbackUrl =
+          'https://www.youtube.com/results?search_query=tutoriel+topographie+gps';
       Uri fallbackUri = Uri.parse(fallbackUrl);
       if (await canLaunchUrl(fallbackUri)) {
         await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
@@ -1800,87 +1927,84 @@ class _ProfilScreenState extends State<ProfilScreen> {
       'Calibration GPS': 'GPS calibration RTK tutorial',
       'Formation topographie': 'surveying basics tutorial',
       'Calcul de surfaces': 'land area calculation surveying',
-      'Implantation d\'ouvrages': 'construction staking surveying tutorial'
+      'Implantation d\'ouvrages': 'construction staking surveying tutorial',
     };
-    
+
     // Rechercher des correspondances dans le dictionnaire
     for (String key in keywords.keys) {
       if (title.contains(key)) {
         return keywords[key]!;
       }
     }
-    
+
     // Si aucune correspondance trouvée, utiliser le titre original
     return title;
   }
 
-  /// Construit un élément de base de connaissances
+  /// Article consultable : tap to expand the complete information.
   Widget _buildKnowledgeItem(String title, String description) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: const Icon(Icons.article, color: Color(0xFF2563EB)),
+      child: ExpansionTile(
+        leading: const Icon(Icons.article_outlined, color: Color(0xFF2563EB)),
         title: Text(title),
-        subtitle: Text(description),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () {},
+        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+        children: [Text(description)],
       ),
     );
   }
 
-  /// Construit un élément du glossaire
+  /// Terme de glossaire en lecture seule (pas de faux bouton d’action).
   Widget _buildGlossaryItem(String term, String definition) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: const Icon(Icons.book, color: Color(0xFF059669)),
+        leading: const Icon(Icons.menu_book_outlined, color: Color(0xFF059669)),
         title: Text(term, style: const TextStyle(fontWeight: FontWeight.bold)),
         subtitle: Text(definition),
-        onTap: () {},
       ),
     );
   }
 
   /// Construit un élément de contact
-  Widget _buildContactItem(IconData icon, String label, String value, VoidCallback onTap) {
+  Widget _buildContactItem(
+    IconData icon,
+    String label,
+    String value,
+    VoidCallback? onTap,
+  ) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
         leading: Icon(icon, color: const Color(0xFF2563EB)),
         title: Text(label),
         subtitle: Text(value),
-        trailing: const Icon(Icons.chevron_right),
+        trailing: onTap == null ? null : const Icon(Icons.open_in_new),
         onTap: onTap,
       ),
     );
   }
 
-  /// Construit un élément de formation
-  Widget _buildTrainingItem(String title, String date, String description) {
+  Widget _buildTrainingItem({
+    required String title,
+    required String description,
+    required bool selected,
+    required VoidCallback onTap,
+  }) {
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
       child: ListTile(
-        leading: const Icon(Icons.school, color: Color(0xFF7C3AED)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(date, style: const TextStyle(color: Color(0xFF2563EB))),
-            const SizedBox(height: 4),
-            Text(description),
-          ],
+        leading: const Icon(Icons.school_outlined, color: Color(0xFF2563EB)),
+        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
+        subtitle: Text(description),
+        trailing: Icon(
+          selected ? Icons.radio_button_checked : Icons.radio_button_off,
+          color: selected ? const Color(0xFF2563EB) : Colors.grey,
         ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: () {},
+        onTap: onTap,
       ),
     );
   }
-
-
-
-
-
-
 
   /// Affiche le dialog du centre d'aide avec les 7 nouvelles fonctionnalités
   void _showHelpCenterDialog(BuildContext context) {
@@ -2026,7 +2150,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-
   /// Dialog Tutoriels vidéo
   void _showVideoTutorialsDialog(BuildContext context) {
     showDialog(
@@ -2039,8 +2162,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
             child: ListView(
               shrinkWrap: true,
               children: [
-
-
                 _buildVideoItem(
                   'GPS e-survey E300 - Configuration',
                   'GPS e-survey E300 configuration tutorial',
@@ -2091,55 +2212,192 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Dialog Signaler un problème
-  void _showReportProblemDialog(BuildContext context) {
-    final descriptionController = TextEditingController();
+  Future<void> _showReportProblemDialog(BuildContext context) async {
+    final messageController = TextEditingController();
+    final attachments = <ProfileImageAttachment>[];
 
-    showDialog(
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Signaler un problème'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              TextField(
-                controller: descriptionController,
-                decoration: InputDecoration(
-                  labelText: 'Décrivez le problème',
-                  border: OutlineInputBorder(),
-                ),
-                maxLines: 4,
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        String? error;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Signaler un problème'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  TextField(
+                    controller: messageController,
+                    maxLines: 4,
+                    maxLength: 5000,
+                    decoration: const InputDecoration(
+                      labelText: 'Décrivez le problème',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  OutlinedButton.icon(
+                    onPressed:
+                        isSubmitting ||
+                            attachments.length >=
+                                ProfileApi.maxSupportAttachmentCount
+                        ? null
+                        : () async {
+                            final file = await _picker.pickImage(
+                              source: ImageSource.gallery,
+                              maxWidth: 1000,
+                              maxHeight: 1000,
+                              imageQuality: 70,
+                            );
+                            if (file == null || !dialogContext.mounted) return;
+                            final mimeType = switch (file.mimeType
+                                    ?.toLowerCase() ??
+                                file.name.split('.').last.toLowerCase()) {
+                              'image/jpeg' || 'jpg' || 'jpeg' => 'image/jpeg',
+                              'image/png' || 'png' => 'image/png',
+                              'image/webp' || 'webp' => 'image/webp',
+                              _ => null,
+                            };
+                            if (mimeType == null) {
+                              setDialogState(
+                                () => error =
+                                    'Choisissez une image JPEG, PNG ou WebP.',
+                              );
+                              return;
+                            }
+                            final bytes = await file.readAsBytes();
+                            final currentTotal = attachments.fold<int>(
+                              0,
+                              (total, image) =>
+                                  total + image.bytes.lengthInBytes,
+                            );
+                            if (bytes.lengthInBytes + currentTotal >
+                                ProfileApi.maxSupportAttachmentBytes) {
+                              setDialogState(
+                                () => error =
+                                    'Le total des images ne peut pas dépasser 2 Mo.',
+                              );
+                              return;
+                            }
+                            setDialogState(() {
+                              error = null;
+                              attachments.add(
+                                ProfileImageAttachment(
+                                  bytes: bytes,
+                                  mimeType: mimeType,
+                                ),
+                              );
+                            });
+                          },
+                    icon: const Icon(Icons.add_photo_alternate_outlined),
+                    label: Text('Ajouter des photos (${attachments.length}/3)'),
+                  ),
+                  if (attachments.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: [
+                        for (var index = 0; index < attachments.length; index++)
+                          Stack(
+                            clipBehavior: Clip.none,
+                            children: [
+                              ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: Image.memory(
+                                  attachments[index].bytes,
+                                  width: 64,
+                                  height: 64,
+                                  fit: BoxFit.cover,
+                                ),
+                              ),
+                              Positioned(
+                                right: -8,
+                                top: -8,
+                                child: IconButton(
+                                  tooltip: 'Retirer la photo',
+                                  onPressed: () => setDialogState(
+                                    () => attachments.removeAt(index),
+                                  ),
+                                  icon: const Icon(Icons.cancel, size: 20),
+                                ),
+                              ),
+                            ],
+                          ),
+                      ],
+                    ),
+                  ],
+                  if (error != null) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      error!,
+                      style: const TextStyle(color: Color(0xFFB42318)),
+                    ),
+                  ],
+                ],
               ),
-              SizedBox(height: 16),
-              ElevatedButton.icon(
-                onPressed: () {},
-                icon: Icon(Icons.photo_camera),
-                label: Text('Ajouter des photos'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        if (messageController.text.trim().isEmpty) {
+                          setDialogState(
+                            () => error =
+                                'Décrivez le problème avant de l’envoyer.',
+                          );
+                          return;
+                        }
+                        setDialogState(() {
+                          isSubmitting = true;
+                          error = null;
+                        });
+                        try {
+                          await _profileApi.submitSupportMessage(
+                            message: messageController.text,
+                            attachments: attachments,
+                          );
+                          if (!dialogContext.mounted) {
+                            return;
+                          }
+                          Navigator.pop(dialogContext);
+                          if (mounted) {
+                            _showProfileMessage(
+                              'Votre message a été transmis au support.',
+                            );
+                          }
+                        } on ProfileApiException catch (apiError) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              isSubmitting = false;
+                              error = apiError.message;
+                            });
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Envoyer'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Problème signalé avec succès !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: Text('Envoyer'),
-            ),
-          ],
         );
       },
     );
+    messageController.dispose();
   }
 
   /// Dialog Base de connaissances
@@ -2162,10 +2420,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   'GPS de précision',
                   'Fonctionnement et calibration',
                 ),
-                _buildKnowledgeItem(
-                  'Calcul de surfaces',
-                  'Méthodes et outils',
-                ),
+                _buildKnowledgeItem('Calcul de surfaces', 'Méthodes et outils'),
                 _buildKnowledgeItem(
                   'Implantation d\'ouvrages',
                   'Techniques et bonnes pratiques',
@@ -2187,7 +2442,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
   /// Dialog Glossaire
   void _showGlossaryDialog(BuildContext context) {
     final searchController = TextEditingController();
-    
+
     showDialog(
       context: context,
       builder: (BuildContext context) {
@@ -2212,13 +2467,34 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   child: ListView(
                     shrinkWrap: true,
                     children: [
-                      _buildGlossaryItem('Altimétrie', 'Mesure des altitudes et des hauteurs'),
-                      _buildGlossaryItem('Azimut', 'Angle horizontal mesuré dans le sens horaire'),
-                      _buildGlossaryItem('Bornage', 'Délimitation d\'une propriété'),
-                      _buildGlossaryItem('Cadastre', 'Enregistrement public des propriétés foncières'),
-                      _buildGlossaryItem('Gisement', 'Angle horizontal mesuré à partir du nord'),
-                      _buildGlossaryItem('Nivellement', 'Détermination des différences d\'altitude'),
-                      _buildGlossaryItem('Station totale', 'Instrument combinant théodolite et distancemètre'),
+                      _buildGlossaryItem(
+                        'Altimétrie',
+                        'Mesure des altitudes et des hauteurs',
+                      ),
+                      _buildGlossaryItem(
+                        'Azimut',
+                        'Angle horizontal mesuré dans le sens horaire',
+                      ),
+                      _buildGlossaryItem(
+                        'Bornage',
+                        'Délimitation d\'une propriété',
+                      ),
+                      _buildGlossaryItem(
+                        'Cadastre',
+                        'Enregistrement public des propriétés foncières',
+                      ),
+                      _buildGlossaryItem(
+                        'Gisement',
+                        'Angle horizontal mesuré à partir du nord',
+                      ),
+                      _buildGlossaryItem(
+                        'Nivellement',
+                        'Détermination des différences d\'altitude',
+                      ),
+                      _buildGlossaryItem(
+                        'Station totale',
+                        'Instrument combinant théodolite et distancemètre',
+                      ),
                     ],
                   ),
                 ),
@@ -2236,113 +2512,154 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Dialog Contact direct
+  Future<void> _launchContact(Uri uri) async {
+    try {
+      if (!await canLaunchUrl(uri)) {
+        if (mounted) {
+          _showProfileMessage(
+            'Impossible d’ouvrir cette application.',
+            isError: true,
+          );
+        }
+        return;
+      }
+      await launchUrl(uri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        _showProfileMessage(
+          'Impossible d’ouvrir cette application.',
+          isError: true,
+        );
+      }
+    }
+  }
+
+  /// Les actions ouvrent maintenant le composeur système correspondant.
   void _showDirectContactDialog(BuildContext context) {
+    const phone = '+22890014329';
+    const email = 'contact@echelle-eg39.com';
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Contact direct'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildContactItem(
-                  Icons.phone,
-                  'Téléphone',
-                  '+228 90 01 43 29',
-                  () {},
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Contact direct'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: ListView(
+            shrinkWrap: true,
+            children: [
+              _buildContactItem(
+                Icons.phone,
+                'Téléphone',
+                '+228 90 01 43 29',
+                () => _launchContact(Uri(scheme: 'tel', path: phone)),
+              ),
+              _buildContactItem(
+                Icons.email,
+                'E-mail',
+                email,
+                () => _launchContact(Uri(scheme: 'mailto', path: email)),
+              ),
+              _buildContactItem(
+                Icons.chat,
+                'WhatsApp',
+                '+228 90 01 43 29',
+                () => _launchContact(
+                  Uri.https('wa.me', '/22890014329', {
+                    'text': 'Bonjour ÉCHELLE EG39, j’ai besoin d’aide.',
+                  }),
                 ),
-                _buildContactItem(
-                  Icons.email,
-                  'Email',
-                  'contact@echelle-eg39.com',
-                  () {},
-                ),
-                _buildContactItem(
-                  Icons.chat,
-                  'WhatsApp',
-                  '+228 90 01 43 29',
-                  () {},
-                ),
-                _buildContactItem(
-                  Icons.schedule,
-                  'Horaires',
-                  'Lun-Ven: 8h-18h\nSam: Si urgence',
-                  () {},
-                ),
-              ],
-            ),
+              ),
+              _buildContactItem(
+                Icons.schedule,
+                'Horaires',
+                'Lundi–vendredi : 8h–18h\nSamedi : sur demande',
+                null,
+              ),
+            ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Fermer'),
-            ),
-          ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
     );
   }
 
+  /// L’inscription devient une demande d’intérêt, sans dates de session promises.
+  Future<void> _showTrainingCenterDialog(BuildContext context) async {
+    const trainings = <(String, String)>[
+      (
+        'Initiation GPS',
+        'Formation de base à l’utilisation des GPS de précision.',
+      ),
+      (
+        'Perfectionnement Théodolite',
+        'Techniques avancées de mesure angulaire.',
+      ),
+      ('Stations totales', 'Utilisation des stations totales en topographie.'),
+      ('Calcul topographique', 'Méthodes de calcul et de compensation.'),
+    ];
 
-  /// Dialog Centre de formation
-  void _showTrainingCenterDialog(BuildContext context) {
-    showDialog(
+    var selectedTraining = '';
+    final requestedTraining = await showDialog<String>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Centre de formation'),
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (dialogContext, setDialogState) => AlertDialog(
+          title: const Text('Centre de formation'),
           content: SizedBox(
             width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildTrainingItem(
-                  'Initiation GPS',
-                  '15-16 Mars 2024',
-                  'Formation de base sur l\'utilisation des GPS de précision',
-                ),
-                _buildTrainingItem(
-                  'Perfectionnement Théodolite',
-                  '22-23 Mars 2024',
-                  'Techniques avancées de mesure angulaire',
-                ),
-                _buildTrainingItem(
-                  'Stations totales',
-                  '29-30 Mars 2024',
-                  'Utilisation complète des stations totales',
-                ),
-                _buildTrainingItem(
-                  'Calcul topographique',
-                  '05-06 Avril 2024',
-                  'Méthodes de calcul et compensation',
-                ),
-              ],
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    'Choisissez un thème. L’équipe vous contactera au sujet des prochaines sessions.',
+                  ),
+                  const SizedBox(height: 12),
+                  for (final training in trainings)
+                    _buildTrainingItem(
+                      title: training.$1,
+                      description: training.$2,
+                      selected: selectedTraining == training.$1,
+                      onTap: () =>
+                          setDialogState(() => selectedTraining = training.$1),
+                    ),
+                ],
+              ),
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Fermer'),
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Annuler'),
             ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Inscription envoyée !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: Text('S\'inscrire'),
+            FilledButton(
+              onPressed: selectedTraining.isEmpty
+                  ? null
+                  : () => Navigator.pop(dialogContext, selectedTraining),
+              child: const Text('Demander à être recontacté'),
             ),
           ],
-        );
-      },
+        ),
+      ),
     );
+
+    if (!mounted || requestedTraining == null) return;
+    try {
+      await _profileApi.registerTrainingInterest(
+        trainingName: requestedTraining,
+      );
+      if (mounted) {
+        _showProfileMessage(
+          'Demande enregistrée. L’équipe vous contactera pour cette formation.',
+        );
+      }
+    } on ProfileApiException catch (error) {
+      if (mounted) _showProfileMessage(error.message, isError: true);
+    }
   }
 
   /// Construit un élément du menu À propos
@@ -2367,24 +2684,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ),
         title: Text(
           title,
-          style: const TextStyle(
-            fontWeight: FontWeight.bold,
-            fontSize: 16,
-          ),
+          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
         ),
         subtitle: Text(
           subtitle,
-          style: const TextStyle(
-            fontSize: 14,
-            color: Colors.grey,
-          ),
+          style: const TextStyle(fontSize: 14, color: Colors.grey),
         ),
         trailing: const Icon(Icons.chevron_right),
         onTap: onTap,
       ),
     );
   }
-
 
   /// Affiche le dialog principal du menu À propos
   void _showAboutDialog(BuildContext context) {
@@ -2520,9 +2830,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   /// Ouvre Google Maps avec la localisation de l'entreprise
   Future<void> _openGoogleMaps() async {
-    const String googleMapsUrl = 'https://www.google.com/maps/search/Aflao+Gagli+Lomé+Togo';
+    const String googleMapsUrl =
+        'https://www.google.com/maps/search/Aflao+Gagli+Lomé+Togo';
     final Uri uri = Uri.parse(googleMapsUrl);
-    
+
     try {
       if (await canLaunchUrl(uri)) {
         await launchUrl(uri, mode: LaunchMode.externalApplication);
@@ -2560,10 +2871,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Notre Histoire',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text(
@@ -2572,10 +2880,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Notre Mission',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text(
@@ -2584,22 +2889,14 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Localisation',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
-                Text(
-                  'Lomé, quartier Aflao Gagli, Togo',
-                ),
+                Text('Lomé, quartier Aflao Gagli, Togo'),
                 SizedBox(height: 16),
                 Text(
                   'Zone d\'intervention',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text(
@@ -2724,7 +3021,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   subtitle: Text('Solutions de géolocalisation'),
                 ),
                 ListTile(
-                  leading: Icon(Icons.precision_manufacturing, color: Color(0xFFEA580C)),
+                  leading: Icon(
+                    Icons.precision_manufacturing,
+                    color: Color(0xFFEA580C),
+                  ),
                   title: Text('Sokkia'),
                   subtitle: Text('Instruments topographiques japonais'),
                 ),
@@ -2761,7 +3061,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 ListTile(
                   leading: Icon(Icons.access_time, color: Color(0xFF059669)),
                   title: Text('Location'),
-                  subtitle: Text('GPS, théodolites, niveaux et stations totales'),
+                  subtitle: Text(
+                    'GPS, théodolites, niveaux et stations totales',
+                  ),
                 ),
                 ListTile(
                   leading: Icon(Icons.school, color: Color(0xFFDC2626)),
@@ -2811,10 +3113,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
               children: [
                 Text(
                   'Protection des données personnelles',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 16),
                 Text(
@@ -2823,10 +3122,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Données collectées :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text('• Nom et coordonnées'),
@@ -2835,10 +3131,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Utilisation :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text('• Traitement des commandes'),
@@ -2847,10 +3140,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Vos droits :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text('• Accès et rectification'),
@@ -2884,41 +3174,33 @@ class _ProfilScreenState extends State<ProfilScreen> {
               children: [
                 Text(
                   'Mentions légales',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 16),
                 Text(
                   'Éditeur de l\'application :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text('ÉCHELLE EG39\nLomé, Togo\nSIRET : 123456789'),
                 SizedBox(height: 16),
                 Text(
                   'Responsabilité :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
-                Text('L\'application est fournie "en l\'état" sans garantie. Nous nous efforçons d\'assurer l\'exactitude des informations mais ne pouvons être tenus responsables des erreurs.'),
+                Text(
+                  'L\'application est fournie "en l\'état" sans garantie. Nous nous efforçons d\'assurer l\'exactitude des informations mais ne pouvons être tenus responsables des erreurs.',
+                ),
                 SizedBox(height: 16),
                 Text(
                   'Propriété intellectuelle :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
-                Text('Tous les contenus de l\'application sont protégés par les droits d\'auteur.'),
+                Text(
+                  'Tous les contenus de l\'application sont protégés par les droits d\'auteur.',
+                ),
               ],
             ),
           ),
@@ -2947,18 +3229,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
               children: [
                 Text(
                   'Équipe de développement',
-                  style: TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 16),
                 Text(
                   'Développement :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text('• Développeur Principal'),
@@ -2967,10 +3243,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Technologies utilisées :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text('• Flutter'),
@@ -2979,10 +3252,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 SizedBox(height: 16),
                 Text(
                   'Version :',
-                  style: TextStyle(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
                 Text('1.0.0 - Mars 2024'),
@@ -3000,155 +3270,189 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Dialog Évaluation
-  void _showRatingDialog(BuildContext context) {
-    int selectedRating = 5;
-    
-    showDialog(
+  /// Enregistre réellement la note et son commentaire dans le compte connecté.
+  Future<void> _showRatingDialog(BuildContext context) async {
+    var selectedRating = 5;
+    final commentController = TextEditingController();
+
+    await showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Évaluer l\'application'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Comment évaluez-vous notre application ?'),
-              const SizedBox(height: 16),
-              StatefulBuilder(
-                builder: (context, setState) {
-                  return Row(
+      builder: (dialogContext) {
+        var isSubmitting = false;
+        String? error;
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) => AlertDialog(
+            title: const Text('Évaluer l’application'),
+            content: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text('Comment évaluez-vous notre application ?'),
+                const SizedBox(height: 16),
+                Semantics(
+                  label: 'Note : $selectedRating sur 5 étoiles',
+                  child: Row(
                     mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(5, (index) {
-                      return IconButton(
+                    children: List.generate(
+                      5,
+                      (index) => IconButton(
+                        tooltip: '${index + 1} étoile${index == 0 ? '' : 's'}',
+                        onPressed: isSubmitting
+                            ? null
+                            : () => setDialogState(
+                                () => selectedRating = index + 1,
+                              ),
                         icon: Icon(
-                          index < selectedRating ? Icons.star : Icons.star_border,
-                          color: Colors.amber,
+                          index < selectedRating
+                              ? Icons.star
+                              : Icons.star_border,
+                          color: const Color(0xFF9A6700),
                           size: 32,
                         ),
-                        onPressed: () {
-                          setState(() {
-                            selectedRating = index + 1;
-                          });
-                        },
-                      );
-                    }),
-                  );
-                },
-              ),
-              const SizedBox(height: 16),
-              const TextField(
-                decoration: InputDecoration(
-                  labelText: 'Commentaires (optionnel)',
-                  border: OutlineInputBorder(),
+                      ),
+                    ),
+                  ),
                 ),
-                maxLines: 3,
+                const SizedBox(height: 12),
+                TextField(
+                  controller: commentController,
+                  maxLength: 1000,
+                  decoration: const InputDecoration(
+                    labelText: 'Commentaire (facultatif)',
+                    border: OutlineInputBorder(),
+                  ),
+                  maxLines: 3,
+                ),
+                if (error != null)
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      error!,
+                      style: const TextStyle(color: Color(0xFFB42318)),
+                    ),
+                  ),
+              ],
+            ),
+            actions: [
+              TextButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () => Navigator.pop(dialogContext),
+                child: const Text('Annuler'),
+              ),
+              FilledButton(
+                onPressed: isSubmitting
+                    ? null
+                    : () async {
+                        setDialogState(() {
+                          isSubmitting = true;
+                          error = null;
+                        });
+                        try {
+                          await _profileApi.submitRating(
+                            rating: selectedRating,
+                            comment: commentController.text,
+                          );
+                          if (!dialogContext.mounted) {
+                            return;
+                          }
+                          Navigator.pop(dialogContext);
+                          if (mounted) {
+                            _showProfileMessage(
+                              'Merci, votre évaluation a été enregistrée.',
+                            );
+                          }
+                        } on ProfileApiException catch (apiError) {
+                          if (dialogContext.mounted) {
+                            setDialogState(() {
+                              isSubmitting = false;
+                              error = apiError.message;
+                            });
+                          }
+                        }
+                      },
+                child: isSubmitting
+                    ? const SizedBox.square(
+                        dimension: 18,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                    : const Text('Envoyer'),
               ),
             ],
           ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Merci pour votre évaluation de $selectedRating étoiles !'),
-                    backgroundColor: Colors.green,
-                  ),
-                );
-              },
-              child: const Text('Envoyer'),
-            ),
-          ],
         );
       },
     );
+    commentController.dispose();
   }
 
-  /// Dialog Partage
+  /// Partage un texte réel via le composeur WhatsApp, e-mail ou le presse-papiers.
   void _showShareDialog(BuildContext context) {
-    showDialog(
+    const invitation =
+        'Découvrez ÉCHELLE EG39, votre partenaire en équipements de topographie. Contact : +228 90 01 43 29 — contact@echelle-eg39.com';
+    showDialog<void>(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Partager l\'application'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('Invitez vos collègues à découvrir notre application :'),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                children: [
-                  Column(
-                    children: [
-                      IconButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Partage WhatsApp...')),
-                          );
-                        },
-                        icon: const Icon(Icons.chat, color: Color(0xFF25D366)),
-                        iconSize: 40,
-                      ),
-                      const Text('WhatsApp'),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      IconButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Partage Email...')),
-                          );
-                        },
-                        icon: const Icon(Icons.email, color: Color(0xFF2563EB)),
-                        iconSize: 40,
-                      ),
-                      const Text('Email'),
-                    ],
-                  ),
-                  Column(
-                    children: [
-                      IconButton(
-                        onPressed: () {
-                          Navigator.of(context).pop();
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Lien copié !')),
-                          );
-                        },
-                        icon: const Icon(Icons.link, color: Color(0xFF059669)),
-                        iconSize: 40,
-                      ),
-                      const Text('Copier lien'),
-                    ],
-                  ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              const Card(
-                child: Padding(
-                  padding: EdgeInsets.all(8),
-                  child: Text(
-                    'Découvrez ÉCHELLE EG39 - Votre partenaire en équipements de topographie !\n\nTéléchargez notre application pour accéder à notre catalogue et nos services.\n\nDisponible sur Google Play et App Store',
-                  ),
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Partager ÉCHELLE EG39'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Partagez les coordonnées de l’entreprise.'),
+            const SizedBox(height: 16),
+            Wrap(
+              alignment: WrapAlignment.center,
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                ActionChip(
+                  avatar: const Icon(Icons.chat_outlined),
+                  label: const Text('WhatsApp'),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _launchContact(
+                      Uri.https('wa.me', '/', {'text': invitation}),
+                    );
+                  },
                 ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
+                ActionChip(
+                  avatar: const Icon(Icons.email_outlined),
+                  label: const Text('E-mail'),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _launchContact(
+                      Uri(
+                        scheme: 'mailto',
+                        path: 'contact@echelle-eg39.com',
+                        queryParameters: {
+                          'subject': 'ÉCHELLE EG39',
+                          'body': invitation,
+                        },
+                      ),
+                    );
+                  },
+                ),
+                ActionChip(
+                  avatar: const Icon(Icons.copy_outlined),
+                  label: const Text('Copier le texte'),
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      const ClipboardData(text: invitation),
+                    );
+                    if (!dialogContext.mounted) return;
+                    Navigator.pop(dialogContext);
+                    if (mounted) _showProfileMessage('Texte copié.');
+                  },
+                ),
+              ],
             ),
           ],
-        );
-      },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Fermer'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -3174,7 +3478,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   subtitle: Text('Management environnemental'),
                 ),
                 ListTile(
-                  leading: Icon(Icons.health_and_safety, color: Color(0xFFDC2626)),
+                  leading: Icon(
+                    Icons.health_and_safety,
+                    color: Color(0xFFDC2626),
+                  ),
                   title: Text('ISO 45001:2018'),
                   subtitle: Text('Santé et sécurité au travail'),
                 ),
@@ -3184,12 +3491,18 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   subtitle: Text('Reconnaissance officielle'),
                 ),
                 ListTile(
-                  leading: Icon(Icons.precision_manufacturing, color: Color(0xFFEA580C)),
+                  leading: Icon(
+                    Icons.precision_manufacturing,
+                    color: Color(0xFFEA580C),
+                  ),
                   title: Text('Certifications partenaires'),
                   subtitle: Text('Leica, Stonex, e-survey'),
                 ),
                 ListTile(
-                  leading: Icon(Icons.account_balance_wallet, color: Color(0xFF1F2937)),
+                  leading: Icon(
+                    Icons.account_balance_wallet,
+                    color: Color(0xFF1F2937),
+                  ),
                   title: Text('Licences de distribution'),
                   subtitle: Text('Autorisations officielles'),
                 ),

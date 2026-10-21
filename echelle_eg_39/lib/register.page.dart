@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'main.dart';
 import 'offline_registration_store.dart';
+import 'password_recovery_scaffold.dart';
 import 'sync_service.dart';
 
 typedef RegisterAccountRequest =
@@ -21,15 +22,10 @@ typedef RegisterAccountRequest =
 typedef OfflineAccountSaver =
     Future<bool> Function(OfflineRegistrationDraft registration);
 
-/// Replace this URL to use a different Unsplash or other remote cover image.
-const String registrationBackgroundImageUrl =
-    'https://images.pexels.com/photos/13279686/pexels-photo-13279686.jpeg?auto=compress&cs=tinysrgb&w=1400&q=85';
-
 const _registrationBlue = Color(0xFF0066CC);
 const _registrationInk = Color(0xFF1D1D1F);
 const _registrationMuted = Color(0xFF646970);
 const _registrationBorder = Color(0xFFD5D8D8);
-const _registrationCanvas = Color(0xFFF3F4F2);
 const _registrationError = Color(0xFFAA5141);
 const _phonePrefix = '+228';
 
@@ -71,7 +67,7 @@ class _RegisterPageState extends State<RegisterPage>
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
-  final _phoneController = TextEditingController(text: '90000000');
+  final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
 
@@ -429,7 +425,7 @@ class _RegisterPageState extends State<RegisterPage>
         TextSpan(
           text: label,
           style: GoogleFonts.poppins(
-            color: const Color(0xFF292D32),
+            color: Colors.white,
             fontSize: 12,
             fontWeight: FontWeight.w700,
           ),
@@ -437,7 +433,7 @@ class _RegisterPageState extends State<RegisterPage>
             TextSpan(
               text: ' *',
               style: GoogleFonts.poppins(
-                color: _registrationBlue,
+                color: const Color(0xFF91C4FF),
                 fontWeight: FontWeight.w700,
               ),
             ),
@@ -559,7 +555,7 @@ class _RegisterPageState extends State<RegisterPage>
               TextSpan(
                 text: '4 chiffres puis 4 lettres majuscules. Exemple : ',
                 style: GoogleFonts.poppins(
-                  color: _registrationMuted,
+                  color: Colors.white.withValues(alpha: 0.86),
                   fontSize: 11,
                   height: 1.4,
                 ),
@@ -567,7 +563,7 @@ class _RegisterPageState extends State<RegisterPage>
                   TextSpan(
                     text: '1234AZER.',
                     style: GoogleFonts.poppins(
-                      color: const Color(0xFF34383D),
+                      color: Colors.white,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -635,6 +631,10 @@ class _RegisterPageState extends State<RegisterPage>
                   letterSpacing: 0.2,
                 ),
                 decoration: _fieldDecoration(hint: '90000000').copyWith(
+                  hintStyle: GoogleFonts.poppins(
+                    color: const Color(0xFF9DA3AA),
+                    fontSize: 13,
+                  ),
                   contentPadding: const EdgeInsets.symmetric(horizontal: 12),
                   border: const OutlineInputBorder(
                     borderRadius: BorderRadius.horizontal(
@@ -690,9 +690,9 @@ class _RegisterPageState extends State<RegisterPage>
               const SizedBox(width: 6),
               Expanded(
                 child: Text(
-                  '8 ou 9 chiffres après +228, sans espaces. Exemple : +22890000000.',
+                  'Saisissez 8 ou 9 chiffres après +228, sans espaces.',
                   style: GoogleFonts.poppins(
-                    color: _registrationMuted,
+                    color: Colors.white.withValues(alpha: 0.86),
                     fontSize: 11,
                     height: 1.4,
                   ),
@@ -782,37 +782,16 @@ class _RegisterPageState extends State<RegisterPage>
 
   Widget _buildFormTray() {
     return DecoratedBox(
-      decoration: BoxDecoration(
-        color: _registrationCanvas,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
-        boxShadow: [
-          BoxShadow(
-            color: const Color(0xFF080F16).withValues(alpha: 0.2),
-            blurRadius: 32,
-            offset: const Offset(0, -8),
-          ),
-        ],
-      ),
+      decoration: const BoxDecoration(color: Colors.transparent),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(20, 14, 20, 28),
+        padding: const EdgeInsets.fromLTRB(20, 20, 20, 28),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Center(
-              child: Container(
-                width: 42,
-                height: 4,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFC8CBC8),
-                  borderRadius: BorderRadius.circular(99),
-                ),
-              ),
-            ),
-            const SizedBox(height: 17),
             Text(
               'Vos coordonnées',
               style: GoogleFonts.poppins(
-                color: _registrationInk,
+                color: Colors.white,
                 fontSize: 19,
                 fontWeight: FontWeight.w800,
                 height: 1.3,
@@ -823,7 +802,7 @@ class _RegisterPageState extends State<RegisterPage>
             Text(
               'Renseignez les informations de votre compte.',
               style: GoogleFonts.poppins(
-                color: _registrationMuted,
+                color: Colors.white.withValues(alpha: 0.86),
                 fontSize: 12,
                 height: 1.5,
               ),
@@ -977,7 +956,7 @@ class _RegisterPageState extends State<RegisterPage>
                   Text(
                     'Déjà un compte ? ',
                     style: GoogleFonts.poppins(
-                      color: _registrationMuted,
+                      color: Colors.white.withValues(alpha: 0.9),
                       fontSize: 12,
                     ),
                   ),
@@ -987,7 +966,7 @@ class _RegisterPageState extends State<RegisterPage>
                         ? null
                         : () => Navigator.maybePop(context),
                     style: TextButton.styleFrom(
-                      foregroundColor: _registrationBlue,
+                      foregroundColor: const Color(0xFF91C4FF),
                       padding: const EdgeInsets.symmetric(horizontal: 2),
                       minimumSize: const Size(44, 44),
                     ),
@@ -997,9 +976,9 @@ class _RegisterPageState extends State<RegisterPage>
                         fontSize: 12,
                         fontWeight: FontWeight.w700,
                         decoration: TextDecoration.underline,
-                        decorationColor: _registrationBlue.withValues(
-                          alpha: 0.45,
-                        ),
+                        decorationColor: const Color(
+                          0xFF91C4FF,
+                        ).withValues(alpha: 0.65),
                         decorationThickness: 1.4,
                         decorationStyle: TextDecorationStyle.solid,
                       ),
@@ -1023,42 +1002,9 @@ class _RegisterPageState extends State<RegisterPage>
       backgroundColor: const Color(0xFF111820),
       resizeToAvoidBottomInset: true,
       body: Stack(
+        fit: StackFit.expand,
         children: [
-          Positioned.fill(
-            child: Image.network(
-              registrationBackgroundImageUrl,
-              fit: BoxFit.cover,
-              alignment: const Alignment(0, -0.28),
-              semanticLabel:
-                  'Opérateur effectuant un relevé avec une station totale sur un terrain extérieur — Anthony Desrochers sur Pexels',
-              errorBuilder: (context, error, stackTrace) => const ColoredBox(
-                color: Color(0xFF202A32),
-                child: Center(
-                  child: Icon(
-                    Icons.landscape_outlined,
-                    color: Colors.white24,
-                    size: 52,
-                  ),
-                ),
-              ),
-            ),
-          ),
-          const Positioned.fill(
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    Color(0xA610161D),
-                    Color(0x4010161D),
-                    Color(0xCC10161D),
-                  ],
-                  stops: [0, 0.35, 1],
-                ),
-              ),
-            ),
-          ),
+          const PasswordRecoveryPhotoBackdrop(),
           SafeArea(
             bottom: false,
             child: LayoutBuilder(

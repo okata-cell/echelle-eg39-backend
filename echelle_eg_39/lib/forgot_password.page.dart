@@ -1,371 +1,235 @@
-
 import 'package:flutter/material.dart';
-import 'verify_code.page.dart';
+
 import 'api_service.dart';
+import 'password_recovery_contact_mask.dart';
+import 'password_recovery_scaffold.dart';
+import 'verify_code.page.dart';
 
 class ForgotPasswordPage extends StatefulWidget {
-  const ForgotPasswordPage({super.key});
+  const ForgotPasswordPage({
+    super.key,
+    this.requestCode = ApiService.requestPasswordReset,
+    this.verifyCode = ApiService.verifyResetCode,
+    this.updatePassword = ApiService.resetPassword,
+    this.clearResetToken = ApiService.removeTempToken,
+  });
+
+  final PasswordResetCodeRequester requestCode;
+  final PasswordResetCodeVerifier verifyCode;
+  final PasswordUpdater updatePassword;
+  final PasswordRecoveryTokenCleaner clearResetToken;
 
   @override
   State<ForgotPasswordPage> createState() => _ForgotPasswordPageState();
 }
 
 class _ForgotPasswordPageState extends State<ForgotPasswordPage> {
-  final TextEditingController emailController = TextEditingController();
-  final TextEditingController phoneController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final emailController = TextEditingController();
+  final phoneController = TextEditingController();
 
-  bool isLoading = false;
-  bool useEmail = true; // Toggle entre email et téléphone
+  RecoveryContactType _contactType = RecoveryContactType.email;
+  bool _isLoading = false;
+  String? _requestError;
 
-  Future<void> resetPassword() async {
-    final identifier = useEmail ? emailController.text.trim() : phoneController.text.trim();
-    
-    if (identifier.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text(useEmail ? "Veuillez entrer votre email" : "Veuillez entrer votre téléphone"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
+  @override
+  void dispose() {
+    emailController.dispose();
+    phoneController.dispose();
+    super.dispose();
+  }
+
+  TextEditingController get _activeController =>
+      _contactType.isEmail ? emailController : phoneController;
+
+  String? _validateContact(String? value) {
+    final contact = value?.trim() ?? '';
+    if (contact.isEmpty) {
+      return _contactType.isEmail
+          ? 'Entrez votre adresse e-mail.'
+          : 'Entrez votre numéro de téléphone.';
     }
-
-    if (useEmail && !RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,4}$').hasMatch(identifier)) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Format d'email invalide"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
+    if (_contactType.isEmail &&
+        !RegExp(r'^[^\s@]+@[^\s@]+\.[^\s@]+$').hasMatch(contact)) {
+      return 'Vérifiez le format de votre adresse e-mail.';
     }
+    return null;
+  }
 
+  Future<void> _requestResetCode() async {
+    if (_isLoading || !(_formKey.currentState?.validate() ?? false)) return;
+
+    final contact = _activeController.text.trim();
+    final type = _contactType;
     setState(() {
-      isLoading = true;
+      _isLoading = true;
+      _requestError = null;
     });
 
     try {
-      // Appeler l'API pour demander le code de réinitialisation
-      final result = await ApiService.requestPasswordReset(
-        identifier, 
-        useEmail ? 'email' : 'phone'
-      );
-
-      setState(() {
-        isLoading = false;
-      });
-
-      if (result['success'] == true) {
-        if (mounted) {
-          // Afficher le code en mode développement
-          String message = 'Code de vérification envoyé !';
-          if (result['verificationCode'] != null) {
-            message += '\nCode: ${result['verificationCode']}';
-          }
-          
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(message),
-              backgroundColor: Colors.green,
-              duration: const Duration(seconds: 4),
-            ),
-          );
-
-          // Aller à la page de vérification du code
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => VerifyCodePage(
-                contactInfo: result['contactInfo'] ?? identifier,
-                isEmail: useEmail,
-              ),
-            ),
-          );
-        }
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['message'] ?? 'Erreur lors de l\'envoi du code'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+      try {
+        await widget.clearResetToken();
+      } catch (_) {
+        // A stale token must not prevent a new recovery request.
       }
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
+      final result = await widget.requestCode(contact, type.apiValue);
+      if (!mounted) return;
+      if (result['success'] != true) {
+        setState(() {
+          _requestError =
+              result['message']?.toString() ??
+              'Impossible de lancer la récupération. Réessayez.';
+        });
+        return;
+      }
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
-            backgroundColor: Colors.red,
+      final returnedContact = result['contactInfo']?.toString().trim();
+      Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => VerifyCodePage(
+            contactInfo: returnedContact == null || returnedContact.isEmpty
+                ? contact
+                : returnedContact,
+            contactType: type,
+            initialNotice:
+                'Si un compte existe avec ce contact, vous recevrez un code.',
+            requestCode: widget.requestCode,
+            verifyCode: widget.verifyCode,
+            updatePassword: widget.updatePassword,
+            clearResetToken: widget.clearResetToken,
           ),
-        );
+        ),
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _requestError = error.toString().replaceFirst('Exception: ', '');
+        });
       }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Widget _buildChannelButton(RecoveryContactType type) {
+    final selected = _contactType == type;
+    final icon = type.isEmail ? Icons.email_outlined : Icons.phone_outlined;
+    return Expanded(
+      child: SizedBox(
+        height: 44,
+        child: selected
+            ? FilledButton.icon(
+                onPressed: _isLoading ? null : () => _selectContactType(type),
+                style: FilledButton.styleFrom(
+                  backgroundColor: passwordRecoveryActionBlue,
+                  foregroundColor: Colors.white,
+                  shape: const StadiumBorder(),
+                ),
+                icon: Icon(icon, size: 18),
+                label: Text(type.isEmail ? 'Email' : 'Téléphone'),
+              )
+            : OutlinedButton.icon(
+                onPressed: _isLoading ? null : () => _selectContactType(type),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withValues(alpha: 0.65)),
+                  shape: const StadiumBorder(),
+                ),
+                icon: Icon(icon, size: 18),
+                label: Text(type.isEmail ? 'Email' : 'Téléphone'),
+              ),
+      ),
+    );
+  }
+
+  void _selectContactType(RecoveryContactType type) {
+    if (_contactType == type) return;
+    setState(() {
+      _contactType = type;
+      _requestError = null;
+    });
+  }
+
+  Widget _buildContactField() {
+    final isEmail = _contactType.isEmail;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          isEmail ? 'Adresse e-mail' : 'Numéro de téléphone',
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          key: ValueKey(isEmail ? 'recovery-email' : 'recovery-phone'),
+          controller: _activeController,
+          enabled: !_isLoading,
+          keyboardType: isEmail
+              ? TextInputType.emailAddress
+              : TextInputType.phone,
+          textInputAction: TextInputAction.done,
+          autofillHints: [
+            isEmail ? AutofillHints.email : AutofillHints.telephoneNumber,
+          ],
+          validator: _validateContact,
+          onFieldSubmitted: (_) => _requestResetCode(),
+          style: const TextStyle(color: passwordRecoveryInk),
+          decoration: passwordRecoveryFieldDecoration(
+            hint: isEmail ? 'nom@exemple.com' : '+228 90 00 00 00',
+            leading: Icon(
+              isEmail ? Icons.email_outlined : Icons.phone_outlined,
+              color: const Color(0xFF7A7A7A),
+              size: 20,
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
-        children: [
-          // 🌄 IMAGE DE FOND (UNSPLASH)
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: NetworkImage(
-                  "https://teg-ge.fr/wp-content/uploads/2018/04/topographie.jpg",
-                ),
-                fit: BoxFit.cover,
+    return PasswordRecoveryScaffold(
+      stepLabel: '1 sur 3 · Contact',
+      title: 'Où recevoir votre code ?',
+      description: 'Choisissez l’adresse ou le numéro associé à votre compte.',
+      backTooltip: 'Retour à la connexion',
+      onBack: () => Navigator.maybePop(context),
+      content: Form(
+        key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                _buildChannelButton(RecoveryContactType.email),
+                const SizedBox(width: 8),
+                _buildChannelButton(RecoveryContactType.phone),
+              ],
+            ),
+            const SizedBox(height: 24),
+            _buildContactField(),
+            const SizedBox(height: 16),
+            Text(
+              'Si un compte existe avec ce contact, vous recevrez un code.',
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.9),
+                height: 1.45,
               ),
             ),
-          ),
-
-          // 🖤 OVERLAY SOMBRE
-          Container(
-            color: const Color.fromRGBO(11, 11, 11, 1).withValues(alpha: 0.6),
-          ),
-
-          // 📄 CONTENU
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // 🔝 HEADER AVEC RETOUR
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
-                      const Expanded(
-                        child: Center(
-                          child: Text(
-                            "RÉCUPÉRER LE MOT DE PASSE",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 50),
-
-                  // ℹ️ MESSAGE D'INFORMATION
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                    ),
-                    child: const Column(
-                      children: [
-                        Icon(
-                          Icons.info_outline,
-                          color: Colors.white70,
-                          size: 40,
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          "Entrez votre email ou téléphone pour recevoir les instructions de réinitialisation",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 16,
-                            height: 1.4,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  // 🔄 TOGGLE EMAIL/TÉLÉPHONE
-                  Row(
-                    children: [
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              useEmail = true;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            decoration: BoxDecoration(
-                              color: useEmail 
-                                ? const Color.fromARGB(255, 184, 117, 23)
-                                : Colors.white.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.email,
-                                  color: useEmail ? Colors.white : Colors.white70,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  "Email",
-                                  style: TextStyle(
-                                    color: useEmail ? Colors.white : Colors.white70,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: GestureDetector(
-                          onTap: () {
-                            setState(() {
-                              useEmail = false;
-                            });
-                          },
-                          child: Container(
-                            padding: const EdgeInsets.symmetric(vertical: 12),
-                            decoration: BoxDecoration(
-                              color: !useEmail 
-                                ? const Color.fromARGB(255, 184, 117, 23)
-                                : Colors.white.withValues(alpha: 0.1),
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.phone,
-                                  color: !useEmail ? Colors.white : Colors.white70,
-                                ),
-                                const SizedBox(width: 8),
-                                Text(
-                                  "Téléphone",
-                                  style: TextStyle(
-                                    color: !useEmail ? Colors.white : Colors.white70,
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // 📧 OU 📱 CHAMP DE SAISIE
-                  if (useEmail) ...[
-                    TextField(
-                      controller: emailController,
-                      keyboardType: TextInputType.emailAddress,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: "Votre adresse email",
-                        hintStyle: const TextStyle(color: Colors.white70),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.15),
-                        prefixIcon: const Icon(Icons.email, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ] else ...[
-                    TextField(
-                      controller: phoneController,
-                      keyboardType: TextInputType.phone,
-                      style: const TextStyle(color: Colors.white),
-                      decoration: InputDecoration(
-                        hintText: "Votre numéro de téléphone",
-                        hintStyle: const TextStyle(color: Colors.white70),
-                        filled: true,
-                        fillColor: Colors.white.withValues(alpha: 0.15),
-                        prefixIcon: const Icon(Icons.phone, color: Colors.white),
-                        border: OutlineInputBorder(
-                          borderRadius: BorderRadius.circular(12),
-                          borderSide: BorderSide.none,
-                        ),
-                      ),
-                    ),
-                  ],
-
-                  const SizedBox(height: 40),
-
-                  // 🔘 BOUTON ENVOYER
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: isLoading ? null : resetPassword,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 184, 117, 23),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: isLoading
-                          ? const CircularProgressIndicator(
-                              color: Colors.white,
-                            )
-                          : const Text(
-                              "ENVOYER",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // 📝 CONSEIL
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Text(
-                      "💡 Conseil : Vérifiez également votre dossier spam/courrier indésirable si vous ne trouvez pas l'email.",
-                      style: TextStyle(
-                        color: Colors.white70,
-                        fontSize: 14,
-                        height: 1.4,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-        ],
+          ],
+        ),
       ),
+      errorMessage: _requestError,
+      primaryLabel: 'Envoyer le code',
+      primaryLoadingLabel: 'Envoi du code…',
+      isLoading: _isLoading,
+      onPrimary: _requestResetCode,
     );
   }
 }

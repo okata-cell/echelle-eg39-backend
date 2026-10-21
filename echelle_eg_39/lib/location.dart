@@ -1,11 +1,27 @@
 import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
+import 'package:intl/intl.dart';
+
 import 'appareil_images.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
 import 'login.page.dart';
 import 'rental_booking_dates.dart';
 import 'widgets/image_zoom_viewer.dart' show openImageZoom;
+
+class _LocationTokens {
+  static const canvas = Color(0xFFF5F5F7);
+  static const surface = Colors.white;
+  static const ink = Color(0xFF1D1D1F);
+  static const body = Color(0xFF333333);
+  static const muted = Color(0xFF7A7A7A);
+  static const border = Color(0xFFE0E0E0);
+  static const divider = Color(0xFFF0F0F0);
+  static const primary = Color(0xFF0066CC);
+  static const disabledSurface = Color(0xFFE5E5EA);
+  static const available = Color(0xFF23865B);
+  static const unavailable = Color(0xFFB42318);
+  static const confirmation = Color(0xFF9A6700);
+}
 
 class Equipment {
   final int id;
@@ -62,6 +78,7 @@ class LocationScreen extends StatefulWidget {
 
 class _LocationScreenState extends State<LocationScreen> {
   final _dataManager = DataManager();
+  final _searchController = TextEditingController();
   List<Equipment> _apiAppareils = [];
 
   String _searchQuery = '';
@@ -117,7 +134,7 @@ class _LocationScreenState extends State<LocationScreen> {
         });
       }
     } catch (e) {
-      print('⚠️ Failed to load appareils from API: $e');
+      debugPrint('Failed to load rental equipment: $e');
     }
   }
 
@@ -129,6 +146,7 @@ class _LocationScreenState extends State<LocationScreen> {
 
   @override
   void dispose() {
+    _searchController.dispose();
     _dataManager.removeListener(_onDataManagerChanged);
     super.dispose();
   }
@@ -175,138 +193,148 @@ class _LocationScreenState extends State<LocationScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final titleStyle = Theme.of(context).textTheme.titleLarge?.copyWith(
+      color: _LocationTokens.ink,
+      fontSize: 20,
+      fontWeight: FontWeight.w700,
+      letterSpacing: -0.45,
+    );
+
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: _LocationTokens.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        toolbarHeight: 54,
+        backgroundColor: _LocationTokens.surface,
+        surfaceTintColor: _LocationTokens.surface,
         elevation: 0,
-        title: Text(
-          'Location d\'appareils',
-          style: GoogleFonts.poppins(
-            fontSize: 20,
-            fontWeight: FontWeight.w700,
-            color: const Color(0xFF111827),
-          ),
-        ),
+        titleSpacing: 16,
         automaticallyImplyLeading: false,
+        title: Text('Location d’appareils', style: titleStyle),
         actions: [
           IconButton(
             onPressed: _loadAppareilsFromAPI,
-            icon: const Icon(Icons.refresh, color: Color(0xFF2563EB)),
             tooltip: 'Actualiser',
+            style: IconButton.styleFrom(
+              backgroundColor: _LocationTokens.canvas,
+              foregroundColor: _LocationTokens.primary,
+              minimumSize: const Size(40, 40),
+              maximumSize: const Size(40, 40),
+              padding: EdgeInsets.zero,
+            ),
+            icon: const Icon(Icons.refresh, size: 21),
           ),
+          const SizedBox(width: 12),
         ],
       ),
       body: Column(
         children: [
-          // Barre de recherche
           Container(
-            color: Colors.white,
-            padding: const EdgeInsets.all(16),
-            child: Column(
-              children: [
-                TextField(
-                  onChanged: (value) {
-                    setState(() {
-                      _searchQuery = value;
-                    });
-                  },
-                  decoration: InputDecoration(
-                    hintText: 'Rechercher un appareil...',
-                    hintStyle: GoogleFonts.poppins(
-                      color: const Color(0xFF9CA3AF),
-                      fontSize: 14,
-                    ),
-                    prefixIcon: const Icon(
-                      Icons.search,
-                      color: Color(0xFF9CA3AF),
-                    ),
-                    suffixIcon: _searchQuery.isNotEmpty
-                        ? IconButton(
-                            onPressed: () {
-                              setState(() => _searchQuery = '');
-                            },
-                            icon: const Icon(
-                              Icons.clear,
-                              color: Color(0xFF9CA3AF),
-                            ),
-                          )
-                        : null,
-                    border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                    ),
-                    enabledBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(color: Color(0xFFE5E7EB)),
-                    ),
-                    focusedBorder: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(12),
-                      borderSide: const BorderSide(
-                        color: Color(0xFF2563EB),
-                        width: 2,
-                      ),
-                    ),
-                    filled: true,
-                    fillColor: const Color(0xFFF9FAFB),
-                    contentPadding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                  ),
+            color: _LocationTokens.surface,
+            padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _searchQuery = value),
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: _LocationTokens.body,
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              decoration: InputDecoration(
+                hintText: 'Rechercher un appareil...',
+                hintStyle: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: _LocationTokens.muted,
+                  fontSize: 14,
+                  fontWeight: FontWeight.w400,
                 ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 40,
-                  child: ListView.builder(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _categories.length,
-                    itemBuilder: (context, index) {
-                      final category = _categories[index];
-                      final isSelected = _selectedCategory == category;
-                      return Padding(
-                        padding: const EdgeInsets.only(right: 8),
-                        child: ChoiceChip(
-                          label: Text(
-                            category,
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              fontWeight: isSelected
-                                  ? FontWeight.w600
-                                  : FontWeight.w400,
-                            ),
-                          ),
-                          selected: isSelected,
-                          onSelected: (selected) {
-                            setState(() {
-                              _selectedCategory = category;
-                            });
-                          },
-                          backgroundColor: const Color(0xFFF3F4F6),
-                          selectedColor: const Color(0xFF2563EB),
-                          labelStyle: TextStyle(
-                            color: isSelected
-                                ? Colors.white
-                                : const Color(0xFF374151),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 12,
-                            vertical: 4,
-                          ),
+                prefixIcon: const Icon(
+                  Icons.search,
+                  color: _LocationTokens.muted,
+                  size: 20,
+                ),
+                suffixIcon: _searchQuery.isNotEmpty
+                    ? IconButton(
+                        tooltip: 'Effacer la recherche',
+                        onPressed: () {
+                          _searchController.clear();
+                          setState(() => _searchQuery = '');
+                        },
+                        icon: const Icon(
+                          Icons.close,
+                          color: _LocationTokens.muted,
+                          size: 18,
                         ),
-                      );
-                    },
+                      )
+                    : null,
+                border: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(11),
+                  borderSide: const BorderSide(color: _LocationTokens.border),
+                ),
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(11),
+                  borderSide: const BorderSide(color: _LocationTokens.border),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(11),
+                  borderSide: const BorderSide(
+                    color: _LocationTokens.primary,
+                    width: 1.5,
                   ),
                 ),
-              ],
+                filled: true,
+                fillColor: _LocationTokens.canvas,
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 12,
+                ),
+              ),
+            ),
+          ),
+          Container(
+            height: 50,
+            color: _LocationTokens.surface,
+            padding: const EdgeInsets.fromLTRB(16, 4, 0, 4),
+            child: ListView.separated(
+              scrollDirection: Axis.horizontal,
+              itemCount: _categories.length,
+              separatorBuilder: (_, _) => const SizedBox(width: 7),
+              itemBuilder: (context, index) {
+                final category = _categories[index];
+                final isSelected = _selectedCategory == category;
+                return ChoiceChip(
+                  label: Text(category),
+                  selected: isSelected,
+                  onSelected: (_) =>
+                      setState(() => _selectedCategory = category),
+                  showCheckmark: false,
+                  materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  labelStyle: TextStyle(
+                    color: isSelected ? Colors.white : _LocationTokens.body,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 7,
+                    vertical: 4,
+                  ),
+                  backgroundColor: _LocationTokens.surface,
+                  selectedColor: _LocationTokens.primary,
+                  side: BorderSide(
+                    color: isSelected
+                        ? _LocationTokens.primary
+                        : _LocationTokens.border,
+                  ),
+                  shape: const StadiumBorder(),
+                );
+              },
             ),
           ),
           Expanded(
             child: _filteredEquipments.isEmpty
                 ? _buildEmptyState()
-                : ListView.builder(
-                    padding: const EdgeInsets.all(16),
+                : ListView.separated(
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
                     itemCount: _filteredEquipments.length,
+                    separatorBuilder: (_, _) => const SizedBox(height: 14),
                     itemBuilder: (context, index) {
                       final equipment = _filteredEquipments[index];
                       return _EquipmentCard(
@@ -330,14 +358,14 @@ class _LocationScreenState extends State<LocationScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off, size: 64, color: Colors.grey[300]),
+          const Icon(Icons.search_off, size: 48, color: _LocationTokens.muted),
           const SizedBox(height: 16),
           Text(
             'Aucun équipement trouvé',
-            style: GoogleFonts.poppins(
+            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+              color: _LocationTokens.body,
               fontSize: 16,
-              fontWeight: FontWeight.w500,
-              color: const Color(0xFF6B7280),
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -570,7 +598,7 @@ class _EquipmentCardState extends State<_EquipmentCard> {
   @override
   Widget build(BuildContext context) {
     final isPeriodUnavailable = _dateFin != null && _isPeriodAvailable == false;
-    final isAvailable =
+    final canRent =
         widget.equipment.available &&
         _dateFin != null &&
         !_isLoadingAvailability &&
@@ -583,285 +611,459 @@ class _EquipmentCardState extends State<_EquipmentCard> {
         : _availabilityCheckFailed
         ? 'À confirmer'
         : 'Disponible';
-    final availabilityBadgeColor =
-        !widget.equipment.available || isPeriodUnavailable
-        ? const Color(0xFFFEE2E2)
+    final availabilityColor = !widget.equipment.available || isPeriodUnavailable
+        ? _LocationTokens.unavailable
         : _availabilityCheckFailed
-        ? const Color(0xFFFEF3C7)
-        : const Color(0xFFD1FAE5);
-    final availabilityTextColor =
-        !widget.equipment.available || isPeriodUnavailable
-        ? const Color(0xFFDC2626)
-        : _availabilityCheckFailed
-        ? const Color(0xFFB45309)
-        : const Color(0xFF059669);
+        ? _LocationTokens.confirmation
+        : _LocationTokens.available;
 
     return Container(
-      margin: const EdgeInsets.only(bottom: 16),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
+        color: _LocationTokens.surface,
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: _LocationTokens.border),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildEquipmentPhoto(),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 14, 16, 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        widget.equipment.name,
+                        key: ValueKey(
+                          'location-equipment-name-${widget.equipment.id}',
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                          color: _LocationTokens.ink,
+                          fontSize: 20,
+                          height: 1.15,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.45,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    _buildAvailabilityBadge(
+                      availabilityLabel,
+                      availabilityColor,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: _LocationTokens.canvas,
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+                      child: Text(
+                        widget.equipment.category,
+                        style: Theme.of(context).textTheme.labelMedium
+                            ?.copyWith(
+                              color: _LocationTokens.body,
+                              fontSize: 12,
+                              fontWeight: FontWeight.w600,
+                            ),
+                      ),
+                    ),
+                    if (widget.equipment.role != null) ...[
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Padding(
+                          padding: const EdgeInsets.only(top: 3),
+                          child: Text(
+                            widget.equipment.role!,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: Theme.of(context).textTheme.bodyMedium
+                                ?.copyWith(
+                                  color: _LocationTokens.muted,
+                                  fontSize: 13,
+                                  height: 1.35,
+                                ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                const SizedBox(height: 14),
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        'Prix / jour',
+                        style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          color: _LocationTokens.body,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ),
+                    Text(
+                      '${NumberFormat.decimalPattern('fr_FR').format(widget.equipment.price)} FCFA',
+                      key: ValueKey(
+                        'location-equipment-price-${widget.equipment.id}',
+                      ),
+                      style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                        color: _LocationTokens.ink,
+                        fontSize: 20,
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                  ],
+                ),
+                const Padding(
+                  padding: EdgeInsets.only(top: 12, bottom: 12),
+                  child: Divider(height: 1, color: _LocationTokens.divider),
+                ),
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildDateButton(
+                        key: ValueKey(
+                          'location-start-date-${widget.equipment.id}',
+                        ),
+                        label: 'Début',
+                        value: rentalDateLabel(_dateDebut),
+                        semanticLabel: 'Début : ${rentalDateLabel(_dateDebut)}',
+                        onPressed: _isSubmitting ? null : _chooseStartDate,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: _buildDateButton(
+                        key: ValueKey(
+                          'location-return-date-${widget.equipment.id}',
+                        ),
+                        label: 'Date de retour',
+                        value: _dateFin == null
+                            ? 'À choisir'
+                            : rentalDateLabel(_dateFin!),
+                        semanticLabel: _dateFin == null
+                            ? 'Choisir la date de retour'
+                            : 'Retour : ${rentalDateLabel(_dateFin!)}',
+                        onPressed: _isSubmitting ? null : _chooseReturnDate,
+                        isEmphasized: _dateFin == null,
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 9),
+                _buildAvailabilityFeedback(
+                  isPeriodUnavailable: isPeriodUnavailable,
+                ),
+                const SizedBox(height: 12),
+                SizedBox(
+                  width: double.infinity,
+                  height: 44,
+                  child: ElevatedButton(
+                    key: ValueKey('location-rent-${widget.equipment.id}'),
+                    onPressed: canRent ? _submitLocationRequest : null,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: _LocationTokens.primary,
+                      disabledBackgroundColor: _LocationTokens.disabledSurface,
+                      foregroundColor: Colors.white,
+                      disabledForegroundColor: _LocationTokens.muted,
+                      elevation: 0,
+                      shape: const StadiumBorder(),
+                      textStyle: Theme.of(context).textTheme.labelLarge
+                          ?.copyWith(fontSize: 14, fontWeight: FontWeight.w700),
+                    ),
+                    child: _isSubmitting
+                        ? const SizedBox.square(
+                            dimension: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: Colors.white,
+                            ),
+                          )
+                        : const Text('Louer'),
+                  ),
+                ),
+              ],
+            ),
           ),
         ],
       ),
-      child: Row(
+    );
+  }
+
+  Widget _buildEquipmentPhoto() {
+    void showZoom() {
+      openImageZoom(
+        context,
+        imageUrl: widget.equipment.imageUrl,
+        fallbackUrl: AppareilImages.getImageUrlForType(
+          widget.equipment.category,
+        ),
+        title: widget.equipment.name,
+      );
+    }
+
+    return AspectRatio(
+      aspectRatio: 1.93,
+      child: Stack(
+        fit: StackFit.expand,
         children: [
-          // Image
-          GestureDetector(
-            onTap: () {
-              openImageZoom(context, imageUrl: widget.equipment.imageUrl);
-            },
-            child: ClipRRect(
-              borderRadius: const BorderRadius.only(
-                topLeft: Radius.circular(16),
-                bottomLeft: Radius.circular(16),
-              ),
+          Semantics(
+            button: true,
+            label: 'Agrandir la photo de ${widget.equipment.name}',
+            child: GestureDetector(
+              key: ValueKey('location-equipment-photo-${widget.equipment.id}'),
+              behavior: HitTestBehavior.opaque,
+              onTap: showZoom,
               child: Image.network(
                 widget.equipment.imageUrl,
-                width: 120,
-                height: 120,
                 fit: BoxFit.cover,
                 loadingBuilder: (context, child, progress) {
                   if (progress == null) return child;
                   return Container(
-                    width: 120,
-                    height: 120,
-                    color: const Color(0xFFF3F4F6),
-                    child: const Center(
+                    color: _LocationTokens.canvas,
+                    alignment: Alignment.center,
+                    child: const SizedBox.square(
+                      dimension: 24,
                       child: CircularProgressIndicator(
-                        color: Color(0xFF2563EB),
+                        color: _LocationTokens.primary,
                         strokeWidth: 2,
                       ),
                     ),
                   );
                 },
-                errorBuilder: (context, error, stackTrace) {
-                  return Container(
-                    width: 120,
-                    height: 120,
-                    color: const Color(0xFFF3F4F6),
-                    child: Icon(
-                      Icons.image_not_supported,
-                      size: 32,
-                      color: Colors.grey[400],
-                    ),
-                  );
-                },
+                errorBuilder: (context, error, stackTrace) => Container(
+                  color: _LocationTokens.canvas,
+                  alignment: Alignment.center,
+                  child: const Icon(
+                    Icons.image_not_supported_outlined,
+                    size: 36,
+                    color: _LocationTokens.muted,
+                  ),
+                ),
               ),
             ),
           ),
-          // Informations
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(
-                          widget.equipment.name,
-                          style: GoogleFonts.poppins(
-                            fontSize: 15,
-                            fontWeight: FontWeight.w700,
-                            color: const Color(0xFF111827),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ),
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 8,
-                          vertical: 2,
-                        ),
-                        decoration: BoxDecoration(
-                          color: availabilityBadgeColor,
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Text(
-                          availabilityLabel,
-                          style: GoogleFonts.poppins(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w600,
-                            color: availabilityTextColor,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 2,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFDBEAFE),
-                      borderRadius: BorderRadius.circular(6),
-                    ),
-                    child: Text(
-                      widget.equipment.category,
-                      style: GoogleFonts.poppins(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w500,
-                        color: const Color(0xFF2563EB),
-                      ),
-                    ),
-                  ),
-                  if (widget.equipment.role != null) ...[
-                    const SizedBox(height: 6),
-                    Text(
-                      widget.equipment.role!,
-                      style: GoogleFonts.poppins(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w400,
-                        color: const Color(0xFF6B7280),
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _isSubmitting ? null : _chooseStartDate,
-                      icon: const Icon(Icons.event_outlined, size: 16),
-                      label: Text(
-                        'Début : ${rentalDateLabel(_dateDebut)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.poppins(fontSize: 11),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF2563EB),
-                        side: const BorderSide(color: Color(0xFF2563EB)),
-                        minimumSize: const Size(0, 38),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(height: 4),
-                  SizedBox(
-                    width: double.infinity,
-                    child: OutlinedButton.icon(
-                      onPressed: _isSubmitting ? null : _chooseReturnDate,
-                      icon: const Icon(Icons.event_outlined, size: 16),
-                      label: Text(
-                        _dateFin == null
-                            ? 'Choisir la date de retour'
-                            : 'Retour : ${rentalDateLabel(_dateFin!)}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: GoogleFonts.poppins(fontSize: 11),
-                      ),
-                      style: OutlinedButton.styleFrom(
-                        foregroundColor: const Color(0xFF2563EB),
-                        side: const BorderSide(color: Color(0xFF2563EB)),
-                        minimumSize: const Size(0, 38),
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                    ),
-                  ),
-                  if (_isLoadingAvailability) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      'Vérification de la période…',
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        color: const Color(0xFF6B7280),
-                      ),
-                    ),
-                  ] else if (_availabilityMessage != null) ...[
-                    const SizedBox(height: 4),
-                    Text(
-                      _availabilityMessage!,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        fontSize: 10,
-                        color: const Color(0xFFDC2626),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 10),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Prix / jour',
-                            style: GoogleFonts.poppins(
-                              fontSize: 10,
-                              fontWeight: FontWeight.w500,
-                              color: const Color(0xFF9CA3AF),
-                            ),
-                          ),
-                          Text(
-                            '${widget.equipment.price.toString()} FCFA',
-                            style: GoogleFonts.poppins(
-                              fontSize: 14,
-                              fontWeight: FontWeight.w700,
-                              color: const Color(0xFF2563EB),
-                            ),
-                          ),
-                        ],
-                      ),
-                      ElevatedButton(
-                        onPressed: isAvailable ? _submitLocationRequest : null,
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: isAvailable
-                              ? const Color(0xFF2563EB)
-                              : const Color(0xFFD1D5DB),
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 16,
-                            vertical: 8,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          elevation: isAvailable ? 2 : 0,
-                        ),
-                        child: _isSubmitting
-                            ? const SizedBox(
-                                width: 16,
-                                height: 16,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 2,
-                                  color: Colors.white,
-                                ),
-                              )
-                            : Text(
-                                'Louer',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                      ),
-                    ],
-                  ),
-                ],
+          Positioned(
+            right: 12,
+            bottom: 12,
+            child: IconButton(
+              key: ValueKey('location-equipment-zoom-${widget.equipment.id}'),
+              tooltip: 'Agrandir la photo',
+              onPressed: showZoom,
+              style: IconButton.styleFrom(
+                backgroundColor: Colors.white.withValues(alpha: 0.94),
+                foregroundColor: _LocationTokens.ink,
+                minimumSize: const Size(40, 40),
+                maximumSize: const Size(40, 40),
+                padding: EdgeInsets.zero,
               ),
+              icon: const Icon(Icons.zoom_in, size: 20),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  Widget _buildAvailabilityBadge(String label, Color color) {
+    return Semantics(
+      label: 'État de l’appareil : $label',
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 30),
+        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
+        decoration: BoxDecoration(
+          color: _LocationTokens.canvas,
+          borderRadius: BorderRadius.circular(999),
+        ),
+        child: ExcludeSemantics(
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 7,
+                height: 7,
+                decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              ),
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                  color: _LocationTokens.body,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDateButton({
+    required Key key,
+    required String label,
+    required String value,
+    required String semanticLabel,
+    required VoidCallback? onPressed,
+    bool isEmphasized = false,
+  }) {
+    return Semantics(
+      label: semanticLabel,
+      button: true,
+      child: SizedBox(
+        height: 58,
+        child: OutlinedButton(
+          key: key,
+          onPressed: onPressed,
+          style: OutlinedButton.styleFrom(
+            foregroundColor: _LocationTokens.primary,
+            backgroundColor: _LocationTokens.surface,
+            side: const BorderSide(color: _LocationTokens.border),
+            alignment: Alignment.centerLeft,
+            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(8),
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                label,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: _LocationTokens.muted,
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+              const SizedBox(height: 3),
+              Row(
+                children: [
+                  const Icon(
+                    Icons.calendar_month_outlined,
+                    size: 15,
+                    color: _LocationTokens.primary,
+                  ),
+                  const SizedBox(width: 5),
+                  Expanded(
+                    child: Text(
+                      value,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                        color: isEmphasized
+                            ? _LocationTokens.primary
+                            : _LocationTokens.ink,
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvailabilityFeedback({required bool isPeriodUnavailable}) {
+    final String message;
+    final Color foreground;
+    final Color background;
+    final IconData icon;
+
+    if (_isLoadingAvailability) {
+      message = 'Vérification de la période…';
+      foreground = _LocationTokens.body;
+      background = _LocationTokens.canvas;
+      icon = Icons.schedule;
+    } else if (_availabilityMessage != null) {
+      message = _availabilityMessage!;
+      foreground =
+          _availabilityCheckFailed ||
+              (!isPeriodUnavailable && !widget.equipment.available)
+          ? _LocationTokens.confirmation
+          : _LocationTokens.unavailable;
+      background = foreground == _LocationTokens.confirmation
+          ? const Color(0xFFFFF6DB)
+          : const Color(0xFFFDF1EF);
+      icon = _availabilityCheckFailed
+          ? Icons.info_outline
+          : Icons.error_outline;
+    } else if (_dateFin != null && _isPeriodAvailable == true) {
+      message = 'Période disponible pour les dates choisies.';
+      foreground = _LocationTokens.available;
+      background = const Color(0xFFEAF5EF);
+      icon = Icons.check_circle_outline;
+    } else {
+      message =
+          'La disponibilité de la période sera vérifiée après le choix du retour.';
+      foreground = _LocationTokens.body;
+      background = _LocationTokens.canvas;
+      icon = Icons.info_outline;
+    }
+
+    return Semantics(
+      liveRegion: _isLoadingAvailability || _availabilityMessage != null,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 9),
+        decoration: BoxDecoration(
+          color: background,
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (_isLoadingAvailability)
+              SizedBox.square(
+                dimension: 16,
+                child: CircularProgressIndicator(
+                  strokeWidth: 2,
+                  color: foreground,
+                ),
+              )
+            else
+              Icon(icon, size: 16, color: foreground),
+            const SizedBox(width: 7),
+            Expanded(
+              child: Text(
+                message,
+                style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                  color: foreground,
+                  fontSize: 13,
+                  height: 1.35,
+                  fontWeight: _availabilityMessage == null
+                      ? FontWeight.w400
+                      : FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }

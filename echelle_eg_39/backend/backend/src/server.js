@@ -13,11 +13,13 @@ app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
   credentials: true
 }));
-app.use(express.json());
+// Base64 media uploads are capped by endpoint validation at 2 MiB per request.
+app.use(express.json({ limit: '4mb' }));
 app.use(morgan('dev'));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/profile', require('./routes/profile'));
 app.use('/api/appareils', require('./routes/appareils'));
 app.use('/api/demandes', require('./routes/demandes'));
 app.use('/api/devis', require('./routes/devis'));
@@ -41,6 +43,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
+      profile: '/api/profile',
       appareils: '/api/appareils',
       demandes: '/api/demandes',
       devis: '/api/devis',

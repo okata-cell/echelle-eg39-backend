@@ -205,17 +205,20 @@ class ApiService {
     } on TimeoutException {
       throw const ApiException(
         type: ApiErrorType.network,
-        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion.',
       );
     } on http.ClientException {
       throw const ApiException(
         type: ApiErrorType.network,
-        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion.',
       );
     } catch (_) {
       throw const ApiException(
         type: ApiErrorType.network,
-        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion.',
       );
     }
 
@@ -238,7 +241,10 @@ class ApiService {
     final message = validationErrors is List
         ? validationErrors
               .whereType<Map>()
-              .map((error) => error['msg'] ?? error['message'] ?? 'Erreur inconnue')
+              .map(
+                (error) =>
+                    error['msg'] ?? error['message'] ?? 'Erreur inconnue',
+              )
               .join(', ')
         : errorData?['error']?.toString() ?? 'Échec de la création du compte.';
 
@@ -467,43 +473,60 @@ class ApiService {
   // FONCTIONS: Réinitialisation du mot de passe
   // ============================================
 
+  static String _passwordRecoveryErrorMessage(
+    String responseBody,
+    String fallback,
+  ) {
+    final decoded = decodeObject(responseBody);
+    final validationErrors = decoded?['errors'];
+    if (validationErrors is List) {
+      final messages = validationErrors
+          .whereType<Map>()
+          .map((error) => (error['msg'] ?? error['message'] ?? '').toString())
+          .where((message) => message.isNotEmpty)
+          .join(', ');
+      if (messages.isNotEmpty) return messages;
+    }
+    return decoded?['error']?.toString() ?? fallback;
+  }
+
   /// Demander un code de réinitialisation de mot de passe
   static Future<Map<String, dynamic>> requestPasswordReset(
     String contact,
     String contactType,
   ) async {
     try {
-      print(
-        '📡 Envoi requête forgot-password vers: $baseUrl/auth/forgot-password',
-      );
-      print('📡 Données: contact=$contact, contactType=$contactType');
-
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/forgot-password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'contact': contact, 'contactType': contactType}),
-      );
-
-      print('📡 Forgot Password Status Code: ${response.statusCode}');
-      print('📡 Forgot Password Response: ${response.body}');
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/forgot-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'contact': contact, 'contactType': contactType}),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        return data;
-      } else if (response.statusCode == 404) {
+        final data = decodeObject(response.body);
+        if (data != null) return data;
+        throw Exception('Réponse invalide du service de récupération.');
+      }
+      if (response.statusCode == 404) {
         throw Exception('Route non trouvée. Vérifiez la connexion au serveur.');
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(
-          errorData['error'] ?? 'Erreur lors de la demande de réinitialisation',
-        );
       }
-    } catch (e) {
-      if (e is Exception) {
-        print('❌ Erreur forgot-password: $e');
-        rethrow;
-      }
-      print('❌ Erreur réseau forgot-password: $e');
+      throw Exception(
+        _passwordRecoveryErrorMessage(
+          response.body,
+          'Erreur lors de la demande de réinitialisation',
+        ),
+      );
+    } on TimeoutException {
+      throw Exception('Le serveur ne répond pas. Réessayez dans un instant.');
+    } on http.ClientException {
+      throw Exception(
+        'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
+    } on Exception {
+      rethrow;
+    } catch (_) {
       throw Exception(
         'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
       );
@@ -516,29 +539,36 @@ class ApiService {
     String contact,
   ) async {
     try {
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/verify-code'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'code': code, 'contact': contact}),
-      );
-
-      print('📡 Verify Code Status Code: ${response.statusCode}');
-      print('📡 Verify Code Response: ${response.body}');
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/verify-code'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({'code': code, 'contact': contact}),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        final data = jsonDecode(response.body);
-        // Sauvegarder le token temporaire
-        if (data['tempToken'] != null) {
-          await setTempToken(data['tempToken']);
+        final data = decodeObject(response.body);
+        if (data == null) throw Exception('Réponse invalide du serveur.');
+        final token = data['tempToken'];
+        if (token is! String || token.isEmpty) {
+          throw Exception('Réponse de vérification invalide.');
         }
+        await setTempToken(token);
         return data;
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(errorData['error'] ?? 'Code invalide ou expiré');
       }
-    } catch (e) {
-      if (e is Exception) rethrow;
-      print('❌ Erreur réseau verify-code: $e');
+      throw Exception(
+        _passwordRecoveryErrorMessage(response.body, 'Code invalide ou expiré'),
+      );
+    } on TimeoutException {
+      throw Exception('Le serveur ne répond pas. Réessayez dans un instant.');
+    } on http.ClientException {
+      throw Exception(
+        'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
+    } on Exception {
+      rethrow;
+    } catch (_) {
       throw Exception(
         'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
       );
@@ -555,30 +585,38 @@ class ApiService {
         );
       }
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/auth/reset-password'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode({'tempToken': tempToken, 'newPassword': newPassword}),
-      );
-
-      print('📡 Reset Password Status Code: ${response.statusCode}');
-      print('📡 Reset Password Response: ${response.body}');
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/auth/reset-password'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode({
+              'tempToken': tempToken,
+              'newPassword': newPassword,
+            }),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
-        // Supprimer le token temporaire après utilisation
         await removeTempToken();
-        final data = jsonDecode(response.body);
-        return data;
-      } else {
-        final errorData = jsonDecode(response.body);
-        throw Exception(
-          errorData['error'] ??
-              'Erreur lors de la réinitialisation du mot de passe',
-        );
+        final data = decodeObject(response.body);
+        if (data != null) return data;
+        throw Exception('Réponse invalide du service de réinitialisation.');
       }
-    } catch (e) {
-      if (e is Exception) rethrow;
-      print('❌ Erreur réseau reset-password: $e');
+      throw Exception(
+        _passwordRecoveryErrorMessage(
+          response.body,
+          'Erreur lors de la réinitialisation du mot de passe',
+        ),
+      );
+    } on TimeoutException {
+      throw Exception('Le serveur ne répond pas. Réessayez dans un instant.');
+    } on http.ClientException {
+      throw Exception(
+        'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
+    } on Exception {
+      rethrow;
+    } catch (_) {
       throw Exception(
         'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
       );

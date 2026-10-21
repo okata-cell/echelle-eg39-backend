@@ -1,4 +1,3 @@
-
 import 'dart:async';
 
 import 'package:echelle_eg_39/login.page.dart';
@@ -20,8 +19,6 @@ import 'api_service.dart';
 bool isFirebaseReady = false;
 
 void main() async {
-  WidgetsFlutterBinding.ensureInitialized();
-
   // Capture globale des erreurs Flutter (framework, rendu, etc.)
   FlutterError.onError = (FlutterErrorDetails details) {
     print('🔥 FlutterError: ${details.exception}');
@@ -34,30 +31,38 @@ void main() async {
     }
   };
 
-  // Capture globale des erreurs asynchrones via runZonedGuarded
-  await runZonedGuarded(() async {
-    // Initialiser Firebase avec timeout
-    try {
-      await Firebase.initializeApp().timeout(
-        const Duration(seconds: 10),
-        onTimeout: () {
-          print('⚠️ Firebase initialization timed out');
-          throw Exception('Firebase timeout');
-        },
-      );
-      isFirebaseReady = true;
-      print('✅ Firebase initialized successfully');
-    } catch (e) {
-      print('❌ Firebase initialization failed: $e');
-      isFirebaseReady = false;
-      // Continuer quand même si Firebase échoue (mode offline)
-    }
+  // Capture globale des erreurs asynchrones via runZonedGuarded.
+  // NOTE: ensureInitialized() est appelé DANS la zone pour éviter le
+  // warning "Zone mismatch" (le binding doit être initialisé dans la
+  // même zone que runApp).
+  await runZonedGuarded(
+    () async {
+      WidgetsFlutterBinding.ensureInitialized();
 
-    runApp(const EchelleEG39App());
-  }, (error, stack) {
-    print('🔥 AsyncError: $error');
-    print('🔥 StackTrace: $stack');
-  });
+      // Initialiser Firebase avec timeout
+      try {
+        await Firebase.initializeApp().timeout(
+          const Duration(seconds: 10),
+          onTimeout: () {
+            print('⚠️ Firebase initialization timed out');
+            throw Exception('Firebase timeout');
+          },
+        );
+        isFirebaseReady = true;
+        print('✅ Firebase initialized successfully');
+      } catch (e) {
+        print('❌ Firebase initialization failed: $e');
+        isFirebaseReady = false;
+        // Continuer quand même si Firebase échoue (mode offline)
+      }
+
+      runApp(const EchelleEG39App());
+    },
+    (error, stack) {
+      print('🔥 AsyncError: $error');
+      print('🔥 StackTrace: $stack');
+    },
+  );
 }
 
 class EchelleEG39App extends StatelessWidget {
@@ -159,7 +164,7 @@ class _SplashScreenState extends State<SplashScreen> {
       print('⚠️ Firebase not initialized, skipping Firebase session check');
     }
     // === FIN CORRECTION ===
-    
+
     bool isLoggedIn = prefs.getBool('isLoggedIn') ?? false;
     bool isAdmin = prefs.getBool('isAdmin') ?? false;
 
@@ -204,11 +209,7 @@ class _SplashScreenState extends State<SplashScreen> {
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                Icons.height,
-                size: 80,
-                color: Colors.white,
-              ),
+              Icon(Icons.height, size: 80, color: Colors.white),
               SizedBox(height: 20),
               Text(
                 'ÉCHELLE EG39',
@@ -222,15 +223,10 @@ class _SplashScreenState extends State<SplashScreen> {
               SizedBox(height: 10),
               Text(
                 'Topographie - BTP',
-                style: TextStyle(
-                  fontSize: 16,
-                  color: Color(0xFFBFDBFE),
-                ),
+                style: TextStyle(fontSize: 16, color: Color(0xFFBFDBFE)),
               ),
               SizedBox(height: 40),
-              CircularProgressIndicator(
-                color: Colors.white,
-              ),
+              CircularProgressIndicator(color: Colors.white),
             ],
           ),
         ),
@@ -271,9 +267,12 @@ class _MainScreenState extends State<MainScreen> {
         },
         type: BottomNavigationBarType.fixed,
         selectedItemColor: const Color(0xFF2563EB),
-        unselectedItemColor: const Color(0xFF9CA3AF),
-        selectedFontSize: 11,
-        unselectedFontSize: 11,
+        unselectedItemColor: const Color(0xFF5E5E62),
+        iconSize: 22,
+        selectedFontSize: 12,
+        unselectedFontSize: 12,
+        selectedLabelStyle: const TextStyle(fontWeight: FontWeight.w700),
+        unselectedLabelStyle: const TextStyle(fontWeight: FontWeight.w600),
         backgroundColor: Colors.white,
         elevation: 8,
         items: const [
@@ -283,8 +282,8 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Accueil',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.location_city_outlined),
-            activeIcon: Icon(Icons.location_city),
+            icon: Icon(Icons.location_on_outlined),
+            activeIcon: Icon(Icons.location_on),
             label: 'Locations',
           ),
           BottomNavigationBarItem(
@@ -293,8 +292,8 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Ventes',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.engineering_outlined),
-            activeIcon: Icon(Icons.engineering),
+            icon: Icon(Icons.work_outline),
+            activeIcon: Icon(Icons.work),
             label: 'Services',
           ),
           BottomNavigationBarItem(
@@ -303,7 +302,7 @@ class _MainScreenState extends State<MainScreen> {
             label: 'Historique',
           ),
           BottomNavigationBarItem(
-            icon: Icon(Icons.person_outlined),
+            icon: Icon(Icons.person_outline),
             activeIcon: Icon(Icons.person),
             label: 'Profil',
           ),
@@ -359,12 +358,10 @@ class HomeScreen extends StatelessWidget {
                               ),
                             ),
                             const SizedBox(width: 99),
-                            
                           ],
                         ),
                       ],
                     ),
-                    
                   ],
                 ),
               ),
@@ -517,16 +514,15 @@ class HomeScreen extends StatelessWidget {
   ) {
     return GestureDetector(
       onTap: () {
-
         if (index == 1) {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) =>  LocationScreen()),
+            MaterialPageRoute(builder: (context) => LocationScreen()),
           );
         } else if (index == 2) {
           Navigator.push(
             context,
-            MaterialPageRoute(builder: (context) => const VenteScreen ()),
+            MaterialPageRoute(builder: (context) => const VenteScreen()),
           );
         } else if (index == 3) {
           Navigator.push(
@@ -549,11 +545,7 @@ class HomeScreen extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(
-              icon,
-              size: 32,
-              color: iconColor,
-            ),
+            Icon(icon, size: 32, color: iconColor),
             const SizedBox(height: 8),
             Text(
               title,
@@ -572,9 +564,7 @@ class HomeScreen extends StatelessWidget {
   Widget _buildFeaturedItem(String title, String subtitle, String imageUrl) {
     return Card(
       elevation: 4,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-      ),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
       child: Padding(
         padding: const EdgeInsets.all(16),
         child: Row(
@@ -585,11 +575,7 @@ class HomeScreen extends StatelessWidget {
               height: 48,
               fit: BoxFit.cover,
               errorBuilder: (context, error, stackTrace) {
-                return Icon(
-                  Icons.image,
-                  size: 48,
-                  color: Colors.grey,
-                );
+                return Icon(Icons.image, size: 48, color: Colors.grey);
               },
             ),
             const SizedBox(width: 16),
@@ -607,10 +593,7 @@ class HomeScreen extends StatelessWidget {
                   const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: Colors.grey,
-                    ),
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
                   ),
                 ],
               ),
@@ -621,10 +604,3 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
-
-
-
-
-
-
-

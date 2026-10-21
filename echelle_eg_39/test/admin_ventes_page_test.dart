@@ -62,4 +62,69 @@ void main() {
     );
     await tester.pumpWidget(const SizedBox.shrink());
   });
+
+  testWidgets(
+    'un admin peut supprimer une demande approuvée avec confirmation',
+    (tester) async {
+      final demande = <String, dynamic>{
+        'id': 91,
+        'code': 'DA-91',
+        'clientNom': 'Client test',
+        'appareilNom': 'GPS E600',
+        'statut': 'approuvee',
+        'quantite': 1,
+        'total': 250000,
+      };
+      final demandes = [demande];
+      final deletedIds = <int>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminVentesPageFixed(
+              loadDemandes: () async =>
+                  List<Map<String, dynamic>>.from(demandes),
+              deleteDemande: (id) async {
+                deletedIds.add(id);
+                demandes.removeWhere((item) => item['id'] == id);
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('delete-purchase-request-91')),
+        findsNothing,
+      );
+      await tester.tap(find.text('Approuvées').last);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey('delete-purchase-request-91')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('delete-purchase-request-91')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text('Supprimer la demande ?'), findsOneWidget);
+      await tester.tap(find.text('Annuler'));
+      await tester.pumpAndSettle();
+      expect(deletedIds, isEmpty);
+
+      await tester.tap(
+        find.byKey(const ValueKey('delete-purchase-request-91')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(find.widgetWithText(ElevatedButton, 'Supprimer'));
+      await tester.pumpAndSettle();
+
+      expect(deletedIds, [91]);
+      expect(find.text('GPS E600'), findsNothing);
+      expect(find.text('Demande #91 supprimée.'), findsOneWidget);
+      await tester.pumpWidget(const SizedBox.shrink());
+    },
+  );
 }

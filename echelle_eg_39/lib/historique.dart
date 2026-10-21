@@ -1,105 +1,79 @@
-import 'package:flutter/material.dart';
-import 'package:google_fonts/google_fonts.dart';
-import 'package:pdf/pdf.dart';
-import 'equipment_request_image.dart';
-import 'location_status.dart';
-import 'service_image_thumbnail.dart';
-import 'package:pdf/widgets.dart' as pw;
-import 'package:printing/printing.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
-import 'extensions_manager.dart'; // Stub classes - prolongation supprimée
-import 'demo_flags.dart';
-// import 'admin_prolongations_page.dart'; // Supprimé - page supprimée
-import 'client_mes_demandes.dart';
-import 'client_mes_devis.dart';
-import 'data_manager.dart';
-import 'service.dart';
-import 'api_service.dart';
 import 'dart:async';
 
+import 'package:flutter/material.dart';
+import 'package:intl/intl.dart';
+import 'package:url_launcher/url_launcher.dart';
+
+import 'api_service.dart';
+import 'client_mes_demandes.dart';
+import 'client_mes_devis.dart';
+import 'equipment_request_image.dart';
+import 'history_purchase_status.dart';
+import 'location.dart';
+import 'location_status.dart';
+import 'service.dart';
+import 'service_image_thumbnail.dart';
+
+/// A row in the user's rental or purchase history.
+///
+/// [status] is normalized per record type. Purchase values deliberately remain
+/// separate from rental statuses (for example, `livree` is not `termine`).
 class Transaction {
+  const Transaction({
+    required this.id,
+    required this.type,
+    required this.title,
+    required this.date,
+    required this.status,
+    this.dateRetour,
+    this.amount,
+    this.quantity,
+    this.unitPrice,
+    this.invoiceNumber,
+    this.adminComment,
+    this.imageUrl,
+  });
+
   final int id;
   final String type;
   final String title;
   final String date;
   final String? dateRetour;
-  final int amount;
   final String status;
-  final bool isPaid;
-  final String? equipmentId;
+  final int? amount;
+  final int? quantity;
+  final int? unitPrice;
   final String? invoiceNumber;
-  final int dailyRate;
-  final List<String> extensionIds;
-  final int extensionCount;
-  final int unpaidExtensionAmount;
   final String? adminComment;
-  final String? clientEmail;
   final String? imageUrl;
 
-  Transaction({
-    required this.id,
-    required this.type,
-    required this.title,
-    required this.date,
-    this.dateRetour,
-    required this.amount,
-    required this.status,
-    this.isPaid = true,
-    this.equipmentId,
-    this.invoiceNumber,
-    int? dailyRate,
-    List<String>? extensionIds,
-    this.extensionCount = 0,
-    this.unpaidExtensionAmount = 0,
-    this.adminComment,
-    this.clientEmail,
-    this.imageUrl,
-  })  : dailyRate = dailyRate ?? 0,
-        extensionIds = extensionIds ?? [];
-
-  Transaction copyWith({
-    int? id,
-    String? type,
-    String? title,
-    String? date,
-    String? dateRetour,
-    int? amount,
-    String? status,
-    bool? isPaid,
-    String? equipmentId,
-    String? invoiceNumber,
-    int? dailyRate,
-    List<String>? extensionIds,
-    int? extensionCount,
-    int? unpaidExtensionAmount,
-    String? adminComment,
-    String? clientEmail,
-    String? imageUrl,
-  }) {
-    return Transaction(
-      id: id ?? this.id,
-      type: type ?? this.type,
-      title: title ?? this.title,
-      date: date ?? this.date,
-      dateRetour: dateRetour ?? this.dateRetour,
-      amount: amount ?? this.amount,
-      status: status ?? this.status,
-      isPaid: isPaid ?? this.isPaid,
-      equipmentId: equipmentId ?? this.equipmentId,
-      invoiceNumber: invoiceNumber ?? this.invoiceNumber,
-      dailyRate: dailyRate ?? this.dailyRate,
-      extensionIds: extensionIds ?? this.extensionIds,
-      extensionCount: extensionCount ?? this.extensionCount,
-      unpaidExtensionAmount: unpaidExtensionAmount ?? this.unpaidExtensionAmount,
-      adminComment: adminComment ?? this.adminComment,
-      clientEmail: clientEmail ?? this.clientEmail,
-      imageUrl: imageUrl ?? this.imageUrl,
-    );
-  }
+  bool get isLocation => type == 'location';
 }
 
 typedef HistoriqueDataLoader = Future<List<Map<String, dynamic>>> Function();
+
+enum _HistorySection { locations, achats }
+
+class _HistoryFilter {
+  const _HistoryFilter(this.key, this.label);
+
+  final String key;
+  final String label;
+}
+
+class _HistoryColors {
+  static const canvas = Color(0xFFF5F5F7);
+  static const surface = Colors.white;
+  static const primary = Color(0xFF0066CC);
+  static const ink = Color(0xFF1D1D1F);
+  static const body = Color(0xFF333333);
+  static const muted = Color(0xFF4A4A4F);
+  static const border = Color(0xFFE0E0E0);
+  static const softDivider = Color(0xFFF0F0F0);
+  static const alert = Color(0xFFB42318);
+  static const alertSurface = Color(0xFFFDF1EF);
+  static const activeSurface = Color(0xFFEAF2FC);
+}
 
 class HistoriqueScreen extends StatefulWidget {
   const HistoriqueScreen({
@@ -119,86 +93,81 @@ class HistoriqueScreen extends StatefulWidget {
 
 class _HistoriqueScreenState extends State<HistoriqueScreen>
     with WidgetsBindingObserver {
-  String _selectedFilter = 'Tous';
-  bool _isLoading = true;
-  bool _isFetching = false;
-  String? _errorMessage;
+  static const _locationFilters = <_HistoryFilter>[
+    _HistoryFilter('all', 'Toutes'),
+    _HistoryFilter('en-attente', 'En attente'),
+    _HistoryFilter('approuvee', 'Approuvées'),
+    _HistoryFilter('en-cours', 'En cours'),
+    _HistoryFilter('a-verifier', 'À vérifier'),
+    _HistoryFilter('termine', 'Terminées'),
+    _HistoryFilter('refusee', 'Refusées / annulées'),
+  ];
+
+  static const _purchaseFilters = <_HistoryFilter>[
+    _HistoryFilter('all', 'Toutes'),
+    _HistoryFilter('en_attente', 'En attente'),
+    _HistoryFilter('approuvee', 'Approuvées'),
+    _HistoryFilter('livree', 'Livrées'),
+    _HistoryFilter('termine', 'Terminées'),
+    _HistoryFilter('rejetee', 'Refusées'),
+  ];
+
+  _HistorySection _section = _HistorySection.locations;
+  String _locationFilter = 'all';
+  String _purchaseFilter = 'all';
+  bool _isLoadingLocations = true;
+  bool _isLoadingPurchases = true;
+  bool _isFetchingLocations = false;
+  bool _isFetchingPurchases = false;
+  String? _locationsErrorMessage;
+  String? _purchasesErrorMessage;
   Timer? _statusRefreshTimer;
+  List<Transaction> _locationTransactions = [];
+  List<Transaction> _purchaseTransactions = [];
 
-  final ExtensionsManager _extensionsManager = ExtensionsManager();
-  final DataManager _dataManager = DataManager();
-  StreamSubscription? _extSub;
+  bool get _isFetching => _isFetchingLocations || _isFetchingPurchases;
+  bool get _activeIsLoading => _section == _HistorySection.locations
+      ? _isLoadingLocations
+      : _isLoadingPurchases;
+  bool get _activeIsFetching => _section == _HistorySection.locations
+      ? _isFetchingLocations
+      : _isFetchingPurchases;
+  String? get _activeErrorMessage => _section == _HistorySection.locations
+      ? _locationsErrorMessage
+      : _purchasesErrorMessage;
 
-  // Aucune donnée fictive – les vraies transactions seront chargées depuis
-  // le backend / DataManager dans une future itération.
-  List<Transaction> _allTransactions = [];
+  List<Transaction> get _allTransactions => [
+    ..._locationTransactions,
+    ..._purchaseTransactions,
+  ];
 
-  // Infos utilisateur connecté
-  String _currentUserName = '';
-  String _currentUserEmail = '';
+  String get _activeFilter =>
+      _section == _HistorySection.locations ? _locationFilter : _purchaseFilter;
 
-  // ── Filtres ───────────────────────────────────────────────────────────────
+  List<_HistoryFilter> get _activeFilters =>
+      _section == _HistorySection.locations
+      ? _locationFilters
+      : _purchaseFilters;
 
-  List<Transaction> get _filteredTransactions {
-    if (_selectedFilter == 'Tous') return _allTransactions;
+  List<Transaction> get _sectionTransactions =>
+      _section == _HistorySection.locations
+      ? _locationTransactions
+      : _purchaseTransactions;
 
-    return _allTransactions.where((transaction) {
-      switch (_selectedFilter) {
-        case 'En cours':
-          return transaction.status == 'approuvee' ||
-              transaction.status == 'en-cours' ||
-              transaction.status == 'en-retard';
-        case 'Terminés':
-          return transaction.status == 'termine';
-        case 'En attente':
-          return transaction.status == 'en-attente';
-        case 'Refusées / annulées':
-          return transaction.status == 'rejetee' ||
-              transaction.status == 'annulee';
-        default:
-          return true;
-      }
-    }).toList(growable: false);
-  }
+  List<Transaction> get _visibleTransactions => _sectionTransactions
+      .where((transaction) => _matchesFilter(transaction, _activeFilter))
+      .toList(growable: false);
 
-  /// Locations actives en retard
-  List<Transaction> get _lateTransactions => _allTransactions
-      .where((t) => (_getLateInfo(t)['isLate'] as bool))
-      .toList();
-
-  // ── Lifecycle ─────────────────────────────────────────────────────────────
+  List<Transaction> get _locationsToVerify => _locationTransactions
+      .where(_needsReturnVerification)
+      .toList(growable: false);
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _loadCurrentUser();
-    _dataManager.initialize();
-    _dataManager.addListener(_onDataManagerChanged);
-
-    // Charger les données depuis le backend.
-    unawaited(_loadTransactionsFromBackend());
+    unawaited(_refreshAllTransactions());
     _startStatusRefreshTimer();
-
-    if (kDemoPaymentsEnabled) {
-      _extSub = _extensionsManager.events.listen((event) {
-        if (event.type == 'transactionUpdated') {
-          final idx =
-              _allTransactions.indexWhere((t) => t.id == event.transactionId);
-          if (idx != -1) {
-            final unpaid = _extensionsManager
-                .computeUnpaidForTransaction(event.transactionId);
-            final updated =
-                _allTransactions[idx].copyWith(unpaidExtensionAmount: unpaid);
-            if (mounted) {
-              setState(() {
-                _allTransactions[idx] = updated;
-              });
-            }
-          }
-        }
-      });
-    }
   }
 
   void _startStatusRefreshTimer() {
@@ -207,18 +176,14 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
 
     _statusRefreshTimer?.cancel();
     _statusRefreshTimer = Timer.periodic(interval, (_) {
-      unawaited(_loadTransactionsFromBackend(silent: true));
+      unawaited(_refreshAllTransactions(silent: true));
     });
-  }
-
-  void _onDataManagerChanged() {
-    if (mounted) setState(() {});
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state == AppLifecycleState.resumed) {
-      unawaited(_loadTransactionsFromBackend(silent: true));
+      unawaited(_refreshAllTransactions(silent: true));
       _startStatusRefreshTimer();
     } else {
       _statusRefreshTimer?.cancel();
@@ -226,608 +191,908 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
     }
   }
 
-  Future<void> _loadCurrentUser() async {
-    final prefs = await SharedPreferences.getInstance();
-    final name = prefs.getString('userName') ?? '';
-    final email = prefs.getString('userEmail') ?? '';
-    if (mounted) {
-      setState(() {
-        _currentUserName = name;
-        _currentUserEmail = email;
-      });
-    }
+  Future<void> _refreshAllTransactions({bool silent = false}) async {
+    await Future.wait<void>([
+      _loadLocations(silent: silent),
+      _loadPurchases(silent: silent),
+    ]);
   }
 
-  /// Recharge les locations et les demandes d'achat depuis leurs sources réelles.
-  Future<void> _loadTransactionsFromBackend({bool silent = false}) async {
-    if (_isFetching || !mounted) return;
-    _isFetching = true;
+  Future<void> _loadLocations({bool silent = false}) async {
+    if (_isFetchingLocations || !mounted) return;
+    _isFetchingLocations = true;
 
-    if (!silent && mounted) {
+    if (!silent) {
       setState(() {
-        _isLoading = _allTransactions.isEmpty;
-        _errorMessage = null;
+        _isLoadingLocations = _locationTransactions.isEmpty;
+        _locationsErrorMessage = null;
       });
     }
 
     try {
       final loadLocations = widget.loadLocations ?? ApiService.getLocations;
-      final loadPurchases = widget.loadPurchases ?? ApiService.getDemandesAchat;
-      final results = await Future.wait<List<Map<String, dynamic>>>([
-        loadLocations(),
-        loadPurchases(),
-      ]);
-      final locations = results[0];
-      final demandes = results[1];
-      final transactions = <Transaction>[];
+      final locations = await loadLocations();
+      final transactions = locations
+          .map(
+            (location) => Transaction(
+              id: _asInt(location['id']) ?? 0,
+              type: 'location',
+              title: _stringValue(
+                location['appareilNom'],
+                fallback: 'Appareil',
+              ),
+              date: _stringValue(location['dateDebut']),
+              dateRetour: _nullableString(location['dateFin']),
+              amount: _asInt(location['montantTotal']),
+              status: normalizeLocationStatus(location['statut']),
+              invoiceNumber: _nullableString(location['code']),
+              adminComment: _nullableString(location['commentaireAdmin']),
+              imageUrl: resolveEquipmentRequestImageUrl(location),
+            ),
+          )
+          .toList(growable: false);
 
-      for (final location in locations) {
-        transactions.add(Transaction(
-          id: int.tryParse(location['id']?.toString() ?? '') ?? 0,
-          type: 'location',
-          title: location['appareilNom']?.toString() ?? 'Appareil',
-          date: _formatDateForApi(location['dateDebut']?.toString()),
-          dateRetour: _formatDateForApi(location['dateFin']?.toString()),
-          amount: (location['montantTotal'] as num?)?.toInt() ?? 0,
-          status: normalizeLocationStatus(location['statut']),
-          isPaid: location['montantTotal'] != null,
-          dailyRate: (location['prixJournalier'] as num?)?.toInt() ?? 0,
-          invoiceNumber: location['code']?.toString(),
-          adminComment: location['commentaireAdmin']?.toString(),
-          clientEmail: location['clientEmail']?.toString(),
-          imageUrl: resolveEquipmentRequestImageUrl(location),
-        ));
-      }
-
-      for (final demande in demandes) {
-        transactions.add(Transaction(
-          id: int.tryParse(demande['id']?.toString() ?? '') ?? 0,
-          type: 'achat',
-          title: '${demande['appareilNom'] ?? 'Appareil'} (x${demande['quantite'] ?? 1})',
-          date: _formatDateForApi(demande['createdAt']?.toString()),
-          amount: (demande['total'] as num?)?.toInt() ?? 0,
-          status: _convertStatut(demande['statut']?.toString() ?? 'en-attente'),
-          isPaid: false,
-          invoiceNumber: demande['code']?.toString(),
-          adminComment: demande['commentaireAdmin']?.toString(),
-          clientEmail: demande['clientEmail']?.toString(),
-          imageUrl: resolveEquipmentRequestImageUrl(demande),
-        ));
-      }
-
-      if (mounted) {
-        setState(() {
-          _allTransactions = transactions;
-          _isLoading = false;
-          _errorMessage = null;
-        });
-      }
+      if (!mounted) return;
+      setState(() {
+        _locationTransactions = transactions;
+        _isLoadingLocations = false;
+        _locationsErrorMessage = null;
+      });
     } catch (error) {
       if (mounted) {
         setState(() {
-          _isLoading = false;
-          if (_allTransactions.isEmpty) {
-            _errorMessage = _messageForHistoryError(error);
-          }
+          _isLoadingLocations = false;
+          // Keep stale data visible while reporting this section's error.
+          _locationsErrorMessage = _messageForHistoryError(error);
         });
       }
-      debugPrint('Erreur chargement historique: $error');
+      debugPrint('Erreur chargement locations historique: $error');
     } finally {
-      _isFetching = false;
+      _isFetchingLocations = false;
+      if (mounted && !silent) setState(() {});
+    }
+  }
+
+  Future<void> _loadPurchases({bool silent = false}) async {
+    if (_isFetchingPurchases || !mounted) return;
+    _isFetchingPurchases = true;
+
+    if (!silent) {
+      setState(() {
+        _isLoadingPurchases = _purchaseTransactions.isEmpty;
+        _purchasesErrorMessage = null;
+      });
+    }
+
+    try {
+      final loadPurchases = widget.loadPurchases ?? ApiService.getDemandesAchat;
+      final purchases = await loadPurchases();
+      final transactions = purchases
+          .map(
+            (demande) => Transaction(
+              id: _asInt(demande['id']) ?? 0,
+              type: 'achat',
+              title: _stringValue(demande['appareilNom'], fallback: 'Appareil'),
+              date: _stringValue(demande['createdAt']),
+              amount: _asInt(demande['total']),
+              quantity: _asInt(demande['quantite']),
+              unitPrice: _asInt(demande['appareilPrix']),
+              status: normalizePurchaseStatus(demande['statut']),
+              invoiceNumber: _nullableString(demande['code']),
+              adminComment: _nullableString(demande['commentaireAdmin']),
+              imageUrl: resolveEquipmentRequestImageUrl(demande),
+            ),
+          )
+          .toList(growable: false);
+
+      if (!mounted) return;
+      setState(() {
+        _purchaseTransactions = transactions;
+        _isLoadingPurchases = false;
+        _purchasesErrorMessage = null;
+      });
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _isLoadingPurchases = false;
+          // Keep stale data visible while reporting this section's error.
+          _purchasesErrorMessage = _messageForHistoryError(error);
+        });
+      }
+      debugPrint('Erreur chargement achats historique: $error');
+    } finally {
+      _isFetchingPurchases = false;
+      if (mounted && !silent) setState(() {});
     }
   }
 
   String _messageForHistoryError(Object error) {
-    final errorStr = error.toString().toLowerCase();
-    if (errorStr.contains('not authenticated') || errorStr.contains('token')) {
+    final errorText = error.toString().toLowerCase();
+    if (errorText.contains('not authenticated') ||
+        errorText.contains('session') ||
+        errorText.contains('token')) {
       return 'Session expirée ou invalide. Veuillez vous reconnecter.';
     }
-    if (errorStr.contains('socketexception') || errorStr.contains('connection')) {
+    if (errorText.contains('socketexception') ||
+        errorText.contains('connection') ||
+        errorText.contains('network')) {
       return 'Connexion internet impossible. Vérifiez votre connexion.';
     }
-    if (errorStr.contains('500') || errorStr.contains('serveur')) {
+    if (errorText.contains('500') || errorText.contains('serveur')) {
       return 'Serveur temporairement indisponible. Réessayez plus tard.';
-    }
-    if (errorStr.contains('invalid')) {
-      return 'Session expirée. Veuillez vous reconnecter.';
     }
     return 'Une erreur est survenue. Veuillez réessayer.';
   }
 
-  /// Convertir le format de date du backend
-  String _formatDateForApi(String? dateStr) {
-    if (dateStr == null) return '';
-    try {
-      final date = DateTime.parse(dateStr);
-      return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
-    } catch (e) {
-      return dateStr;
+  bool _matchesFilter(Transaction transaction, String filter) {
+    if (filter == 'all') return true;
+
+    if (transaction.isLocation) {
+      switch (filter) {
+        case 'en-attente':
+        case 'approuvee':
+        case 'termine':
+          return transaction.status == filter;
+        case 'en-cours':
+          return transaction.status == 'en-cours' &&
+              !_needsReturnVerification(transaction);
+        case 'a-verifier':
+          return _needsReturnVerification(transaction);
+        case 'refusee':
+          return transaction.status == 'rejetee' ||
+              transaction.status == 'annulee';
+      }
+    } else {
+      return transaction.status == filter;
+    }
+
+    return false;
+  }
+
+  bool _needsReturnVerification(Transaction transaction) {
+    if (!transaction.isLocation) return false;
+    if (transaction.status == 'en-retard') return true;
+    if (transaction.status != 'en-cours' || transaction.dateRetour == null) {
+      return false;
+    }
+
+    final returnDate = _parseCalendarDate(transaction.dateRetour!);
+    if (returnDate == null) return false;
+    final now = DateTime.now();
+    final today = DateTime(now.year, now.month, now.day);
+    return returnDate.isBefore(today);
+  }
+
+  String _statusLabel(Transaction transaction) {
+    if (_needsReturnVerification(transaction)) return 'À vérifier';
+
+    if (transaction.isLocation) {
+      switch (transaction.status) {
+        case 'en-attente':
+          return 'En attente';
+        case 'approuvee':
+          return 'Approuvée';
+        case 'en-cours':
+          return 'En cours';
+        case 'termine':
+          return 'Terminée';
+        case 'rejetee':
+          return 'Refusée';
+        case 'annulee':
+          return 'Annulée';
+        default:
+          return 'Statut inconnu';
+      }
+    }
+
+    switch (transaction.status) {
+      case 'en_attente':
+        return 'En attente';
+      case 'approuvee':
+        return 'Approuvée';
+      case 'rejetee':
+        return 'Refusée';
+      case 'livree':
+        return 'Livrée';
+      case 'termine':
+        return 'Terminée';
+      default:
+        return 'Statut inconnu';
     }
   }
 
-  /// Convertit les anciens statuts des demandes d'achat.
-  /// Les locations utilisent leur normaliseur dédié à la source des données.
-  String _convertStatut(String backendStatut) {
-    switch (normalizeLocationStatus(backendStatut)) {
-      case 'en-cours':
-      case 'approuvee':
-        return 'en-cours';
-      case 'termine':
-        return 'termine';
-      case 'en-attente':
-        return 'en-attente';
-      case 'rejetee':
-        return 'rejetee';
-      case 'annulee':
-        return 'annulee';
-      default:
-        return 'en-attente';
+  _StatusAppearance _statusAppearance(Transaction transaction) {
+    if (_needsReturnVerification(transaction)) {
+      return const _StatusAppearance(
+        foreground: _HistoryColors.alert,
+        background: _HistoryColors.alertSurface,
+        icon: Icons.info_outline,
+      );
     }
+    if (transaction.status == 'en-cours') {
+      return const _StatusAppearance(
+        foreground: _HistoryColors.primary,
+        background: _HistoryColors.activeSurface,
+        icon: Icons.circle,
+      );
+    }
+    if (transaction.status == 'approuvee') {
+      return const _StatusAppearance(
+        foreground: _HistoryColors.primary,
+        background: _HistoryColors.activeSurface,
+        icon: Icons.check_circle_outline,
+      );
+    }
+    if (transaction.status == 'en-attente' ||
+        transaction.status == 'en_attente') {
+      return const _StatusAppearance(
+        foreground: _HistoryColors.body,
+        background: _HistoryColors.canvas,
+        icon: Icons.schedule,
+      );
+    }
+    if (transaction.status == 'rejetee') {
+      return const _StatusAppearance(
+        foreground: _HistoryColors.body,
+        background: _HistoryColors.canvas,
+        icon: Icons.info_outline,
+      );
+    }
+    if (transaction.status == 'livree' || transaction.status == 'termine') {
+      return const _StatusAppearance(
+        foreground: _HistoryColors.body,
+        background: _HistoryColors.canvas,
+        icon: Icons.check_circle_outline,
+      );
+    }
+    return const _StatusAppearance(
+      foreground: _HistoryColors.muted,
+      background: _HistoryColors.canvas,
+      icon: Icons.help_outline,
+    );
   }
+
+  void _selectSection(_HistorySection section) {
+    if (_section == section) return;
+    setState(() => _section = section);
+  }
+
+  void _selectFilter(String filter) {
+    setState(() {
+      if (_section == _HistorySection.locations) {
+        _locationFilter = filter;
+      } else {
+        _purchaseFilter = filter;
+      }
+    });
+  }
+
+  Future<void> _retryActiveSection() => _section == _HistorySection.locations
+      ? _loadLocations()
+      : _loadPurchases();
 
   @override
   void dispose() {
     _statusRefreshTimer?.cancel();
     WidgetsBinding.instance.removeObserver(this);
-    _extSub?.cancel();
-    _dataManager.removeListener(_onDataManagerChanged);
     super.dispose();
   }
 
-  // ── Appel téléphonique réel (url_launcher) ─────────────────────────────
-
-  Future<void> _callPhone(String phone) async {
-    final uri = Uri.parse('tel:$phone');
-    if (await canLaunchUrl(uri)) {
-      await launchUrl(uri);
-    } else {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Impossible de lancer l\'appel vers $phone'),
-            backgroundColor: Colors.red,
-          ),
-        );
-      }
-    }
-  }
-
-  // ── Build principal ────────────────────────────────────────────────────────
-
   @override
   Widget build(BuildContext context) {
-    final late = _lateTransactions;
-    final myDemandes = _currentUserEmail.isNotEmpty
-        ? _dataManager.getDemandesByClient(_currentUserEmail)
-        : <dynamic>[];
+    final isLocations = _section == _HistorySection.locations;
+    final sectionRecords = _sectionTransactions;
+    final visibleRecords = _visibleTransactions;
+    final locationsToVerify = _locationsToVerify;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: _HistoryColors.canvas,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: _HistoryColors.surface,
+        surfaceTintColor: _HistoryColors.surface,
         elevation: 0,
+        automaticallyImplyLeading: false,
+        titleSpacing: 16,
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
+          children: const [
             Text(
-              'Historique & Suivi',
-              style: GoogleFonts.poppins(
-                fontSize: 20,
+              'Historique',
+              style: TextStyle(
+                color: _HistoryColors.ink,
+                fontSize: 24,
                 fontWeight: FontWeight.w700,
-                color: const Color(0xFF111827),
+                height: 1.1,
               ),
             ),
+            SizedBox(height: 2),
             Text(
-              'Gérez vos commandes et locations',
-              style: GoogleFonts.poppins(
-                fontSize: 12,
+              'Suivi de vos locations et achats',
+              style: TextStyle(
+                color: _HistoryColors.body,
+                fontSize: 13,
                 fontWeight: FontWeight.w400,
-                color: const Color(0xFF6B7280),
               ),
             ),
           ],
         ),
-        automaticallyImplyLeading: false,
         actions: [
-          Stack(
-            children: [
-              IconButton(
-                icon: const Icon(Icons.shopping_bag, color: Color(0xFF059669)),
-                onPressed: () {
-                  Navigator.push(
-                    context,
-                    MaterialPageRoute(
-                        builder: (context) => const ClientMesDemandesPage()),
-                  );
-                },
-                tooltip: 'Mes demandes d\'achat',
-              ),
-              if (myDemandes.isNotEmpty)
-                Positioned(
-                  right: 8,
-                  top: 8,
-                  child: Container(
-                    padding: const EdgeInsets.all(4),
-                    decoration: const BoxDecoration(
-                      color: Color(0xFF059669),
-                      shape: BoxShape.circle,
-                    ),
-                    constraints: const BoxConstraints(
-                        minWidth: 16, minHeight: 16),
-                    child: Text(
-                      '${myDemandes.length}',
-                      style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                ),
-            ],
-          ),
           IconButton(
-            icon: const Icon(Icons.request_quote_outlined, color: Color(0xFF2563EB)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (context) => ClientMesDevisPage(
-                    serviceImageResolver: ServiceScreen.imageUrlForId,
-                  ),
-                ),
-              );
-            },
-            tooltip: 'Mes devis',
-          ),
-          // Bouton Admin Prolongations supprimé - page supprimée
-          // if (kDemoPaymentsEnabled)
-          //   IconButton(
-          //     icon: const Icon(Icons.admin_panel_settings,
-          //         color: Color(0xFF2563EB)),
-          //     onPressed: () {
-          //       Navigator.push(
-          //         context,
-          //         MaterialPageRoute(
-          //             builder: (context) => const AdminProlongationsPage()),
-          //       );
-          //     },
-          //     tooltip: 'Admin Prolongations',
-          //   ),
-          IconButton(
-            icon: const Icon(Icons.download, color: Color(0xFF2563EB)),
-            onPressed: _exportHistorique,
-            tooltip: 'Exporter l\'historique',
-          ),
-          IconButton(
-            icon: const Icon(Icons.refresh, color: Color(0xFF2563EB)),
-            onPressed: _loadTransactionsFromBackend,
             tooltip: 'Actualiser',
+            onPressed: _isFetching ? null : _refreshAllTransactions,
+            icon: _isFetching
+                ? const SizedBox.square(
+                    dimension: 20,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 2,
+                      color: _HistoryColors.primary,
+                    ),
+                  )
+                : const Icon(Icons.refresh, color: _HistoryColors.primary),
           ),
-          IconButton(
-            icon: const Icon(Icons.dashboard, color: Color(0xFF2563EB)),
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (context) => const DashboardScreen()),
-              );
-            },
-            tooltip: 'Tableau de bord',
-          ),
+          const SizedBox(width: 4),
         ],
       ),
-      body: Column(
-        children: [
-          // ── P1 : Bannière retard urgente ───────────────────────────────
-          if (late.isNotEmpty) _buildLateBanner(late),
-
-          // ── Filtres ───────────────────────────────────────────────────
-          Container(
-            color: Colors.white,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            child: SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
+      body: RefreshIndicator(
+        color: _HistoryColors.primary,
+        onRefresh: _refreshAllTransactions,
+        child: ListView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          padding: const EdgeInsets.only(bottom: 20),
+          children: [
+            _buildQuickLinks(context),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  'Tous',
-                  'En attente',
-                  'En cours',
-                  'Terminés',
-                  'Refusées / annulées',
-                ].map((filter) {
-                  final isSelected = _selectedFilter == filter;
-                  return Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: ChoiceChip(
-                      label: Text(
-                        filter,
-                        style: GoogleFonts.poppins(
-                          fontSize: 12,
-                          fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                        ),
-                      ),
-                      selected: isSelected,
-                      onSelected: (selected) {
-                        setState(() => _selectedFilter = filter);
-                      },
-                      backgroundColor: const Color(0xFFF3F4F6),
-                      selectedColor: const Color(0xFF2563EB),
-                      labelStyle: TextStyle(
-                        color: isSelected ? Colors.white : const Color(0xFF374151),
-                        fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
-                      ),
-                    ),
-                  );
-                }).toList(),
+                  if (isLocations && locationsToVerify.isNotEmpty) ...[
+                    _buildReturnAlert(locationsToVerify),
+                    const SizedBox(height: 12),
+                  ],
+                  _buildSectionControl(),
+                  const SizedBox(height: 14),
+                  _buildSectionSummary(sectionRecords.length, isLocations),
+                  const SizedBox(height: 8),
+                  _buildFilterRail(),
+                  const SizedBox(height: 8),
+                  if (sectionRecords.isNotEmpty &&
+                      _activeErrorMessage != null) ...[
+                    _buildRefreshErrorBanner(),
+                    const SizedBox(height: 8),
+                  ],
+                  if (_activeIsLoading)
+                    _buildLoadingState()
+                  else if (_activeErrorMessage != null &&
+                      sectionRecords.isEmpty)
+                    _buildErrorState()
+                  else if (visibleRecords.isEmpty)
+                    _buildEmptyState(sectionRecords.isEmpty)
+                  else
+                    ...visibleRecords.map(_buildTransactionRow),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildQuickLinks(BuildContext context) {
+    return Container(
+      height: 50,
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: const BoxDecoration(
+        color: _HistoryColors.surface,
+        border: Border(bottom: BorderSide(color: _HistoryColors.softDivider)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const ClientMesDemandesPage(),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.shopping_bag_outlined, size: 18),
+              label: const Text('Mes demandes'),
+              style: TextButton.styleFrom(
+                foregroundColor: _HistoryColors.primary,
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                minimumSize: const Size(44, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
               ),
             ),
           ),
-
-          // ── Liste des transactions ─────────────────────────────────────
+          const SizedBox(
+            height: 24,
+            child: VerticalDivider(width: 1, color: _HistoryColors.border),
+          ),
           Expanded(
-            child: _isLoading
-                ? const Center(
-                    child: CircularProgressIndicator(
-                      color: Color(0xFF2563EB),
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.of(context).push(
+                  MaterialPageRoute<void>(
+                    builder: (_) => ClientMesDevisPage(
+                      serviceImageResolver: ServiceScreen.imageUrlForId,
                     ),
-                  )
-                : _errorMessage != null
-                    ? _buildErrorState()
-                    : RefreshIndicator(
-                        onRefresh: _loadTransactionsFromBackend,
-                        child: _filteredTransactions.isEmpty
-                            ? ListView(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                children: [
-                                  SizedBox(
-                                    height: MediaQuery.sizeOf(context).height * 0.65,
-                                    child: _buildEmptyState(),
-                                  ),
-                                ],
-                              )
-                            : ListView.builder(
-                                physics: const AlwaysScrollableScrollPhysics(),
-                                padding: const EdgeInsets.all(16),
-                                itemCount: _filteredTransactions.length,
-                                itemBuilder: (context, index) {
-                                  final transaction =
-                                      _filteredTransactions[index];
-                                  return _buildEnhancedTransactionCard(
-                                    transaction,
-                                  );
-                                },
-                              ),
-                      ),
+                  ),
+                );
+              },
+              icon: const Icon(Icons.description_outlined, size: 18),
+              label: const Text('Mes devis'),
+              style: TextButton.styleFrom(
+                foregroundColor: _HistoryColors.primary,
+                textStyle: const TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w600,
+                ),
+                minimumSize: const Size(44, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+              ),
+            ),
           ),
         ],
       ),
     );
   }
 
-  // ── P1 : Bannière d'alerte retard ─────────────────────────────────────────
+  Widget _buildReturnAlert(List<Transaction> locations) {
+    final firstLocation = locations.first;
+    final returnDate = _formatDate(firstLocation.dateRetour);
+    final countLabel = locations.length == 1
+        ? '1 location à vérifier'
+        : '${locations.length} locations à vérifier';
+    final detail = returnDate.isEmpty
+        ? firstLocation.title
+        : '${firstLocation.title} · retour prévu le $returnDate';
 
-  Widget _buildLateBanner(List<Transaction> lateList) {
     return Container(
       width: double.infinity,
-      color: const Color(0xFFDC2626),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
+      padding: const EdgeInsets.fromLTRB(12, 12, 8, 12),
+      decoration: BoxDecoration(
+        color: _HistoryColors.alertSurface,
+        borderRadius: BorderRadius.circular(11),
+        border: const Border(
+          left: BorderSide(color: _HistoryColors.alert, width: 4),
+        ),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.center,
         children: [
-          // En-tête bannière
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
-            child: Row(
+          const Icon(Icons.info_outline, size: 22, color: _HistoryColors.alert),
+          const SizedBox(width: 10),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  padding: const EdgeInsets.all(6),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withValues(alpha: 0.2),
-                    shape: BoxShape.circle,
+                Text(
+                  locations.length == 1 ? 'Retour à vérifier' : countLabel,
+                  style: const TextStyle(
+                    color: _HistoryColors.ink,
+                    fontSize: 15,
+                    fontWeight: FontWeight.w700,
+                    height: 1.25,
                   ),
-                  child: const Icon(Icons.warning_rounded, color: Colors.white, size: 20),
                 ),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        lateList.length == 1
-                            ? '🚨 RETARD — 1 appareil à retourner'
-                            : '🚨 RETARD — ${lateList.length} appareils à retourner',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize: 14,
-                        ),
-                      ),
-                      Text(
-                        'Des pénalités s\'accumulent. Agissez maintenant.',
-                        style: GoogleFonts.poppins(
-                          color: Colors.white70,
-                          fontSize: 11,
-                        ),
-                      ),
-                    ],
+                const SizedBox(height: 3),
+                Text(
+                  detail,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    color: _HistoryColors.body,
+                    fontSize: 13,
+                    height: 1.35,
+                  ),
+                ),
+                const SizedBox(height: 3),
+                const Text(
+                  'Date dépassée · à confirmer avec EG39',
+                  style: TextStyle(
+                    color: _HistoryColors.muted,
+                    fontSize: 12,
+                    height: 1.35,
                   ),
                 ),
               ],
             ),
           ),
-          // Détail de chaque retard
-          ...lateList.map((t) {
-            final info = _getLateInfo(t);
-            final daysLate = info['daysLate'] as int;
-            final penalty = info['penalty'] as int;
-            return Container(
-              margin:
-                  const EdgeInsets.only(left: 16, right: 16, bottom: 10),
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(10),
+          const SizedBox(width: 4),
+          TextButton(
+            onPressed: () => _showTransactionDetails(firstLocation),
+            style: TextButton.styleFrom(
+              foregroundColor: _HistoryColors.primary,
+              minimumSize: const Size(48, 44),
+              padding: const EdgeInsets.symmetric(horizontal: 4),
+              textStyle: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  // Titre appareil
-                  Row(
-                    children: [
-                      const Icon(Icons.inventory_2,
-                          size: 16, color: Color(0xFFDC2626)),
-                      const SizedBox(width: 6),
-                      Expanded(
-                        child: Text(
-                          t.title,
-                          style: const TextStyle(
-                            fontWeight: FontWeight.bold,
-                            fontSize: 14,
-                            color: Color(0xFF111827),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 6),
-                  // Jours de retard
-                  _bannerInfoRow(
-                    Icons.schedule,
-                    'Retard',
-                    '$daysLate jour${daysLate > 1 ? 's' : ''} de retard',
-                    const Color(0xFFDC2626),
-                  ),
-                  const SizedBox(height: 4),
-                  // Pénalité
-                  _bannerInfoRow(
-                    Icons.monetization_on,
-                    'Pénalité accumulée',
-                    '${_formatNumber(penalty)} FCFA (tarif majoré 50 %)',
-                    const Color(0xFFEA580C),
-                  ),
-                  const SizedBox(height: 4),
-                  // Date prévue de retour
-                  if (t.dateRetour != null)
-                    _bannerInfoRow(
-                      Icons.event,
-                      'Date de retour prévue',
-                      _formatDate(t.dateRetour!),
-                      const Color(0xFF6B7280),
-                    ),
-                  const SizedBox(height: 10),
-                  // Boutons d'action
-                  Row(
-                    children: [
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => _prolongerLocation(t),
-                          icon: const Icon(Icons.update, size: 14),
-                          label: const Text('Prolonger',
-                              style: TextStyle(fontSize: 12)),
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: const Color(0xFF059669),
-                            side: const BorderSide(
-                                color: Color(0xFF059669), width: 1.5),
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 6),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: ElevatedButton.icon(
-                          onPressed: () => _callPhone('99001166'),
-                          icon: const Icon(Icons.call, size: 14),
-                          label: const Text('Contacter DG',
-                              style: TextStyle(fontSize: 12)),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: const Color(0xFFDC2626),
-                            foregroundColor: Colors.white,
-                            padding: const EdgeInsets.symmetric(
-                                horizontal: 8, vertical: 6),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            );
-          }),
-          const SizedBox(height: 4),
+            ),
+            child: const Text(
+              'Vérifier\nle retour',
+              textAlign: TextAlign.center,
+            ),
+          ),
         ],
       ),
     );
   }
 
-  Widget _bannerInfoRow(
-      IconData icon, String label, String value, Color color) {
-    return Row(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Icon(icon, size: 13, color: color),
-        const SizedBox(width: 6),
-        Text(
-          '$label : ',
-          style: TextStyle(
-              fontSize: 12, color: Colors.grey[600]),
+  Widget _buildSectionControl() {
+    return SizedBox(
+      width: double.infinity,
+      child: SegmentedButton<_HistorySection>(
+        showSelectedIcon: false,
+        segments: const [
+          ButtonSegment<_HistorySection>(
+            value: _HistorySection.locations,
+            label: Text('Locations'),
+          ),
+          ButtonSegment<_HistorySection>(
+            value: _HistorySection.achats,
+            label: Text('Achats'),
+          ),
+        ],
+        selected: {_section},
+        onSelectionChanged: (selection) => _selectSection(selection.first),
+        style: ButtonStyle(
+          minimumSize: const WidgetStatePropertyAll(Size.fromHeight(46)),
+          padding: const WidgetStatePropertyAll(
+            EdgeInsets.symmetric(horizontal: 8),
+          ),
+          foregroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? Colors.white
+                : _HistoryColors.body,
+          ),
+          backgroundColor: WidgetStateProperty.resolveWith(
+            (states) => states.contains(WidgetState.selected)
+                ? _HistoryColors.primary
+                : _HistoryColors.surface,
+          ),
+          textStyle: WidgetStateProperty.resolveWith(
+            (states) => TextStyle(
+              fontSize: 14,
+              fontWeight: states.contains(WidgetState.selected)
+                  ? FontWeight.w700
+                  : FontWeight.w600,
+            ),
+          ),
+          side: const WidgetStatePropertyAll(
+            BorderSide(color: _HistoryColors.border),
+          ),
+          shape: WidgetStatePropertyAll(
+            RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+          ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildSectionSummary(int count, bool isLocations) {
+    final noun = isLocations
+        ? (count == 1 ? 'location' : 'locations')
+        : (count == 1 ? 'demande d’achat' : 'demandes d’achat');
+    return Row(
+      children: [
         Expanded(
           child: Text(
-            value,
-            style: TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.bold,
-              color: color,
+            '$count $noun',
+            style: const TextStyle(
+              color: _HistoryColors.ink,
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
             ),
+          ),
+        ),
+        Text(
+          isLocations ? 'Échéances de retour' : 'Suivi par quantité',
+          style: const TextStyle(
+            color: _HistoryColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
           ),
         ),
       ],
     );
   }
 
-  // ─── Helpers ───────────────────────────────────────────────────────────────
-
-  void _exportHistorique() {
-    // TODO: Implement export functionality
-  }
-
-  String _formatNumber(int number) {
-    return number
-        .toString()
-        .replaceAllMapped(
-          RegExp(r'(\d{1,3})(?=(\d{3})+(?!\d))'),
-          (Match m) => '${m[1]} ',
-        )
-        .trim();
-  }
-
-  Widget _buildEmptyState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
+  Widget _buildFilterRail() {
+    return SizedBox(
+      height: 48,
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
           children: [
-            Icon(Icons.history, size: 72, color: Colors.grey[300]),
-            const SizedBox(height: 20),
-            Text(
-              'Aucune transaction pour le moment',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF374151),
+            for (final filter in _activeFilters)
+              Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  key: ValueKey(
+                    'history-filter-${_section.name}-${filter.key}',
+                  ),
+                  label: Text(filter.label),
+                  selected: _activeFilter == filter.key,
+                  onSelected: (_) => _selectFilter(filter.key),
+                  showCheckmark: false,
+                  materialTapTargetSize: MaterialTapTargetSize.padded,
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 7,
+                  ),
+                  backgroundColor: _HistoryColors.surface,
+                  selectedColor: _HistoryColors.primary,
+                  side: BorderSide(
+                    color: _activeFilter == filter.key
+                        ? _HistoryColors.primary
+                        : _HistoryColors.border,
+                  ),
+                  labelStyle: TextStyle(
+                    color: _activeFilter == filter.key
+                        ? Colors.white
+                        : _HistoryColors.body,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
               ),
-              textAlign: TextAlign.center,
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTransactionRow(Transaction transaction) {
+    final status = _statusAppearance(transaction);
+    final dateLine = transaction.isLocation
+        ? _formatRentalPeriod(transaction.date, transaction.dateRetour)
+        : 'Demande créée le ${_formatDate(transaction.date)}';
+    final code = _stringValue(transaction.invoiceNumber);
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        key: ValueKey(
+          'history-transaction-row-${transaction.type}-${transaction.id}',
+        ),
+        onTap: () => _showTransactionDetails(transaction),
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: _HistoryColors.border)),
+          ),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ServiceImageThumbnail(
+                key: ValueKey(
+                  'history-transaction-image-${transaction.type}-${transaction.id}',
+                ),
+                imageUrl: transaction.imageUrl,
+                semanticLabel: 'Photo de référence pour ${transaction.title}',
+                width: 64,
+                height: 64,
+                borderRadius: 8,
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(
+                          child: Text(
+                            transaction.title,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              color: _HistoryColors.ink,
+                              fontSize: 16,
+                              fontWeight: FontWeight.w700,
+                              height: 1.25,
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        _buildStatusBadge(transaction, status),
+                      ],
+                    ),
+                    const SizedBox(height: 5),
+                    if (transaction.isLocation)
+                      _MetadataLine(
+                        icon: Icons.calendar_today_outlined,
+                        text: dateLine,
+                      )
+                    else ...[
+                      _MetadataLine(
+                        icon: Icons.inventory_2_outlined,
+                        text:
+                            'Quantité demandée : '
+                            '${transaction.quantity?.toString() ?? 'Non transmise'}',
+                      ),
+                      const SizedBox(height: 3),
+                      _MetadataLine(
+                        icon: Icons.calendar_today_outlined,
+                        text: dateLine,
+                      ),
+                    ],
+                    if (transaction.amount != null) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        '${transaction.isLocation ? 'Montant du dossier' : 'Total de la demande'} · '
+                        '${_formatAmount(transaction.amount!)} FCFA',
+                        style: const TextStyle(
+                          color: _HistoryColors.ink,
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                    if (code.isNotEmpty) ...[
+                      const SizedBox(height: 4),
+                      Text(
+                        'Dossier $code',
+                        style: const TextStyle(
+                          color: _HistoryColors.muted,
+                          fontSize: 13,
+                          height: 1.35,
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildStatusBadge(
+    Transaction transaction,
+    _StatusAppearance appearance,
+  ) {
+    return Container(
+      constraints: const BoxConstraints(minHeight: 26),
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: appearance.background,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(appearance.icon, size: 14, color: appearance.foreground),
+          const SizedBox(width: 4),
+          Text(
+            _statusLabel(transaction),
+            style: TextStyle(
+              color: appearance.foreground,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
-            const SizedBox(height: 10),
-            Text(
-              'Vos locations, achats et services apparaîtront ici dès que vous effectuez une opération.',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: const Color(0xFF6B7280),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Semantics(
+      label: 'Chargement de l’historique',
+      liveRegion: true,
+      child: Column(
+        children: [
+          for (var index = 0; index < 2; index++)
+            Container(
+              margin: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              decoration: const BoxDecoration(
+                border: Border(
+                  bottom: BorderSide(color: _HistoryColors.border),
+                ),
               ),
-              textAlign: TextAlign.center,
+              child: Row(
+                children: [
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE5E5E8),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        _SkeletonLine(widthFactor: 0.72),
+                        SizedBox(height: 10),
+                        _SkeletonLine(widthFactor: 0.48),
+                        SizedBox(height: 8),
+                        _SkeletonLine(widthFactor: 0.6),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildRefreshErrorBanner() {
+    final isLocations = _section == _HistorySection.locations;
+    return Semantics(
+      liveRegion: true,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+        decoration: BoxDecoration(
+          color: _HistoryColors.surface,
+          border: Border.all(color: _HistoryColors.border),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        child: Row(
+          children: [
+            const Icon(
+              Icons.cloud_off_outlined,
+              size: 18,
+              color: _HistoryColors.muted,
+            ),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    isLocations
+                        ? 'Actualisation des locations impossible'
+                        : 'Actualisation des achats impossible',
+                    style: const TextStyle(
+                      color: _HistoryColors.ink,
+                      fontSize: 13,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  Text(
+                    _activeErrorMessage ?? '',
+                    style: const TextStyle(
+                      color: _HistoryColors.muted,
+                      fontSize: 12,
+                      height: 1.3,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            TextButton(
+              onPressed: _activeIsFetching ? null : _retryActiveSection,
+              style: TextButton.styleFrom(
+                foregroundColor: _HistoryColors.primary,
+                minimumSize: const Size(44, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 6),
+                textStyle: const TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              child: const Text('Réessayer'),
             ),
           ],
         ),
@@ -836,1822 +1101,484 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
   }
 
   Widget _buildErrorState() {
-    return Center(
-      child: Padding(
-        padding: const EdgeInsets.all(32),
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.error_outline, size: 72, color: Colors.red[300]),
-            const SizedBox(height: 20),
-            Text(
-              'Erreur de chargement',
-              style: GoogleFonts.poppins(
-                fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF374151),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 10),
-            Text(
-              _errorMessage ?? 'Une erreur est survenue',
-              style: GoogleFonts.poppins(
-                fontSize: 13,
-                color: const Color(0xFF6B7280),
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 20),
-            ElevatedButton.icon(
-              onPressed: _loadTransactionsFromBackend,
-              icon: const Icon(Icons.refresh),
-              label: Text('Réessayer', style: GoogleFonts.poppins(fontWeight: FontWeight.w600)),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFF2563EB),
-              ),
-            ),
-          ],
-        ),
-      ),
+    final isLocations = _section == _HistorySection.locations;
+    return _StateMessage(
+      icon: Icons.cloud_off_outlined,
+      title: isLocations ? 'Locations indisponibles' : 'Achats indisponibles',
+      message: _activeErrorMessage ?? 'Une erreur est survenue. Réessayez.',
+      actionLabel: 'Réessayer',
+      onAction: _activeIsFetching ? null : _retryActiveSection,
     );
   }
 
-  Map<String, dynamic> _getTypeConfig(String type) {
-    switch (type) {
-      case 'location':
-        return {
-          'label': 'Location',
-          'bgColor': const Color(0xFFDBEAFE),
-          'icon': Icons.inventory_2,
-          'iconColor': const Color(0xFF2563EB),
-        };
-      case 'achat':
-        return {
-          'label': 'Vente',
-          'bgColor': const Color(0xFFF0FDF4),
-          'icon': Icons.shopping_cart,
-          'iconColor': const Color(0xFF059669),
-        };
-      case 'service':
-        return {
-          'label': 'Service',
-          'bgColor': const Color(0xFFF3E8FF),
-          'icon': Icons.build,
-          'iconColor': const Color(0xFF9333EA),
-        };
-      default:
-        return {
-          'label': 'Inconnu',
-          'bgColor': const Color(0xFFF3F4F6),
-          'icon': Icons.help,
-          'iconColor': const Color(0xFF6B7280),
-        };
-    }
-  }
-
-  Map<String, dynamic> _getStatusConfig(String status) {
-    switch (status) {
-      case 'en-attente':
-        return {
-          'bgColor': const Color(0xFFFEF3C7),
-          'icon': Icons.hourglass_empty,
-          'textColor': const Color(0xFFD97706),
-          'label': 'En attente',
-        };
-      case 'approuvee':
-        return {
-          'bgColor': const Color(0xFFD1FAE5),
-          'icon': Icons.thumb_up_outlined,
-          'textColor': const Color(0xFF059669),
-          'label': 'Acceptée',
-        };
-      case 'en-cours':
-        return {
-          'bgColor': const Color(0xFFDBEAFE),
-          'icon': Icons.autorenew,
-          'textColor': const Color(0xFF2563EB),
-          'label': 'En cours',
-        };
-      case 'en-retard':
-        return {
-          'bgColor': const Color(0xFFFEE2E2),
-          'icon': Icons.warning_amber_rounded,
-          'textColor': const Color(0xFFDC2626),
-          'label': 'En retard',
-        };
-      case 'termine':
-        return {
-          'bgColor': const Color(0xFFF0FDF4),
-          'icon': Icons.check_circle,
-          'textColor': const Color(0xFF059669),
-          'label': 'Terminée',
-        };
-      case 'rejetee':
-        return {
-          'bgColor': const Color(0xFFFEE2E2),
-          'icon': Icons.cancel,
-          'textColor': const Color(0xFFDC2626),
-          'label': 'Refusée',
-          'showDetails': true,
-        };
-      case 'annulee':
-        return {
-          'bgColor': const Color(0xFFF3F4F6),
-          'icon': Icons.block_outlined,
-          'textColor': const Color(0xFF6B7280),
-          'label': 'Annulée',
-        };
-      default:
-        return {
-          'bgColor': const Color(0xFFF3F4F6),
-          'icon': Icons.help_outline,
-          'textColor': const Color(0xFF6B7280),
-          'label': 'Statut inconnu',
-        };
-    }
-  }
-
-  // ── P2 : Calcul pénalité corrigé ──────────────────────────────────────────
-  // Formule : tarif journalier × 1,5 × jours de retard
-  Map<String, dynamic> _getLateInfo(Transaction transaction) {
-    if (transaction.dateRetour == null ||
-        !['en-cours', 'en-retard'].contains(transaction.status)) {
-      return {'isLate': false, 'daysLate': 0, 'penalty': 0};
+  Widget _buildEmptyState(bool sectionIsEmpty) {
+    final hasNoHistory = _allTransactions.isEmpty;
+    if (!sectionIsEmpty) {
+      return _StateMessage(
+        icon: Icons.filter_alt_off_outlined,
+        title: 'Aucun dossier dans ce filtre',
+        message: 'Aucun dossier ne correspond à « ${_activeFilterLabel()} ».',
+        actionLabel: 'Effacer le filtre',
+        onAction: () => _selectFilter('all'),
+      );
     }
 
-    final returnDate = DateTime.tryParse(transaction.dateRetour!);
-    if (returnDate == null) {
-      return {'isLate': transaction.status == 'en-retard', 'daysLate': 0, 'penalty': 0};
+    final isLocations = _section == _HistorySection.locations;
+    if (!hasNoHistory) {
+      return _StateMessage(
+        icon: isLocations
+            ? Icons.location_on_outlined
+            : Icons.shopping_bag_outlined,
+        title: isLocations
+            ? 'Aucune location pour le moment'
+            : 'Aucun achat pour le moment',
+        message: isLocations
+            ? 'Vos périodes de location apparaîtront ici après leur enregistrement.'
+            : 'Vos demandes d’achat et leurs quantités apparaîtront ici.',
+        actionLabel: isLocations ? 'Voir les achats' : 'Voir les locations',
+        onAction: () => _selectSection(
+          isLocations ? _HistorySection.achats : _HistorySection.locations,
+        ),
+      );
     }
 
-    final now = DateTime.now();
-    if (transaction.status == 'en-retard' || now.isAfter(returnDate)) {
-      final daysLate = now.difference(returnDate).inDays.clamp(0, 100000);
-      // Pénalité = tarif journalier majoré de 50 % × jours de retard
-      final penalty = (transaction.dailyRate * 1.5 * daysLate).round();
-      return {'isLate': true, 'daysLate': daysLate, 'penalty': penalty};
+    return _StateMessage(
+      icon: Icons.history,
+      title: 'Aucun dossier pour le moment',
+      message:
+          'Vos locations et demandes d’achat apparaîtront ici après leur création.',
+      actionLabel: 'Parcourir les équipements',
+      onAction: () {
+        Navigator.of(
+          context,
+        ).push(MaterialPageRoute<void>(builder: (_) => LocationScreen()));
+      },
+    );
+  }
+
+  String _activeFilterLabel() {
+    for (final filter in _activeFilters) {
+      if (filter.key == _activeFilter) return filter.label;
     }
-    return {'isLate': false, 'daysLate': 0, 'penalty': 0};
+    return 'ce statut';
   }
 
-  String _formatDate(String dateString) {
-    final date = DateTime.parse(dateString);
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
-  }
-
-  /// Format date en format français (ex: 24 avril 2026)
-  String _formatDateFr(String dateString) {
-    final date = DateTime.parse(dateString);
-    final months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
-                    'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
-    return '${date.day} ${months[date.month - 1]} ${date.year}';
-  }
-
-  void _showRejectionReason(Transaction transaction) {
-    showModalBottomSheet(
+  void _showTransactionDetails(Transaction transaction) {
+    showModalBottomSheet<void>(
       context: context,
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Motif du rejet:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-            const SizedBox(height: 8),
-            Text(transaction.adminComment ?? 'Aucun motif',
-                style: const TextStyle(fontSize: 14)),
-            const SizedBox(height: 20),
-            ElevatedButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fermer'),
+      isScrollControlled: true,
+      useSafeArea: true,
+      backgroundColor: Colors.transparent,
+      barrierLabel: 'Fermer le détail du dossier',
+      builder: (sheetContext) {
+        final status = _statusAppearance(transaction);
+        final isReviewRequired = _needsReturnVerification(transaction);
+        final isRejected = transaction.status == 'rejetee';
+        final bottomInset = MediaQuery.viewInsetsOf(sheetContext).bottom;
+
+        return SafeArea(
+          top: false,
+          child: Container(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(sheetContext).height * 0.86,
             ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildActionButton(
-      String label, IconData icon, Color color, VoidCallback onPressed) {
-    return ElevatedButton.icon(
-      onPressed: onPressed,
-      icon: Icon(icon, size: 14),
-      label: Text(label, style: const TextStyle(fontSize: 11)),
-      style: ElevatedButton.styleFrom(
-        backgroundColor: color,
-        foregroundColor: Colors.white,
-        padding:
-            const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
-        minimumSize: const Size(0, 32),
-        textStyle: const TextStyle(fontSize: 11),
-      ),
-    );
-  }
-
-  // ── Facture principale ────────────────────────────────────────────────────
-
-  Future<void> _downloadInvoice(Transaction transaction) async {
-    final pdf = pw.Document();
-    pdf.addPage(
-      pw.Page(
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Container(
-                padding: const pw.EdgeInsets.all(20),
-                decoration:
-                    const pw.BoxDecoration(color: PdfColors.blue),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'Echelle EG39 - Facture',
-                      style: pw.TextStyle(
-                          fontSize: 24,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.white),
-                    ),
-                    pw.SizedBox(height: 10),
-                    pw.Text(
-                        'Numéro de facture: ${transaction.invoiceNumber ?? 'N/A'}',
-                        style: pw.TextStyle(
-                            fontSize: 14, color: PdfColors.white)),
-                    pw.Text('Date: ${_formatDate(transaction.date)}',
-                        style: pw.TextStyle(
-                            fontSize: 14, color: PdfColors.white)),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 20),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(20),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Détails de la Transaction',
-                        style: pw.TextStyle(
-                            fontSize: 18,
-                            fontWeight: pw.FontWeight.bold)),
-                    pw.SizedBox(height: 15),
-                    pw.Row(children: [
-                      pw.Expanded(
-                          child:
-                              pw.Text('Type: ${transaction.type}')),
-                      pw.Expanded(
-                          child: pw.Text(
-                              'Statut: ${transaction.status}')),
-                    ]),
-                    pw.SizedBox(height: 10),
-                    pw.Text('Description: ${transaction.title}'),
-                    pw.SizedBox(height: 10),
-                    if (transaction.dateRetour != null)
-                      pw.Text(
-                          'Date de retour: ${_formatDate(transaction.dateRetour!)}'),
-                    pw.SizedBox(height: 10),
-                    pw.Text(
-                      'Montant: ${_formatNumber(transaction.amount)} FCFA',
-                      style: pw.TextStyle(
-                          fontSize: 16,
-                          fontWeight: pw.FontWeight.bold),
-                    ),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 20),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(20),
-                decoration: pw.BoxDecoration(
-                    border: pw.Border(
-                        top: pw.BorderSide(color: PdfColors.grey))),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Merci pour votre confiance !',
-                        style: pw.TextStyle(
-                            fontSize: 14,
-                            fontStyle: pw.FontStyle.italic)),
-                    pw.SizedBox(height: 10),
-                    pw.Text(
-                        'Conditions: Tout retard de retour entraîne des pénalités (tarif majoré de 50 %).',
-                        style: pw.TextStyle(fontSize: 10)),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name:
-          'facture_${transaction.invoiceNumber ?? transaction.id}.pdf',
-    );
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Facture téléchargée avec succès !'),
-            backgroundColor: Colors.green),
-      );
-    }
-  }
-
-  // ── Prolongation ──────────────────────────────────────────────────────────
-
-  Future<void> _prolongerLocation(Transaction transaction) async {
-    if (transaction.dateRetour == null) return;
-
-    if (transaction.extensionCount >= 3) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: const [
-              Icon(Icons.warning, color: Colors.orange),
-              SizedBox(width: 8),
-              Text('Limite atteinte'),
-            ],
-          ),
-          content: const Text(
-            'Cette location a déjà été prolongée 3 fois au maximum.\n\n'
-            'Veuillez contacter le Directeur Général pour plus d\'informations.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fermer'),
+            decoration: const BoxDecoration(
+              color: _HistoryColors.surface,
+              borderRadius: BorderRadius.vertical(top: Radius.circular(18)),
             ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _callPhone('99001166');
-              },
-              icon: const Icon(Icons.call, size: 16),
-              label: const Text('Appeler DG'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669)),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    if (transaction.unpaidExtensionAmount > 0) {
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: const [
-              Icon(Icons.error, color: Colors.red),
-              SizedBox(width: 8),
-              Text('Paiement requis'),
-            ],
-          ),
-          content: Text(
-            'Vous avez ${_formatNumber(transaction.unpaidExtensionAmount)} FCFA '
-            'de prolongation(s) non payée(s).\n\n'
-            'Veuillez régler ce montant avant de prolonger à nouveau.',
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fermer'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.pop(context);
-                _payerExtension(transaction);
-              },
-              style:
-                  ElevatedButton.styleFrom(backgroundColor: Colors.green),
-              child: const Text('Payer maintenant'),
-            ),
-          ],
-        ),
-      );
-      return;
-    }
-
-    final currentReturnDate = DateTime.parse(transaction.dateRetour!);
-    final dailyRate = transaction.dailyRate;
-    DateTime? selectedDate;
-    int additionalDays = 0;
-    int additionalCost = 0;
-
-    await showDialog(
-      context: context,
-      builder: (BuildContext dialogContext) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(16)),
-              title: Column(
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(20, 12, 20, 24 + bottomInset),
+              child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    children: const [
-                      Icon(Icons.update, color: Color(0xFF059669)),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text('Prolonger la Location',
-                            style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold)),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Text(transaction.title,
-                      style: const TextStyle(
-                          fontSize: 14, color: Colors.grey)),
-                ],
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Container(
-                      padding: const EdgeInsets.all(12),
+                  Center(
+                    child: Container(
+                      width: 36,
+                      height: 4,
                       decoration: BoxDecoration(
-                        color: const Color(0xFFF3F4F6),
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(children: const [
-                            Icon(Icons.info_outline,
-                                size: 16, color: Color(0xFF6B7280)),
-                            SizedBox(width: 8),
-                            Text('Informations actuelles',
-                                style: TextStyle(
-                                    fontWeight: FontWeight.bold,
-                                    fontSize: 13)),
-                          ]),
-                          const SizedBox(height: 8),
-                          _buildInfoRow('Date de retour actuelle',
-                              _formatDate(transaction.dateRetour!)),
-                          _buildInfoRow('Tarif journalier',
-                              '${_formatNumber(dailyRate)} FCFA'),
-                          _buildInfoRow(
-                              'Prolongations déjà faites',
-                              '${transaction.extensionCount}/3'),
-                        ],
+                        color: const Color(0xFFD2D2D7),
+                        borderRadius: BorderRadius.circular(999),
                       ),
                     ),
-                    const SizedBox(height: 16),
-                    const Text('Nouvelle date de retour',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold, fontSize: 14)),
-                    const SizedBox(height: 8),
-                    InkWell(
-                      onTap: () async {
-                        final picked = await showDatePicker(
-                          context: context,
-                          initialDate: currentReturnDate
-                              .add(const Duration(days: 1)),
-                          firstDate: currentReturnDate
-                              .add(const Duration(days: 1)),
-                          lastDate: currentReturnDate
-                              .add(const Duration(days: 30)),
-                          builder: (context, child) {
-                            return Theme(
-                              data: Theme.of(context).copyWith(
-                                colorScheme: const ColorScheme.light(
-                                    primary: Color(0xFF059669)),
-                              ),
-                              child: child!,
-                            );
-                          },
-                        );
-                        if (picked != null) {
-                          setDialogState(() {
-                            selectedDate = picked;
-                            additionalDays = picked
-                                .difference(currentReturnDate)
-                                .inDays;
-                            additionalCost =
-                                additionalDays * dailyRate;
-                          });
-                        }
-                      },
-                      child: Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                              color: Colors.grey.shade300),
-                          borderRadius: BorderRadius.circular(8),
-                          color: Colors.white,
-                        ),
-                        child: Row(
-                          children: [
-                            const Icon(Icons.calendar_today,
-                                color: Color(0xFF059669)),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: Text(
-                                selectedDate != null
-                                    ? _formatDate(selectedDate!
-                                        .toIso8601String()
-                                        .split('T')[0])
-                                    : 'Cliquez pour sélectionner',
-                                style: TextStyle(
-                                  fontSize: 14,
-                                  color: selectedDate != null
-                                      ? Colors.black
-                                      : Colors.grey,
-                                ),
-                              ),
-                            ),
-                            const Icon(Icons.arrow_drop_down,
-                                color: Colors.grey),
-                          ],
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 8),
-                    Text('Maximum 30 jours de prolongation',
-                        style: TextStyle(
-                            fontSize: 11, color: Colors.grey[600])),
-                    if (selectedDate != null) ...[
-                      const SizedBox(height: 16),
-                      Container(
-                        padding: const EdgeInsets.all(12),
-                        decoration: BoxDecoration(
-                          gradient: const LinearGradient(
-                            colors: [
-                              Color(0xFFD1FAE5),
-                              Color(0xFFA7F3D0)
-                            ],
-                            begin: Alignment.topLeft,
-                            end: Alignment.bottomRight,
-                          ),
-                          borderRadius: BorderRadius.circular(8),
-                          border: Border.all(
-                              color: const Color(0xFF059669), width: 2),
-                        ),
+                  ),
+                  const SizedBox(height: 14),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            Row(children: const [
-                              Icon(Icons.calculate,
-                                  size: 16,
-                                  color: Color(0xFF059669)),
-                              SizedBox(width: 8),
-                              Text('Calcul de la prolongation',
-                                  style: TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      fontSize: 13,
-                                      color: Color(0xFF059669))),
-                            ]),
-                            const Divider(height: 16),
-                            _buildCalculRow('Jours supplémentaires',
-                                '$additionalDays jours'),
-                            _buildCalculRow('Coût par jour',
-                                '${_formatNumber(dailyRate)} FCFA'),
-                            const Divider(height: 12),
-                            Row(
-                              mainAxisAlignment:
-                                  MainAxisAlignment.spaceBetween,
-                              children: [
-                                const Text('Coût total prolongation',
-                                    style: TextStyle(
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14)),
-                                Container(
-                                  padding:
-                                      const EdgeInsets.symmetric(
-                                          horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
-                                    color:
-                                        const Color(0xFF059669),
-                                    borderRadius:
-                                        BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '${_formatNumber(additionalCost)} FCFA',
-                                    style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 14),
-                                  ),
-                                ),
-                              ],
+                            Text(
+                              transaction.isLocation
+                                  ? 'Dossier de location'
+                                  : 'Dossier d’achat',
+                              style: const TextStyle(
+                                color: _HistoryColors.body,
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Text(
+                              transaction.title,
+                              style: const TextStyle(
+                                color: _HistoryColors.ink,
+                                fontSize: 21,
+                                fontWeight: FontWeight.w700,
+                                height: 1.2,
+                              ),
                             ),
                             const SizedBox(height: 8),
-                            Container(
-                              padding: const EdgeInsets.all(8),
-                              decoration: BoxDecoration(
-                                color: Colors.yellow.shade50,
-                                borderRadius:
-                                    BorderRadius.circular(6),
-                                border: Border.all(
-                                    color: Colors.yellow.shade200),
-                              ),
-                              child: Row(
-                                children: [
-                                  Icon(Icons.info,
-                                      size: 14,
-                                      color:
-                                          Colors.orange.shade700),
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    child: Text(
-                                      'Nouveau total: ${_formatNumber(transaction.amount + additionalCost)} FCFA',
-                                      style: TextStyle(
-                                          fontSize: 11,
-                                          color:
-                                              Colors.orange.shade700,
-                                          fontWeight:
-                                              FontWeight.bold),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
+                            _buildStatusBadge(transaction, status),
                           ],
                         ),
                       ),
-                    ],
-                    const SizedBox(height: 16),
-                    Container(
-                      padding: const EdgeInsets.all(10),
-                      decoration: BoxDecoration(
-                        color: Colors.orange.shade50,
-                        borderRadius: BorderRadius.circular(8),
-                        border:
-                            Border.all(color: Colors.orange.shade200),
+                      IconButton(
+                        tooltip: 'Fermer le détail',
+                        onPressed: () => Navigator.of(sheetContext).pop(),
+                        icon: const Icon(Icons.close),
+                        color: _HistoryColors.body,
+                        constraints: const BoxConstraints.tightFor(
+                          width: 44,
+                          height: 44,
+                        ),
                       ),
-                      child: Row(
-                        crossAxisAlignment:
-                            CrossAxisAlignment.start,
-                        children: [
-                          Icon(Icons.warning_amber,
-                              size: 16,
-                              color: Colors.orange.shade700),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Text(
-                              'Une facture séparée sera générée pour cette prolongation. '
-                              'Le paiement devra être effectué avant la nouvelle date de retour.',
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.orange.shade700),
-                            ),
+                    ],
+                  ),
+                  if (isReviewRequired) ...[
+                    const SizedBox(height: 14),
+                    _DetailNotice(
+                      icon: Icons.info_outline,
+                      color: _HistoryColors.alert,
+                      background: _HistoryColors.alertSurface,
+                      text: transaction.status == 'en-retard'
+                          ? 'Le dossier est marqué comme nécessitant une vérification. Confirmez la situation avec EG39.'
+                          : 'La date de retour indiquée est dépassée. Confirmez la situation avec EG39.',
+                    ),
+                  ],
+                  const SizedBox(height: 14),
+                  const Divider(height: 1, color: _HistoryColors.softDivider),
+                  if (transaction.isLocation) ...[
+                    _buildDetailRow(
+                      'Période de location',
+                      _formatRentalPeriod(
+                        transaction.date,
+                        transaction.dateRetour,
+                      ),
+                    ),
+                  ] else ...[
+                    _buildDetailRow(
+                      'Quantité demandée',
+                      transaction.quantity?.toString() ?? 'Non transmise',
+                    ),
+                    _buildDetailRow(
+                      'Date de la demande',
+                      _formatDate(transaction.date),
+                    ),
+                    if (transaction.unitPrice != null)
+                      _buildDetailRow(
+                        'Prix unitaire indiqué',
+                        '${_formatAmount(transaction.unitPrice!)} FCFA',
+                      ),
+                  ],
+                  if (transaction.amount != null)
+                    _buildDetailRow(
+                      transaction.isLocation
+                          ? 'Montant du dossier'
+                          : 'Total de la demande',
+                      '${_formatAmount(transaction.amount!)} FCFA',
+                      isEmphasized: true,
+                    ),
+                  if (_stringValue(transaction.invoiceNumber).isNotEmpty)
+                    _buildDetailRow(
+                      'Référence du dossier',
+                      _stringValue(transaction.invoiceNumber),
+                    ),
+                  _buildDetailRow(
+                    'Statut du paiement',
+                    'Non transmis par le service',
+                  ),
+                  if (isRejected ||
+                      _stringValue(transaction.adminComment).isNotEmpty)
+                    _buildDetailRow(
+                      isRejected ? 'Motif du rejet:' : 'Commentaire d’EG39',
+                      _stringValue(
+                        transaction.adminComment,
+                        fallback: isRejected ? 'Aucun motif transmis' : '',
+                      ),
+                    ),
+                  if (isReviewRequired) ...[
+                    const SizedBox(height: 14),
+                    SizedBox(
+                      width: double.infinity,
+                      child: OutlinedButton.icon(
+                        onPressed: _callEg39,
+                        icon: const Icon(Icons.phone_outlined, size: 18),
+                        label: const Text('Appeler EG39 · 99001166'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: _HistoryColors.primary,
+                          minimumSize: const Size.fromHeight(48),
+                          side: const BorderSide(color: _HistoryColors.primary),
+                          textStyle: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
                           ),
-                        ],
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    const Text(
+                      'Coordonnée déjà enregistrée dans l’application, à confirmer.',
+                      style: TextStyle(
+                        color: _HistoryColors.muted,
+                        fontSize: 12,
+                        height: 1.4,
                       ),
                     ),
                   ],
-                ),
+                  const SizedBox(height: 12),
+                ],
               ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Annuler'),
-                ),
-                ElevatedButton.icon(
-                  onPressed: selectedDate == null
-                      ? null
-                      : () {
-                          Navigator.of(context).pop();
-                          _confirmerProlongation(
-                            transaction,
-                            selectedDate!,
-                            additionalDays,
-                            additionalCost,
-                          );
-                        },
-                  icon: const Icon(Icons.check),
-                  label: const Text('Confirmer la prolongation'),
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFF059669),
-                    padding: const EdgeInsets.symmetric(
-                        horizontal: 16, vertical: 12),
-                  ),
-                ),
-              ],
-            );
-          },
+            ),
+          ),
         );
       },
     );
   }
 
-  // ── P5 : Nom client réel dans la prolongation ──────────────────────────────
-
-  void _confirmerProlongation(
-    Transaction transaction,
-    DateTime newReturnDate,
-    int additionalDays,
-    int additionalCost,
-  ) {
-    final extensionId =
-        'EXT-${DateTime.now().millisecondsSinceEpoch}';
-    final extensionInvoiceNumber =
-        'INV-EXT-${transaction.id}-${transaction.extensionCount + 1}';
-
-    // P5 : utiliser le vrai nom de l'utilisateur connecté
-    final clientName = _currentUserName.isNotEmpty
-        ? _currentUserName
-        : 'Client EG39';
-
-    final extension = LocationExtension(
-      extensionId: extensionId,
-      transactionId: transaction.id,
-      clientName: clientName,
-      equipmentName: transaction.title,
-      oldReturnDate: transaction.dateRetour!,
-      newReturnDate: newReturnDate.toIso8601String().split('T')[0],
-      additionalDays: additionalDays,
-      additionalCost: additionalCost,
-      createdAt: DateTime.now(),
-      isPaid: false,
-      invoiceNumber: extensionInvoiceNumber,
-    );
-
-    _extensionsManager.addExtension(extension);
-
-    final index = _allTransactions.indexOf(transaction);
-    if (index != -1) {
-      final updatedExtensionIds =
-          List<String>.from(transaction.extensionIds)
-            ..add(extensionId);
-      _allTransactions[index] = transaction.copyWith(
-        dateRetour:
-            newReturnDate.toIso8601String().split('T')[0],
-        amount: transaction.amount + additionalCost,
-        extensionIds: updatedExtensionIds,
-        extensionCount: transaction.extensionCount + 1,
-        unpaidExtensionAmount: _extensionsManager
-            .computeUnpaidForTransaction(transaction.id),
-      );
-      setState(() {});
-
-      showDialog(
-        context: context,
-        builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: const [
-              Icon(Icons.check_circle, color: Colors.green, size: 28),
-              SizedBox(width: 12),
-              Text('Prolongation confirmée !'),
-            ],
-          ),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                  '✓ Nouvelle date de retour : ${_formatDate(newReturnDate.toIso8601String().split('T')[0])}'),
-              const SizedBox(height: 8),
-              Text('✓ Prolongation : $additionalDays jours supplémentaires'),
-              const SizedBox(height: 8),
-              Text('✓ Facture N° : $extensionInvoiceNumber'),
-              const SizedBox(height: 8),
-              Text('✓ Client : $clientName'),
-              const SizedBox(height: 10),
-              Container(
-                padding: const EdgeInsets.all(8),
-                decoration: BoxDecoration(
-                    color: Colors.orange.shade50,
-                    borderRadius: BorderRadius.circular(6)),
-                child: Text(
-                  'À payer : ${_formatNumber(additionalCost)} FCFA',
-                  style: TextStyle(
-                      fontWeight: FontWeight.bold,
-                      color: Colors.orange.shade700),
-                ),
+  Widget _buildDetailRow(
+    String label,
+    String value, {
+    bool isEmphasized = false,
+  }) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(vertical: 12),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: _HistoryColors.softDivider)),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: _HistoryColors.body,
+                fontSize: 14,
+                height: 1.4,
               ),
-              const SizedBox(height: 12),
-              const Text(
-                '⚠️ Le paiement de cette prolongation doit être effectué avant la nouvelle date de retour.',
-                style: TextStyle(fontSize: 11, color: Colors.grey),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fermer'),
             ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _downloadExtensionInvoice(extension, transaction);
-              },
-              icon: const Icon(Icons.receipt_long),
-              label: const Text('Télécharger facture'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF2563EB)),
+          ),
+          const SizedBox(width: 12),
+          Flexible(
+            child: Text(
+              value,
+              textAlign: TextAlign.end,
+              style: TextStyle(
+                color: _HistoryColors.ink,
+                fontSize: 14,
+                fontWeight: isEmphasized ? FontWeight.w700 : FontWeight.w600,
+                height: 1.4,
+              ),
             ),
-          ],
-        ),
-      );
-    }
-  }
-
-  Future<void> _downloadExtensionInvoice(
-      LocationExtension extension, Transaction transaction) async {
-    final pdf = pw.Document();
-    pdf.addPage(
-      pw.Page(
-        build: (pw.Context context) {
-          return pw.Column(
-            crossAxisAlignment: pw.CrossAxisAlignment.start,
-            children: [
-              pw.Container(
-                padding: const pw.EdgeInsets.all(20),
-                decoration:
-                    const pw.BoxDecoration(color: PdfColors.green),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text(
-                      'ECHELLE EG39 - Facture de Prolongation',
-                      style: pw.TextStyle(
-                          fontSize: 22,
-                          fontWeight: pw.FontWeight.bold,
-                          color: PdfColors.white),
-                    ),
-                    pw.SizedBox(height: 10),
-                    pw.Text('Numéro : ${extension.invoiceNumber}',
-                        style: pw.TextStyle(
-                            fontSize: 14, color: PdfColors.white)),
-                    pw.Text(
-                        'Date : ${_formatDate(extension.createdAt.toIso8601String().split('T')[0])}',
-                        style: pw.TextStyle(
-                            fontSize: 14, color: PdfColors.white)),
-                    pw.Text('Client : ${extension.clientName}',
-                        style: pw.TextStyle(
-                            fontSize: 14, color: PdfColors.white)),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 20),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(20),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Détails de la Prolongation',
-                        style: pw.TextStyle(
-                            fontSize: 18,
-                            fontWeight: pw.FontWeight.bold)),
-                    pw.SizedBox(height: 15),
-                    pw.Text('Équipement : ${transaction.title}'),
-                    pw.SizedBox(height: 8),
-                    pw.Text(
-                        'Ancienne date de retour : ${_formatDate(extension.oldReturnDate)}'),
-                    pw.Text(
-                        'Nouvelle date de retour : ${_formatDate(extension.newReturnDate)}'),
-                    pw.SizedBox(height: 8),
-                    pw.Text(
-                        'Jours supplémentaires : ${extension.additionalDays}'),
-                    pw.SizedBox(height: 15),
-                    pw.Container(
-                      padding: const pw.EdgeInsets.all(12),
-                      decoration: pw.BoxDecoration(
-                          color: PdfColors.green50,
-                          border: pw.Border.all(
-                              color: PdfColors.green)),
-                      child: pw.Row(
-                        mainAxisAlignment:
-                            pw.MainAxisAlignment.spaceBetween,
-                        children: [
-                          pw.Text('Montant à payer :',
-                              style: pw.TextStyle(
-                                  fontSize: 16,
-                                  fontWeight: pw.FontWeight.bold)),
-                          pw.Text(
-                              '${_formatNumber(extension.additionalCost)} FCFA',
-                              style: pw.TextStyle(
-                                  fontSize: 18,
-                                  fontWeight: pw.FontWeight.bold,
-                                  color: PdfColors.green900)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-              pw.SizedBox(height: 20),
-              pw.Container(
-                padding: const pw.EdgeInsets.all(20),
-                decoration: pw.BoxDecoration(
-                    border: pw.Border(
-                        top: pw.BorderSide(color: PdfColors.grey))),
-                child: pw.Column(
-                  crossAxisAlignment: pw.CrossAxisAlignment.start,
-                  children: [
-                    pw.Text('Merci pour votre confiance !',
-                        style: pw.TextStyle(
-                            fontSize: 14,
-                            fontStyle: pw.FontStyle.italic)),
-                    pw.SizedBox(height: 10),
-                    pw.Text(
-                        'Contact DG : +228 99001166 / +228 90897654',
-                        style: pw.TextStyle(
-                            fontSize: 12,
-                            color: PdfColors.grey700)),
-                  ],
-                ),
-              ),
-            ],
-          );
-        },
+          ),
+        ],
       ),
     );
-    await Printing.layoutPdf(
-      onLayout: (PdfPageFormat format) async => pdf.save(),
-      name: 'prolongation_${extension.invoiceNumber}.pdf',
-    );
-    if (mounted) {
+  }
+
+  Future<void> _callEg39() async {
+    final uri = Uri.parse('tel:+22899001166');
+    if (await canLaunchUrl(uri)) {
+      await launchUrl(uri);
+    } else if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-            content:
-                Text('Facture de prolongation téléchargée avec succès !'),
-            backgroundColor: Colors.green),
+          content: Text('Impossible de lancer l’appel vers EG39.'),
+        ),
       );
     }
   }
+}
 
-  // ── P4 : Paiement / Appel réel ─────────────────────────────────────────────
+class _StatusAppearance {
+  const _StatusAppearance({
+    required this.foreground,
+    required this.background,
+    required this.icon,
+  });
 
-  void _payerExtension(Transaction transaction) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: Row(
-            children: const [
-              Icon(Icons.payment, color: Color(0xFF059669)),
-              SizedBox(width: 8),
-              Expanded(
-                child: Text('Paiement Prolongation',
-                    style: TextStyle(fontSize: 16)),
-              ),
-            ],
-          ),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('Équipement : ${transaction.title}'),
-                const SizedBox(height: 12),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                      color: Colors.orange.shade50,
-                      borderRadius: BorderRadius.circular(8)),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('Montant à payer :',
-                          style: TextStyle(
-                              fontSize: 12, color: Colors.grey)),
-                      Text(
-                        '${_formatNumber(transaction.unpaidExtensionAmount)} FCFA',
-                        style: const TextStyle(
-                            fontSize: 20,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF059669)),
-                      ),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDBEAFE),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: const Color(0xFF2563EB)),
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: const [
-                      Row(children: [
-                        Icon(Icons.info,
-                            size: 18, color: Color(0xFF2563EB)),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text('Instructions de paiement',
-                              style: TextStyle(
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.bold,
-                                  color: Color(0xFF2563EB))),
-                        ),
-                      ]),
-                      SizedBox(height: 8),
-                      Text('1. Contactez le Directeur Général EG39',
-                          style: TextStyle(fontSize: 12)),
-                      SizedBox(height: 4),
-                      Text(
-                          '2. Effectuez le paiement en cash ou par transfert',
-                          style: TextStyle(fontSize: 12)),
-                      SizedBox(height: 4),
-                      Text(
-                          '3. Le DG validera votre paiement dans son espace',
-                          style: TextStyle(fontSize: 12)),
-                      SizedBox(height: 4),
-                      Text(
-                          '4. Votre prolongation sera marquée comme payée',
-                          style: TextStyle(fontSize: 12)),
-                    ],
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text('Contacts du Directeur Général :',
-                    style: TextStyle(
-                        fontSize: 13, fontWeight: FontWeight.bold)),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.all(10),
-                  decoration: BoxDecoration(
-                      color: const Color(0xFFF3F4F6),
-                      borderRadius: BorderRadius.circular(6)),
-                  child: Column(
-                    children: const [
-                      Row(children: [
-                        Icon(Icons.phone,
-                            size: 16, color: Color(0xFF059669)),
-                        SizedBox(width: 8),
-                        Text('99001166',
-                            style:
-                                TextStyle(fontWeight: FontWeight.bold)),
-                      ]),
-                      SizedBox(height: 4),
-                      Row(children: [
-                        Icon(Icons.phone,
-                            size: 16, color: Color(0xFF059669)),
-                        SizedBox(width: 8),
-                        Text('90897654',
-                            style:
-                                TextStyle(fontWeight: FontWeight.bold)),
-                      ]),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Fermer'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _callPhone('99001166');
-              },
-              icon: const Icon(Icons.call),
-              label: const Text('Appeler 99001166'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669)),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _callPhone('90897654');
-              },
-              icon: const Icon(Icons.call),
-              label: const Text('Appeler 90897654'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669)),
-            ),
-          ],
-        );
-      },
-    );
-  }
+  final Color foreground;
+  final Color background;
+  final IconData icon;
+}
 
-  Widget _buildInfoRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label,
-              style: const TextStyle(
-                  fontSize: 12, color: Color(0xFF6B7280))),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.bold)),
-        ],
-      ),
-    );
-  }
+class _MetadataLine extends StatelessWidget {
+  const _MetadataLine({required this.icon, required this.text});
 
-  Widget _buildCalculRow(String label, String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(label, style: const TextStyle(fontSize: 12)),
-          Text(value,
-              style: const TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w600)),
-        ],
-      ),
-    );
-  }
+  final IconData icon;
+  final String text;
 
-  // Supprimer une location terminée ou rejétée
-  void _supprimerLocation(Transaction transaction) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('Supprimer cette location?'),
-        content: Text(
-          'Voulez-vous vraiment supprimer cette location "${transaction.title}"?\n\nCette action est irréversible.',
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Icon(icon, size: 14, color: _HistoryColors.muted),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(ctx),
-            child: const Text('Annuler'),
-          ),
-          ElevatedButton(
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
+        const SizedBox(width: 5),
+        Expanded(
+          child: Text(
+            text,
+            style: const TextStyle(
+              color: _HistoryColors.body,
+              fontSize: 13,
+              height: 1.35,
             ),
-            onPressed: () async {
-              Navigator.pop(ctx);
-              try {
-                // Appeler la bonne méthode selon le type de transaction
-                if (transaction.type == 'location') {
-                  await ApiService.deleteLocation(transaction.id);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Location supprimée'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                } else if (transaction.type == 'achat') {
-                  await ApiService.deleteDemande(transaction.id);
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(
-                        content: Text('Demande supprimée'),
-                        backgroundColor: Colors.green,
-                      ),
-                    );
-                  }
-                }
-                // Recharger la liste
-                await _loadTransactionsFromBackend();
-              } catch (e) {
-                if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('Erreur: $e'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              }
-            },
-            child: const Text('Supprimer'),
           ),
-        ],
+        ),
+      ],
+    );
+  }
+}
+
+class _SkeletonLine extends StatelessWidget {
+  const _SkeletonLine({required this.widthFactor});
+
+  final double widthFactor;
+
+  @override
+  Widget build(BuildContext context) {
+    return FractionallySizedBox(
+      widthFactor: widthFactor,
+      alignment: Alignment.centerLeft,
+      child: Container(
+        height: 11,
+        decoration: BoxDecoration(
+          color: const Color(0xFFE5E5E8),
+          borderRadius: BorderRadius.circular(999),
+        ),
       ),
     );
   }
+}
 
-  void _relouer(Transaction transaction) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Relouer l\'équipement',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B))),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Voulez-vous relouer "${transaction.title}" ?',
-                  style: const TextStyle(fontSize: 14),
-                  textAlign: TextAlign.center),
-              const SizedBox(height: 16),
-              const Text(
-                  'Vous serez redirigé vers la page de location.',
-                  style: TextStyle(fontSize: 12, color: Colors.grey),
-                  textAlign: TextAlign.center),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Annuler'),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                        'Redirection vers location de "${transaction.title}"'),
-                  ),
-                );
-              },
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF9333EA)),
-              child: const Text('Relouer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+class _StateMessage extends StatelessWidget {
+  const _StateMessage({
+    required this.icon,
+    required this.title,
+    required this.message,
+    required this.actionLabel,
+    required this.onAction,
+  });
 
-  void _evaluerService(Transaction transaction) {
-    int rating = 0;
-    final commentController = TextEditingController();
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(builder: (context, setState) {
-          return AlertDialog(
-            shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(16)),
-            title: const Text('Évaluer le service',
-                style: TextStyle(
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF1E293B))),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                    'Comment évaluez-vous "${transaction.title}" ?',
-                    style: const TextStyle(fontSize: 14),
-                    textAlign: TextAlign.center),
-                const SizedBox(height: 16),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: List.generate(5, (index) {
-                    return IconButton(
-                      onPressed: () =>
-                          setState(() => rating = index + 1),
-                      icon: Icon(
-                        index < rating
-                            ? Icons.star
-                            : Icons.star_border,
-                        color: Colors.amber,
-                        size: 32,
-                      ),
-                    );
-                  }),
-                ),
-                const SizedBox(height: 16),
-                TextField(
-                  controller: commentController,
-                  decoration: const InputDecoration(
-                      labelText: 'Commentaire (optionnel)',
-                      border: OutlineInputBorder()),
-                  maxLines: 3,
-                ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: () => Navigator.of(context).pop(),
-                child: const Text('Annuler'),
-              ),
-              ElevatedButton(
-                onPressed: rating > 0
-                    ? () {
-                        Navigator.of(context).pop();
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          SnackBar(
-                              content: Text(
-                                  'Merci pour votre évaluation de $rating étoile(s) !'),
-                              backgroundColor: Colors.green),
-                        );
-                      }
-                    : null,
-                style: ElevatedButton.styleFrom(
-                    backgroundColor: const Color(0xFFEA580C)),
-                child: const Text('Évaluer'),
-              ),
-            ],
-          );
-        });
-      },
-    ).then((_) => commentController.dispose());
-  }
+  final IconData icon;
+  final String title;
+  final String message;
+  final String actionLabel;
+  final VoidCallback? onAction;
 
-  // ── P4 : Payer facture avec vrai appel ────────────────────────────────────
-
-  void _payerFacture(Transaction transaction) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape:
-              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Paiement de Facture',
-              style: TextStyle(
-                  fontWeight: FontWeight.bold,
-                  color: Color(0xFF1E293B))),
-          content: const Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(
-                'Veuillez contacter le Directeur Général EG39 au 99001166 ou au 90897654 pour effectuer votre versement.',
-                style: TextStyle(fontSize: 14),
-                textAlign: TextAlign.center,
-              ),
-              SizedBox(height: 16),
-              Text('Merci !',
-                  style: TextStyle(
-                      fontSize: 16,
-                      fontWeight: FontWeight.bold,
-                      color: Color(0xFF059669))),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _callPhone('99001166');
-              },
-              icon: const Icon(Icons.call),
-              label: const Text('99001166'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669)),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.pop(context);
-                _callPhone('90897654');
-              },
-              icon: const Icon(Icons.call),
-              label: const Text('90897654'),
-              style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF059669)),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  // ── Carte transaction ──────────────────────────────────────────────────────
-
-  Widget _buildEnhancedTransactionCard(Transaction transaction) {
-    final typeConfig = _getTypeConfig(transaction.type);
-    final statusConfig = _getStatusConfig(transaction.status);
-    final lateInfo = _getLateInfo(transaction);
-    final isLate = lateInfo['isLate'] as bool;
-    final daysLate = lateInfo['daysLate'] as int;
-    final penalty = lateInfo['penalty'] as int;
-
-    final transactionExtensions = transaction.extensionIds
-        .map((id) => _extensionsManager.getExtension(id))
-        .where((ext) => ext != null)
-        .cast<LocationExtension>()
-        .toList();
-
+  @override
+  Widget build(BuildContext context) {
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
+      width: double.infinity,
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.fromLTRB(18, 20, 18, 18),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: isLate ? Border.all(color: Colors.red, width: 2) : null,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: _HistoryColors.surface,
+        border: Border.all(color: _HistoryColors.border),
+        borderRadius: BorderRadius.circular(18),
       ),
       child: Column(
         children: [
-          Padding(
-            padding: const EdgeInsets.all(16),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                ServiceImageThumbnail(
-                  key: ValueKey(
-                    'history-transaction-image-${transaction.type}-${transaction.id}',
-                  ),
-                  imageUrl: transaction.imageUrl,
-                  semanticLabel: 'Image de ${transaction.title}',
-                  width: 56,
-                  height: 56,
-                  borderRadius: 12,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      // Titre + badge type + badge statut
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Flexible(
-                            child: Text(
-                              transaction.title,
-                              overflow: TextOverflow.ellipsis,
-                              style: GoogleFonts.poppins(
-                                fontSize: 15,
-                                fontWeight: FontWeight.w700,
-                                color: const Color(0xFF111827),
-                              ),
-                            ),
-                          ),
-                          // Badge type (Location / Vente)
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: typeConfig['bgColor'],
-                              borderRadius: BorderRadius.circular(6),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(typeConfig['icon'],
-                                    size: 10,
-                                    color: typeConfig['iconColor']),
-                                const SizedBox(width: 4),
-                                Text(
-                                  typeConfig['label'],
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    color: typeConfig['iconColor'],
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                            decoration: BoxDecoration(
-                              color: statusConfig['bgColor'],
-                              borderRadius: BorderRadius.circular(10),
-                            ),
-                            child: Row(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                Icon(statusConfig['icon'],
-                                    size: 12,
-                                    color: statusConfig['textColor']),
-                                const SizedBox(width: 4),
-                                Text(
-                                  statusConfig['label'],
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    color: statusConfig['textColor'],
-                                    fontWeight: FontWeight.w600,
-                                  ),
-                                ),
-                                if (statusConfig['showDetails'] == true) ...[
-                                  const SizedBox(width: 4),
-                                  GestureDetector(
-                                    onTap: () => _showRejectionReason(transaction),
-                                    child: Icon(
-                                      Icons.info_outline,
-                                      size: 14,
-                                      color: statusConfig['textColor'],
-                                    ),
-                                  ),
-                                ],
-                              ],
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 8),
-                      // Dates
-                      Row(
-                        children: [
-                          Icon(Icons.calendar_today,
-                              size: 14,
-                              color: Colors.grey[600]),
-                          const SizedBox(width: 4),
-                          // Format: du 24 avril 2026 au 30 avril 2026
-                          Text(
-                            'du ${_formatDateFr(transaction.date)}${transaction.dateRetour != null ? ' au ${_formatDateFr(transaction.dateRetour!)}' : ''}',
-                            style: GoogleFonts.poppins(
-                              fontSize: 12,
-                              color: isLate ? Colors.red : const Color(0xFF6B7280),
-                              fontWeight: isLate ? FontWeight.w600 : FontWeight.w400,
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 4),
-                      // Montant + badges
-                      Row(
-                        children: [
-                          Flexible(
-                            child: Text(
-                              '${_formatNumber(transaction.amount)} F CFA',
-                              style: GoogleFonts.poppins(
-                                fontSize: 14,
-                                color: const Color(0xFF111827),
-                                fontWeight: FontWeight.w700,
-                              ),
-                              overflow: TextOverflow.ellipsis,
-                            ),
-                          ),
-                          const SizedBox(width: 4),
-                          if (!transaction.isPaid && transaction.status != 'rejetee')
-                            Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.red[50],
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text('Non payé',
-                                  style: GoogleFonts.poppins(
-                                    fontSize: 10,
-                                    color: Colors.red,
-                                    fontWeight: FontWeight.w600,
-                                  )),
-                            ),
-                          if (transaction.unpaidExtensionAmount > 0 && transaction.status != 'rejetee')
-                            Container(
-                              margin:
-                                  const EdgeInsets.only(left: 4),
-                              padding:
-                                  const EdgeInsets.symmetric(
-                                      horizontal: 6, vertical: 2),
-                              decoration: BoxDecoration(
-                                color: Colors.orange[50],
-                                borderRadius:
-                                    BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                'Prolong. impayée',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    color: Colors.orange[700],
-                                    fontWeight:
-                                        FontWeight.bold),
-                              ),
-                            ),
-                          if (transaction.invoiceNumber !=
-                              null) ...[
-                            const Spacer(),
-                            Text(
-                              transaction.invoiceNumber!,
-                              style: TextStyle(
-                                  fontSize: 11,
-                                  color: Colors.grey[500]),
-                            ),
-                          ],
-                        ],
-                      ),
-
-                      // Historique des prolongations
-                      if (transactionExtensions.isNotEmpty) ...[
-                        const SizedBox(height: 12),
-                        Container(
-                          padding: const EdgeInsets.all(8),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFF0FDF4),
-                            borderRadius:
-                                BorderRadius.circular(6),
-                            border: Border.all(
-                                color: const Color(0xFF059669),
-                                width: 1),
-                          ),
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              Row(children: [
-                                const Icon(Icons.history,
-                                    size: 12,
-                                    color: Color(0xFF059669)),
-                                const SizedBox(width: 4),
-                                Text(
-                                  'Prolongations (${transactionExtensions.length}/3)',
-                                  style: const TextStyle(
-                                      fontSize: 10,
-                                      fontWeight: FontWeight.bold,
-                                      color:
-                                          Color(0xFF059669)),
-                                ),
-                              ]),
-                              const SizedBox(height: 6),
-                              ...transactionExtensions.map((ext) {
-                                return Padding(
-                                  padding:
-                                      const EdgeInsets.only(
-                                          bottom: 4),
-                                  child: Row(
-                                    children: [
-                                      Container(
-                                        width: 6,
-                                        height: 6,
-                                        decoration: BoxDecoration(
-                                          color: ext.isPaid
-                                              ? Colors.green
-                                              : Colors.orange,
-                                          shape: BoxShape.circle,
-                                        ),
-                                      ),
-                                      const SizedBox(width: 6),
-                                      Expanded(
-                                        child: Text(
-                                          '${_formatDate(ext.oldReturnDate)} → ${_formatDate(ext.newReturnDate)} (+${ext.additionalDays}j)',
-                                          style:
-                                              const TextStyle(
-                                                  fontSize: 10),
-                                        ),
-                                      ),
-                                      Text(
-                                        '${_formatNumber(ext.additionalCost)} F',
-                                        style: TextStyle(
-                                          fontSize: 10,
-                                          fontWeight:
-                                              FontWeight.bold,
-                                          color: ext.isPaid
-                                              ? Colors.green
-                                              : Colors.orange,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                );
-                              }),
-                            ],
-                          ),
-                        ),
-                      ],
-
-                      // ── P3 : Alerte retard claire et complète ──────────
-                      if (isLate) ...[
-                        const SizedBox(height: 10),
-                        Container(
-                          width: double.infinity,
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: const Color(0xFFFEF2F2),
-                            borderRadius:
-                                BorderRadius.circular(8),
-                            border: Border.all(
-                                color: const Color(0xFFDC2626),
-                                width: 1.5),
-                          ),
-                          child: Column(
-                            crossAxisAlignment:
-                                CrossAxisAlignment.start,
-                            children: [
-                              // Ligne 1 : Titre alerte
-                              Row(children: [
-                                const Icon(
-                                    Icons.warning_rounded,
-                                    size: 16,
-                                    color: Color(0xFFDC2626)),
-                                const SizedBox(width: 6),
-                                Text(
-                                  'RETARD — $daysLate jour${daysLate > 1 ? 's' : ''} de retard',
-                                  style: const TextStyle(
-                                    fontSize: 13,
-                                    fontWeight: FontWeight.bold,
-                                    color: Color(0xFFDC2626),
-                                  ),
-                                ),
-                              ]),
-                              const SizedBox(height: 6),
-                              // Ligne 2 : Pénalité
-                              Text(
-                                'Pénalité accumulée : ${_formatNumber(penalty)} FCFA (tarif journalier majoré de 50 %)',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Colors.red[700],
-                                    fontWeight:
-                                        FontWeight.w600),
-                              ),
-                              const SizedBox(height: 4),
-                              // Ligne 3 : Action requise
-                              const Text(
-                                'Retournez l\'appareil immédiatement ou prolongez pour stopper les pénalités.',
-                                style: TextStyle(
-                                    fontSize: 12,
-                                    color: Color(0xFF7F1D1D)),
-                              ),
-                              const SizedBox(height: 8),
-                              // Bouton contacter DG
-                              SizedBox(
-                                width: double.infinity,
-                                child: OutlinedButton.icon(
-                                  onPressed: () =>
-                                      _callPhone('99001166'),
-                                  icon: const Icon(
-                                      Icons.call,
-                                      size: 14),
-                                  label: const Text(
-                                      'Appeler le DG — 99001166',
-                                      style: TextStyle(
-                                          fontSize: 12)),
-                                  style:
-                                      OutlinedButton.styleFrom(
-                                    foregroundColor:
-                                        const Color(
-                                            0xFFDC2626),
-                                    side: const BorderSide(
-                                        color:
-                                            Color(0xFFDC2626)),
-                                    padding:
-                                        const EdgeInsets
-                                            .symmetric(
-                                            vertical: 6),
-                                  ),
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ],
-                  ),
-                ),
-              ],
+          Icon(icon, color: _HistoryColors.primary, size: 30),
+          const SizedBox(height: 10),
+          Text(
+            title,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _HistoryColors.ink,
+              fontSize: 17,
+              fontWeight: FontWeight.w700,
+              height: 1.3,
             ),
           ),
-
-          // Boutons d'action
-          Container(
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9FAFB),
-              borderRadius: const BorderRadius.only(
-                bottomLeft: Radius.circular(16),
-                bottomRight: Radius.circular(16),
+          const SizedBox(height: 6),
+          Text(
+            message,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: _HistoryColors.body,
+              fontSize: 14,
+              height: 1.45,
+            ),
+          ),
+          if (onAction != null) ...[
+            const SizedBox(height: 14),
+            SizedBox(
+              width: double.infinity,
+              child: ElevatedButton(
+                onPressed: onAction,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: _HistoryColors.primary,
+                  foregroundColor: Colors.white,
+                  minimumSize: const Size.fromHeight(44),
+                  shape: const StadiumBorder(),
+                  textStyle: const TextStyle(
+                    fontSize: 14,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+                child: Text(actionLabel),
               ),
             ),
-            padding: const EdgeInsets.all(12),
-            child: Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              alignment: WrapAlignment.start,
-              children: [
-                if (!['rejetee', 'annulee'].contains(transaction.status))
-                  _buildActionButton('Facture', Icons.receipt_long,
-                      const Color(0xFF2563EB),
-                      () => _downloadInvoice(transaction)),
-                if (['en-cours', 'en-retard'].contains(transaction.status) &&
-                    transaction.type == 'location')
-                  _buildActionButton('Prolonger', Icons.update,
-                      const Color(0xFF059669),
-                      () => _prolongerLocation(transaction)),
-                if (transaction.status == 'termine')
-                  _buildActionButton('Relouer', Icons.replay,
-                      const Color(0xFF9333EA),
-                      () => _relouer(transaction)),
-                if (transaction.status == 'termine')
-                  _buildActionButton('Évaluer', Icons.star_outline,
-                      const Color(0xFFEA580C),
-                      () => _evaluerService(transaction)),
-                if (!transaction.isPaid &&
-                    !['rejetee', 'annulee'].contains(transaction.status))
-                  _buildActionButton(
-                      'Payer', Icons.payment, Colors.red,
-                      () => _payerFacture(transaction)),
-                if (transaction.unpaidExtensionAmount > 0)
-                  _buildActionButton('Payer prolong.',
-                      Icons.payment, Colors.orange,
-                      () => _payerExtension(transaction)),
-                // Supprimer pour terminée, rejetée ou annulée.
-                if (['termine', 'rejetee', 'annulee']
-                    .contains(transaction.status))
-                  _buildActionButton('Supprimer', Icons.delete_outline,
-                      const Color(0xFFDC2626),
-                      () => _supprimerLocation(transaction)),
-              ],
+          ],
+        ],
+      ),
+    );
+  }
+}
+
+class _DetailNotice extends StatelessWidget {
+  const _DetailNotice({
+    required this.icon,
+    required this.color,
+    required this.background,
+    required this.text,
+  });
+
+  final IconData icon;
+  final Color color;
+  final Color background;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: background,
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(icon, size: 18, color: color),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              text,
+              style: TextStyle(
+                color: color,
+                fontSize: 13,
+                height: 1.4,
+                fontWeight: FontWeight.w600,
+              ),
             ),
           ),
         ],
@@ -2660,12 +1587,75 @@ class _HistoriqueScreenState extends State<HistoriqueScreen>
   }
 }
 
-// Placeholder pour DashboardScreen
-class DashboardScreen extends StatelessWidget {
-  const DashboardScreen({super.key});
-  @override
-  Widget build(BuildContext context) {
-    return const Scaffold(
-        body: Center(child: Text('Dashboard Screen')));
-  }
+int? _asInt(Object? value) {
+  if (value is num) return value.toInt();
+  if (value == null) return null;
+  return int.tryParse(value.toString());
 }
+
+String _stringValue(Object? value, {String fallback = ''}) {
+  final text = value?.toString().trim() ?? '';
+  return text.isEmpty ? fallback : text;
+}
+
+String? _nullableString(Object? value) {
+  final text = _stringValue(value);
+  return text.isEmpty ? null : text;
+}
+
+DateTime? _parseCalendarDate(String rawValue) {
+  final value = rawValue.trim();
+  if (value.isEmpty) return null;
+
+  // PostgreSQL date fields arrive as yyyy-MM-dd. Parse these as calendar dates
+  // rather than UTC midnight so the due day cannot shift with local timezone.
+  final dateOnlyMatch = RegExp(r'^(\d{4})-(\d{2})-(\d{2})$').firstMatch(value);
+  if (dateOnlyMatch != null) {
+    final year = int.tryParse(dateOnlyMatch.group(1)!);
+    final month = int.tryParse(dateOnlyMatch.group(2)!);
+    final day = int.tryParse(dateOnlyMatch.group(3)!);
+    if (year == null || month == null || day == null) return null;
+    return DateTime(year, month, day);
+  }
+
+  final parsed = DateTime.tryParse(value)?.toLocal();
+  if (parsed == null) return null;
+  return DateTime(parsed.year, parsed.month, parsed.day);
+}
+
+String _formatDate(Object? value) {
+  final raw = _stringValue(value);
+  if (raw.isEmpty) return 'Date non transmise';
+  final parsed = _parseCalendarDate(raw);
+  if (parsed == null) return raw;
+
+  const months = [
+    'janvier',
+    'février',
+    'mars',
+    'avril',
+    'mai',
+    'juin',
+    'juillet',
+    'août',
+    'septembre',
+    'octobre',
+    'novembre',
+    'décembre',
+  ];
+  return '${parsed.day} ${months[parsed.month - 1]} ${parsed.year}';
+}
+
+String _formatRentalPeriod(String start, String? end) {
+  final startValue = _stringValue(start);
+  final endValue = _stringValue(end);
+  if (startValue.isEmpty && endValue.isEmpty) {
+    return 'Dates de location non transmises';
+  }
+  if (startValue.isEmpty) return 'Retour prévu le ${_formatDate(endValue)}';
+  if (endValue.isEmpty) return 'Début le ${_formatDate(startValue)}';
+  return '${_formatDate(startValue)} – ${_formatDate(endValue)}';
+}
+
+String _formatAmount(int amount) =>
+    NumberFormat.decimalPattern('fr_FR').format(amount);

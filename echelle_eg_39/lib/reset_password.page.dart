@@ -1,343 +1,270 @@
 import 'package:flutter/material.dart';
+
 import 'login.page.dart';
-import 'api_service.dart';
+import 'password_recovery_contact_mask.dart';
+import 'password_recovery_scaffold.dart';
 
 class ResetPasswordPage extends StatefulWidget {
-  final String contactInfo; // Email ou téléphone utilisé
-  final bool isEmail; // true pour email, false pour téléphone
-
   const ResetPasswordPage({
     super.key,
     required this.contactInfo,
-    required this.isEmail,
+    required this.contactType,
+    required this.updatePassword,
+    required this.clearResetToken,
   });
+
+  final String contactInfo;
+  final RecoveryContactType contactType;
+  final PasswordUpdater updatePassword;
+  final PasswordRecoveryTokenCleaner clearResetToken;
 
   @override
   State<ResetPasswordPage> createState() => _ResetPasswordPageState();
 }
 
 class _ResetPasswordPageState extends State<ResetPasswordPage> {
-  final TextEditingController newPasswordController = TextEditingController();
-  final TextEditingController confirmPasswordController = TextEditingController();
+  final _formKey = GlobalKey<FormState>();
+  final _newPasswordController = TextEditingController();
+  final _confirmPasswordController = TextEditingController();
 
-  bool isLoading = false;
+  bool _isLoading = false;
   bool _obscureNewPassword = true;
   bool _obscureConfirmPassword = true;
+  String? _requestError;
+  bool _didUpdatePassword = false;
 
-  void resetPassword() async {
-    final newPassword = newPasswordController.text.trim();
-    final confirmPassword = confirmPasswordController.text.trim();
+  @override
+  void dispose() {
+    _newPasswordController.dispose();
+    _confirmPasswordController.dispose();
+    super.dispose();
+  }
 
-    if (newPassword.isEmpty || confirmPassword.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Veuillez remplir tous les champs"),
-          backgroundColor: Colors.red,
-        ),
-      );
+  String? _validateNewPassword(String? value) {
+    final password = value ?? '';
+    if (password.isEmpty) return 'Saisissez votre nouveau mot de passe.';
+    if (password.length < 6 ||
+        !RegExp(r'[A-Za-z]').hasMatch(password) ||
+        !RegExp(r'\d').hasMatch(password)) {
+      return '6 caractères minimum, dont une lettre et un chiffre.';
+    }
+    return null;
+  }
+
+  String? _validateConfirmation(String? value) {
+    if (value == null || value.isEmpty) {
+      return 'Confirmez votre nouveau mot de passe.';
+    }
+    if (value != _newPasswordController.text) {
+      return 'Les mots de passe ne correspondent pas.';
+    }
+    return null;
+  }
+
+  Future<void> _updatePassword() async {
+    if (_isLoading ||
+        _didUpdatePassword ||
+        !(_formKey.currentState?.validate() ?? false)) {
       return;
     }
-
-    if (newPassword != confirmPassword) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Les mots de passe ne correspondent pas"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
-    if (newPassword.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text("Le mot de passe doit contenir au moins 6 caractères"),
-          backgroundColor: Colors.red,
-        ),
-      );
-      return;
-    }
-
     setState(() {
-      isLoading = true;
+      _isLoading = true;
+      _requestError = null;
+      _didUpdatePassword = false;
     });
 
     try {
-      // Appeler l'API pour réinitialiser le mot de passe
-      final result = await ApiService.resetPassword(newPassword);
-
-      setState(() {
-        isLoading = false;
-      });
-
-      if (result['success'] == true) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text("Mot de passe mis à jour avec succès !"),
-              backgroundColor: Colors.green,
-            ),
-          );
-        }
-
-        // Retour à la page de connexion après 2 secondes
-        Future.delayed(const Duration(seconds: 2), () {
-          if (mounted) {
-            Navigator.pushAndRemoveUntil(
-              context,
-              MaterialPageRoute(builder: (_) => const LoginPage()),
-              (route) => false,
-            );
-          }
+      final result = await widget.updatePassword(_newPasswordController.text);
+      if (!mounted) return;
+      if (result['success'] != true) {
+        setState(() {
+          _requestError =
+              result['error']?.toString() ??
+              'Impossible de mettre à jour le mot de passe. Réessayez.';
         });
-      } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(result['error'] ?? 'Erreur lors de la réinitialisation'),
-              backgroundColor: Colors.red,
-            ),
-          );
-        }
+        return;
       }
-    } catch (e) {
-      setState(() {
-        isLoading = false;
-      });
 
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Erreur: ${e.toString()}'),
-            backgroundColor: Colors.red,
-          ),
-        );
+      try {
+        await widget.clearResetToken();
+      } catch (_) {
+        // ApiService already removes the reset token on successful responses.
       }
+      if (!mounted) return;
+      setState(() {
+        _didUpdatePassword = true;
+        _isLoading = false;
+      });
+      await Future<void>.delayed(const Duration(milliseconds: 1400));
+      if (!mounted) return;
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(builder: (_) => const LoginPage()),
+        (route) => false,
+      );
+    } catch (error) {
+      if (mounted) {
+        setState(() {
+          _requestError = error.toString().replaceFirst('Exception: ', '');
+        });
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
+  }
+
+  Widget _buildPasswordField({
+    required String label,
+    required String hint,
+    required TextEditingController controller,
+    required bool obscureText,
+    required String? Function(String?) validator,
+    required VoidCallback onToggle,
+    required String visibilityTooltip,
+    Key? fieldKey,
+    ValueChanged<String>? onChanged,
+  }) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+            color: Colors.white,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          key: fieldKey,
+          controller: controller,
+          enabled: !_isLoading,
+          obscureText: obscureText,
+          textInputAction: label == 'Confirmer le nouveau mot de passe'
+              ? TextInputAction.done
+              : TextInputAction.next,
+          autofillHints: const [AutofillHints.newPassword],
+          validator: validator,
+          onChanged: onChanged,
+          onFieldSubmitted: label == 'Confirmer le nouveau mot de passe'
+              ? (_) => _updatePassword()
+              : null,
+          style: const TextStyle(
+            color: passwordRecoveryInk,
+            fontWeight: FontWeight.w600,
+          ),
+          decoration: passwordRecoveryFieldDecoration(
+            hint: hint,
+            leading: const Icon(
+              Icons.lock_outline_rounded,
+              color: Color(0xFF7A7A7A),
+              size: 20,
+            ),
+            trailing: IconButton(
+              tooltip: visibilityTooltip,
+              onPressed: _isLoading ? null : onToggle,
+              icon: Icon(
+                obscureText
+                    ? Icons.visibility_outlined
+                    : Icons.visibility_off_outlined,
+                color: const Color(0xFF333333),
+                size: 20,
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: Stack(
+    final maskedContact = maskRecoveryContact(
+      widget.contactInfo,
+      isEmail: widget.contactType.isEmail,
+    );
+    return PasswordRecoveryScaffold(
+      stepLabel: '3 sur 3 · Mot de passe',
+      title: 'Choisissez un nouveau mot de passe',
+      description: 'Créez un mot de passe sûr pour protéger votre compte.',
+      backTooltip: 'Retour à la vérification du code',
+      onBack: () => Navigator.maybePop(context),
+      contextStatus: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🌄 IMAGE DE FOND (UNSPLASH)
-          Container(
-            decoration: const BoxDecoration(
-              image: DecorationImage(
-                image: NetworkImage(
-                  "https://teg-ge.fr/wp-content/uploads/2018/04/topographie.jpg",
-                ),
-                fit: BoxFit.cover,
-              ),
-            ),
+          const Icon(
+            Icons.check_circle_outline_rounded,
+            color: Color(0xFF2997FF),
+            size: 19,
           ),
-
-          // 🖤 OVERLAY SOMBRE
-          Container(
-            color: const Color.fromRGBO(11, 11, 11, 1).withValues(alpha: 0.6),
-          ),
-
-          // 📄 CONTENU
-          SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 60),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  // 🔝 HEADER
-                  Row(
-                    children: [
-                      IconButton(
-                        onPressed: () => Navigator.pop(context),
-                        icon: const Icon(
-                          Icons.arrow_back,
-                          color: Colors.white,
-                          size: 28,
-                        ),
-                      ),
-                      const Expanded(
-                        child: Center(
-                          child: Text(
-                            "NOUVEAU MOT DE PASSE",
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 20,
-                              fontWeight: FontWeight.bold,
-                              letterSpacing: 1.0,
-                            ),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-
-                  const SizedBox(height: 50),
-
-                  // ✅ VALIDATION RÉUSSIE
-                  Container(
-                    padding: const EdgeInsets.all(20),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
-                    ),
-                    child: Column(
-                      children: [
-                        Icon(
-                          Icons.check_circle,
-                          color: Colors.green,
-                          size: 50,
-                        ),
-                        const SizedBox(height: 12),
-                        const Text(
-                          "Code vérifié avec succès !",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 18,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          "Contact : ${widget.contactInfo}",
-                          style: const TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-
-                  const SizedBox(height: 40),
-
-                  // 🔑 NOUVEAU MOT DE PASSE
-                  TextField(
-                    controller: newPasswordController,
-                    obscureText: _obscureNewPassword,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: "Nouveau mot de passe",
-                      hintStyle: const TextStyle(color: Colors.white70),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.15),
-                      prefixIcon: const Icon(Icons.lock, color: Colors.white),
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _obscureNewPassword = !_obscureNewPassword;
-                          });
-                        },
-                        icon: Icon(
-                          _obscureNewPassword ? Icons.visibility : Icons.visibility_off,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  // 🔑 CONFIRMATION MOT DE PASSE
-                  TextField(
-                    controller: confirmPasswordController,
-                    obscureText: _obscureConfirmPassword,
-                    style: const TextStyle(color: Colors.white),
-                    decoration: InputDecoration(
-                      hintText: "Confirmer le nouveau mot de passe",
-                      hintStyle: const TextStyle(color: Colors.white70),
-                      filled: true,
-                      fillColor: Colors.white.withValues(alpha: 0.15),
-                      prefixIcon: const Icon(Icons.lock, color: Colors.white),
-                      suffixIcon: IconButton(
-                        onPressed: () {
-                          setState(() {
-                            _obscureConfirmPassword = !_obscureConfirmPassword;
-                          });
-                        },
-                        icon: Icon(
-                          _obscureConfirmPassword ? Icons.visibility : Icons.visibility_off,
-                          color: Colors.white70,
-                        ),
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // 🔘 BOUTON METTRE À JOUR
-                  SizedBox(
-                    width: double.infinity,
-                    height: 55,
-                    child: ElevatedButton(
-                      onPressed: isLoading ? null : resetPassword,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color.fromARGB(255, 184, 117, 23),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                      ),
-                      child: isLoading
-                          ? const CircularProgressIndicator(
-                              color: Colors.white,
-                            )
-                          : const Text(
-                              "METTRE À JOUR",
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                              ),
-                            ),
-                    ),
-                  ),
-
-                  const SizedBox(height: 30),
-
-                  // 💡 CONSEILS DE SÉCURITÉ
-                  Container(
-                    padding: const EdgeInsets.all(16),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(alpha: 0.05),
-                      borderRadius: BorderRadius.circular(10),
-                    ),
-                    child: const Column(
-                      children: [
-                        Text(
-                          "🔒 Conseils pour un mot de passe sécurisé :",
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        SizedBox(height: 12),
-                        Text(
-                          "• Au moins 6 caractères\n• Utilisez des lettres, chiffres et symboles\n• Évitez les informations personnelles",
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 14,
-                            height: 1.5,
-                          ),
-                          textAlign: TextAlign.left,
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              'Contact vérifié : $maskedContact',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.92),
+                fontWeight: FontWeight.w600,
               ),
             ),
           ),
         ],
       ),
+      content: Form(
+        key: _formKey,
+        autovalidateMode: AutovalidateMode.onUserInteraction,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _buildPasswordField(
+              fieldKey: const ValueKey('recovery-new-password'),
+              label: 'Nouveau mot de passe',
+              hint: '••••••••',
+              controller: _newPasswordController,
+              obscureText: _obscureNewPassword,
+              validator: _validateNewPassword,
+              onToggle: () =>
+                  setState(() => _obscureNewPassword = !_obscureNewPassword),
+              visibilityTooltip: _obscureNewPassword
+                  ? 'Afficher le nouveau mot de passe'
+                  : 'Masquer le nouveau mot de passe',
+              onChanged: (_) => _formKey.currentState?.validate(),
+            ),
+            const SizedBox(height: 20),
+            _buildPasswordField(
+              fieldKey: const ValueKey('recovery-confirm-password'),
+              label: 'Confirmer le nouveau mot de passe',
+              hint: 'Saisissez-le à nouveau',
+              controller: _confirmPasswordController,
+              obscureText: _obscureConfirmPassword,
+              validator: _validateConfirmation,
+              onToggle: () => setState(
+                () => _obscureConfirmPassword = !_obscureConfirmPassword,
+              ),
+              visibilityTooltip: _obscureConfirmPassword
+                  ? 'Afficher la confirmation du mot de passe'
+                  : 'Masquer la confirmation du mot de passe',
+            ),
+          ],
+        ),
+      ),
+      errorMessage: _requestError,
+      primaryLabel: _didUpdatePassword
+          ? 'Mot de passe mis à jour'
+          : 'Mettre à jour le mot de passe',
+      primaryLoadingLabel: 'Mise à jour…',
+      onPrimary: _didUpdatePassword ? null : _updatePassword,
+      isLoading: _isLoading,
+      secondaryContent: _didUpdatePassword
+          ? Text(
+              'Retour à la connexion…',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                color: Colors.white.withValues(alpha: 0.9),
+              ),
+            )
+          : null,
     );
   }
 }

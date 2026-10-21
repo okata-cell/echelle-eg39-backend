@@ -1,4 +1,4 @@
-package com.example.echelle_eg_39
+package com.okata.echelleeg39
 
 import io.flutter.embedding.android.FlutterActivity
 

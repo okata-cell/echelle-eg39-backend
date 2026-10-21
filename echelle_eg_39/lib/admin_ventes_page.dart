@@ -8,15 +8,21 @@ import 'service_image_thumbnail.dart';
 
 typedef AdminPurchaseRequestsLoader =
     Future<List<Map<String, dynamic>>> Function();
+typedef AdminPurchaseRequestDeleter = Future<void> Function(int demandeId);
 
 /// File admin des demandes d’achat.
 ///
 /// Le nom historique est conservé car le dashboard et d’autres écrans
 /// l’utilisent déjà comme point d’entrée.
 class AdminVentesPageFixed extends StatefulWidget {
-  const AdminVentesPageFixed({super.key, this.loadDemandes});
+  const AdminVentesPageFixed({
+    super.key,
+    this.loadDemandes,
+    this.deleteDemande,
+  });
 
   final AdminPurchaseRequestsLoader? loadDemandes;
+  final AdminPurchaseRequestDeleter? deleteDemande;
 
   @override
   State<AdminVentesPageFixed> createState() => _AdminVentesPageFixedState();
@@ -194,7 +200,8 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
     if (!mounted || confirmed != true || !_startMutation(demandeId)) return;
 
     try {
-      await ApiService.deleteDemande(demandeId);
+      final deleter = widget.deleteDemande ?? ApiService.deleteDemande;
+      await deleter(demandeId);
       if (mounted) {
         showAdminMessage(
           context,
@@ -291,8 +298,9 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
     return Row(
       mainAxisAlignment: MainAxisAlignment.end,
       children: [
-        if (status == 'rejetee' || status == 'termine')
+        if (status == 'approuvee' || status == 'rejetee' || status == 'termine')
           IconButton(
+            key: ValueKey('delete-purchase-request-$id'),
             onPressed: busy ? null : () => _deleteDemande(id),
             tooltip: 'Supprimer',
             icon: const Icon(Icons.delete_outline),

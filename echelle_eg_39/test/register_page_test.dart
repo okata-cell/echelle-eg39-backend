@@ -1,5 +1,6 @@
 import 'package:echelle_eg_39/api_service.dart';
 import 'package:echelle_eg_39/offline_registration_store.dart';
+import 'package:echelle_eg_39/password_recovery_scaffold.dart';
 import 'package:echelle_eg_39/register.page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -33,7 +34,19 @@ void main() {
     expect(find.text('Créer un compte client'), findsOneWidget);
     expect(find.text('Vos coordonnées'), findsOneWidget);
     expect(find.text('+228'), findsOneWidget);
+    expect(find.byType(PasswordRecoveryPhotoBackdrop), findsOneWidget);
     expect(find.byType(TextFormField), findsNWidgets(6));
+
+    final phoneFieldFinder = find.byType(TextFormField).at(3);
+    final phoneField = tester.widget<TextFormField>(phoneFieldFinder);
+    final phoneDecorator = tester.widget<InputDecorator>(
+      find.descendant(
+        of: phoneFieldFinder,
+        matching: find.byType(InputDecorator),
+      ),
+    );
+    expect(phoneField.controller?.text, isEmpty);
+    expect(phoneDecorator.decoration.hintText, '90000000');
     expect(find.text('Créer mon compte'), findsOneWidget);
     expect(
       find.byKey(const ValueKey('register-submit-button')),
