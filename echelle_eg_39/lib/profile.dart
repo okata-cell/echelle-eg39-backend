@@ -359,6 +359,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
   final TextEditingController _personalEmailController = TextEditingController();
   final TextEditingController _personalPasswordController =
       TextEditingController();
+  final TextEditingController _companyAddressController =
+      TextEditingController();
+  final TextEditingController _companyCityController = TextEditingController();
+  final TextEditingController _companyCountryController =
+      TextEditingController();
+  final TextEditingController _companyNameController = TextEditingController();
   late final ProfileApi _profileApi = widget.profileApi ?? ProfileApi();
   ProfileRecord? _profile;
   Uint8List? _selectedAvatarBytes;
@@ -395,6 +401,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
     _personalLastNameController.dispose();
     _personalEmailController.dispose();
     _personalPasswordController.dispose();
+    _companyAddressController.dispose();
+    _companyCityController.dispose();
+    _companyCountryController.dispose();
+    _companyNameController.dispose();
     if (widget.profileApi == null) _profileApi.dispose();
     super.dispose();
   }
@@ -1476,9 +1486,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
   Future<void> _showAddressDialog(BuildContext context) async {
     final profile = _profile;
     if (profile == null) return;
-    final addressController = TextEditingController(text: profile.address);
-    final cityController = TextEditingController(text: profile.city);
-    final countryController = TextEditingController(text: profile.country);
+    final addressController = _companyAddressController
+      ..text = profile.address;
+    final cityController = _companyCityController..text = profile.city;
+    final countryController = _companyCountryController..text = profile.country;
 
     await showDialog<void>(
       context: context,
@@ -1492,6 +1503,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   TextField(
+                    key: const ValueKey('profile-company-address'),
                     controller: addressController,
                     decoration: const InputDecoration(
                       labelText: 'Adresse complète',
@@ -1499,10 +1511,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     maxLines: 2,
                   ),
                   TextField(
+                    key: const ValueKey('profile-city'),
                     controller: cityController,
                     decoration: const InputDecoration(labelText: 'Ville'),
                   ),
                   TextField(
+                    key: const ValueKey('profile-country'),
                     controller: countryController,
                     decoration: const InputDecoration(labelText: 'Pays'),
                   ),
@@ -1546,18 +1560,16 @@ class _ProfilScreenState extends State<ProfilScreen> {
         );
       },
     );
-    addressController.dispose();
-    cityController.dispose();
-    countryController.dispose();
   }
 
   Future<void> _showProfessionalInfoDialog(BuildContext context) async {
-    final controller = TextEditingController(text: _userCompany);
+    final controller = _companyNameController..text = _userCompany;
     await showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
         title: const Text('Informations professionnelles'),
         content: TextField(
+          key: const ValueKey('profile-company'),
           controller: controller,
           maxLength: 255,
           decoration: const InputDecoration(labelText: 'Entreprise'),
@@ -1581,7 +1593,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ],
       ),
     );
-    controller.dispose();
   }
 
   Future<void> _showPasswordDialog(BuildContext context) async {
