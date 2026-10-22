@@ -24,6 +24,8 @@ async function migrate() {
     await client.query(
       'ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active BOOLEAN DEFAULT true',
     );
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA');
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_mime_type VARCHAR(30)');
 
     await client.query(`
       CREATE TABLE IF NOT EXISTS appareils (
@@ -144,6 +146,53 @@ async function migrate() {
     `);
 
     await client.query(`
+      CREATE TABLE IF NOT EXISTS profile_support_messages (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        message TEXT NOT NULL CHECK (char_length(message) BETWEEN 1 AND 5000),
+        status VARCHAR(20) NOT NULL DEFAULT 'nouveau'
+          CHECK (status IN ('nouveau', 'en_traitement', 'termine', 'ferme')),
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS support_message_attachments (
+        id SERIAL PRIMARY KEY,
+        support_message_id INTEGER NOT NULL REFERENCES profile_support_messages(id) ON DELETE CASCADE,
+        mime_type VARCHAR(30) NOT NULL CHECK (mime_type IN ('image/jpeg', 'image/png', 'image/webp')),
+        image_data BYTEA NOT NULL,
+        byte_size INTEGER NOT NULL CHECK (byte_size > 0 AND byte_size <= 2097152),
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS profile_training_interests (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        training_name VARCHAR(150) NOT NULL,
+        message TEXT CHECK (message IS NULL OR char_length(message) <= 2000),
+        status VARCHAR(20) NOT NULL DEFAULT 'nouveau'
+          CHECK (status IN ('nouveau', 'contacte', 'inscrit', 'termine', 'annule')),
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS profile_app_ratings (
+        id SERIAL PRIMARY KEY,
+        user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE,
+        rating SMALLINT NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        comment TEXT CHECK (comment IS NULL OR char_length(comment) <= 1000),
+        created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+
+    await client.query(`
       CREATE TABLE IF NOT EXISTS password_reset_codes (
         id SERIAL PRIMARY KEY,
         user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
@@ -178,6 +227,8 @@ async function migrate() {
 
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_profile_support_status_created ON profile_support_messages(status, created_at DESC)');
+    await client.query('CREATE INDEX IF NOT EXISTS idx_profile_training_status_created ON profile_training_interests(status, created_at DESC)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_appareils_code ON appareils(code)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_appareils_type ON appareils(type)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_demandes_statut ON demandes_achat(statut)');

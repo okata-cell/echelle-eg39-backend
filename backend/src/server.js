@@ -13,11 +13,12 @@ app.use(cors({
   origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
   credentials: true
 }));
-app.use(express.json());
+app.use(express.json({ limit: '4mb' }));
 app.use(morgan('dev'));
 
 // Routes
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/profile', require('./routes/profile'));
 app.use('/api/appareils', require('./routes/appareils'));
 app.use('/api/demandes', require('./routes/demandes'));
 app.use('/api/devis', require('./routes/devis'));
@@ -41,6 +42,7 @@ app.get('/', (req, res) => {
     version: '1.0.0',
     endpoints: {
       auth: '/api/auth',
+      profile: '/api/profile',
       appareils: '/api/appareils',
       demandes: '/api/demandes',
       devis: '/api/devis',
@@ -63,9 +65,10 @@ app.use((err, req, res, next) => {
   res.status(500).json({ error: 'Erreur serveur interne' });
 });
 
-// Démarrage du serveur
-app.listen(PORT, () => {
-  console.log(`
+// Démarrage du serveur uniquement lorsqu’il est lancé comme processus principal.
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`
   ╔═══════════════════════════════════════════════════════════╗
   ║                                                           ║
   ║         🚀 ÉCHELLE EG39 API - DÉMARRÉ                    ║
@@ -76,7 +79,7 @@ app.listen(PORT, () => {
   ║                                                           ║
   ╚═══════════════════════════════════════════════════════════╝
   `);
-});
-
+  });
+}
 
 module.exports = app;
