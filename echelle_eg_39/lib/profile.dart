@@ -343,6 +343,7 @@ class ChatMessage {
 typedef ProfileAvatarPicker = Future<XFile?> Function(ImageSource source);
 typedef ProfileAvatarNormalizer =
     Future<NormalizedProfileAvatar> Function(Uint8List sourceBytes);
+typedef ProfileGoogleMapsLauncher = Future<bool> Function(Uri uri);
 
 class ProfilScreen extends StatefulWidget {
   const ProfilScreen({
@@ -350,11 +351,13 @@ class ProfilScreen extends StatefulWidget {
     this.profileApi,
     this.pickAvatarImage,
     this.normalizeAvatarImage,
+    this.launchGoogleMaps,
   });
 
   final ProfileApi? profileApi;
   final ProfileAvatarPicker? pickAvatarImage;
   final ProfileAvatarNormalizer? normalizeAvatarImage;
+  final ProfileGoogleMapsLauncher? launchGoogleMaps;
 
   @override
   State<ProfilScreen> createState() => _ProfilScreenState();
@@ -2845,22 +2848,26 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Ouvre Google Maps avec la localisation de l'entreprise
+  /// Ouvre la position exacte fournie par l’entreprise dans Google Maps.
   Future<void> _openGoogleMaps() async {
-    const String googleMapsUrl =
-        'https://www.google.com/maps/search/Aflao+Gagli+Lomé+Togo';
-    final Uri uri = Uri.parse(googleMapsUrl);
+    final uri = Uri.parse('https://maps.app.goo.gl/BtGKf2gwjaLpKFQN7?g_st=iw');
 
     try {
-      if (await canLaunchUrl(uri)) {
-        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final didLaunch = widget.launchGoogleMaps != null
+          ? await widget.launchGoogleMaps!(uri)
+          : await launchUrl(uri, mode: LaunchMode.externalApplication);
+      if (!didLaunch && mounted) {
+        _showProfileMessage(
+          'Impossible d’ouvrir Google Maps. Vérifiez votre connexion.',
+          isError: true,
+        );
       }
-    } catch (e) {
-      // En cas d'erreur, ouvrir Google Maps avec une recherche plus générale
-      const String fallbackUrl = 'https://www.google.com/maps/search/Lomé+Togo';
-      final Uri fallbackUri = Uri.parse(fallbackUrl);
-      if (await canLaunchUrl(fallbackUri)) {
-        await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
+    } catch (_) {
+      if (mounted) {
+        _showProfileMessage(
+          'Impossible d’ouvrir Google Maps. Vérifiez votre connexion.',
+          isError: true,
+        );
       }
     }
   }

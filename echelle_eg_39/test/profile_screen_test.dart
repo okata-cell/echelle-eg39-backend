@@ -201,6 +201,47 @@ void main() {
     expect(find.text('Photo de profil enregistrée.'), findsOneWidget);
   });
 
+  testWidgets(
+    'recherche l’entreprise par nom et localisation dans Google Maps',
+    (tester) async {
+      final profile = _profile();
+      final savedUpdates = <Map<String, dynamic>>[];
+      final api = _fakeProfileApi(profile: profile, savedUpdates: savedUpdates);
+      addTearDown(api.dispose);
+      final openedUrls = <Uri>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfilScreen(
+            profileApi: api,
+            launchGoogleMaps: (uri) async {
+              openedUrls.add(uri);
+              return true;
+            },
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final aboutMenuItem = find.byKey(const ValueKey('profile-menu-À propos'));
+      await tester.ensureVisible(aboutMenuItem);
+      await tester.tap(aboutMenuItem);
+      await tester.pumpAndSettle();
+      final companyInfoItem = find.text("Informations sur l'entreprise");
+      await tester.ensureVisible(companyInfoItem);
+      await tester.tap(companyInfoItem);
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('Voir sur Google Maps'));
+      await tester.pumpAndSettle();
+
+      expect(openedUrls, hasLength(1));
+      expect(
+        openedUrls.single.toString(),
+        'https://maps.app.goo.gl/BtGKf2gwjaLpKFQN7?g_st=iw',
+      );
+    },
+  );
+
   testWidgets('enregistre le nom de l’entreprise sans erreur de dialogue', (
     tester,
   ) async {
