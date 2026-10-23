@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'profile_avatar_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 import 'login.page.dart';
@@ -339,10 +340,21 @@ class ChatMessage {
 }
 
 /// Écran de profil utilisateur connecté.
+typedef ProfileAvatarPicker = Future<XFile?> Function(ImageSource source);
+typedef ProfileAvatarNormalizer =
+    Future<NormalizedProfileAvatar> Function(Uint8List sourceBytes);
+
 class ProfilScreen extends StatefulWidget {
-  const ProfilScreen({super.key, this.profileApi});
+  const ProfilScreen({
+    super.key,
+    this.profileApi,
+    this.pickAvatarImage,
+    this.normalizeAvatarImage,
+  });
 
   final ProfileApi? profileApi;
+  final ProfileAvatarPicker? pickAvatarImage;
+  final ProfileAvatarNormalizer? normalizeAvatarImage;
 
   @override
   State<ProfilScreen> createState() => _ProfilScreenState();
@@ -356,7 +368,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
       TextEditingController();
   final TextEditingController _personalLastNameController =
       TextEditingController();
-  final TextEditingController _personalEmailController = TextEditingController();
+  final TextEditingController _personalEmailController =
+      TextEditingController();
   final TextEditingController _personalPasswordController =
       TextEditingController();
   final TextEditingController _companyAddressController =
@@ -663,6 +676,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
   /// Construit l'avatar utilisateur
   Widget _buildAvatar() {
     return GestureDetector(
+      key: const ValueKey('profile-avatar'),
       onTap: _showImagePickerDialog,
       child: Container(
         width: 80,
@@ -821,39 +835,30 @@ class _ProfilScreenState extends State<ProfilScreen> {
   /// Sélectionne une image depuis la source spécifiée
   Future<void> _pickImage(ImageSource source) async {
     try {
-      final image = await _picker.pickImage(
-        source: source,
-        maxWidth: 600,
-        maxHeight: 600,
-        imageQuality: 70,
-      );
+      // Passing size bounds lets image_picker use the platform decoder to
+      // convert formats such as HEIC before the Dart normalizer processes them.
+      final image = widget.pickAvatarImage != null
+          ? await widget.pickAvatarImage!(source)
+          : await _picker.pickImage(
+              source: source,
+              maxWidth: 1200,
+              maxHeight: 1200,
+              imageQuality: 100,
+            );
       if (image == null || !mounted) return;
 
-      final bytes = await image.readAsBytes();
-      final mimeType = switch (image.mimeType?.toLowerCase() ??
-          image.name.split('.').last.toLowerCase()) {
-        'image/jpeg' || 'jpg' || 'jpeg' => 'image/jpeg',
-        'image/png' || 'png' => 'image/png',
-        'image/webp' || 'webp' => 'image/webp',
-        _ => null,
-      };
-      if (mimeType == null) {
-        _showProfileMessage(
-          'Choisissez une image JPEG, PNG ou WebP.',
-          isError: true,
-        );
-        return;
-      }
-      if (bytes.lengthInBytes > ProfileApi.maxAvatarBytes) {
-        _showProfileMessage('La photo doit peser 1 Mo maximum.', isError: true);
-        return;
-      }
+      final sourceBytes = await image.readAsBytes();
+      final normalized =
+          await (widget.normalizeAvatarImage ?? normalizeProfileAvatar)(
+            sourceBytes,
+          );
+      if (!mounted) return;
 
       setState(() => _isSavingProfile = true);
       try {
         final profile = await _profileApi.updateAvatar(
-          bytes: bytes,
-          mimeType: mimeType,
+          bytes: normalized.bytes,
+          mimeType: normalized.mimeType,
         );
         await _applyProfile(profile, cache: true);
         if (mounted) _showProfileMessage('Photo de profil enregistrée.');
@@ -862,6 +867,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
       } finally {
         if (mounted) setState(() => _isSavingProfile = false);
       }
+    } on ProfileAvatarImageException catch (error) {
+      if (mounted) _showProfileMessage(error.message, isError: true);
     } catch (_) {
       if (mounted) {
         _showProfileMessage(
@@ -1486,8 +1493,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
   Future<void> _showAddressDialog(BuildContext context) async {
     final profile = _profile;
     if (profile == null) return;
-    final addressController = _companyAddressController
-      ..text = profile.address;
+    final addressController = _companyAddressController..text = profile.address;
     final cityController = _companyCityController..text = profile.city;
     final countryController = _companyCountryController..text = profile.country;
 

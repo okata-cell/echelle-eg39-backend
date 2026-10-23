@@ -1,11 +1,15 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:echelle_eg_39/profile.dart';
 import 'package:echelle_eg_39/profile_api.dart';
+import 'package:echelle_eg_39/profile_avatar_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
+import 'package:image/image.dart' as image_lib;
+import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 Map<String, dynamic> _profile({
@@ -36,6 +40,8 @@ http.Response _json(Map<String, dynamic> body) => http.Response(
 ProfileApi _fakeProfileApi({
   required Map<String, dynamic> profile,
   required List<Map<String, dynamic>> savedUpdates,
+  List<Map<String, dynamic>>? savedAvatars,
+  Completer<void>? avatarSaved,
 }) {
   final client = MockClient((request) async {
     if (request.method == 'GET' && request.url.path.endsWith('/profile/me')) {
@@ -46,6 +52,19 @@ ProfileApi _fakeProfileApi({
       savedUpdates.add(update);
       profile.addAll(update);
       return _json({'profile': profile, 'token': 'renewed'});
+    }
+    if (request.method == 'PUT' &&
+        request.url.path.endsWith('/profile/me/avatar')) {
+      final body = jsonDecode(request.body) as Map<String, dynamic>;
+      final avatar = Map<String, dynamic>.from(body['image'] as Map);
+      savedAvatars?.add(avatar);
+      if (avatarSaved != null && !avatarSaved.isCompleted) {
+        avatarSaved.complete();
+      }
+      profile
+        ..['avatarData'] = avatar['data']
+        ..['avatarMimeType'] = avatar['mimeType'];
+      return _json({'profile': profile});
     }
     return http.Response('{}', 404);
   });
@@ -79,7 +98,10 @@ void main() {
     expect(find.text('Afi Koffi'), findsOneWidget);
 
     await _openProfileMenu(tester, 'Informations personnelles');
-    await tester.enterText(find.byKey(const ValueKey('profile-first-name')), 'Ama');
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-first-name')),
+      'Ama',
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
     await tester.pumpAndSettle();
 
@@ -106,12 +128,77 @@ void main() {
       '12 rue du Port',
     );
     await tester.enterText(find.byKey(const ValueKey('profile-city')), 'Lomé');
-    await tester.enterText(find.byKey(const ValueKey('profile-country')), 'Togo');
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-country')),
+      'Togo',
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
     await tester.pumpAndSettle();
 
     expect(savedUpdates.single['address'], '12 rue du Port');
     expect(find.text('Adresse enregistrée.'), findsOneWidget);
+  });
+
+  testWidgets('normalise une image au nom inconnu avant envoi de l’avatar', (
+    tester,
+  ) async {
+    final profile = _profile();
+    final savedUpdates = <Map<String, dynamic>>[];
+    final savedAvatars = <Map<String, dynamic>>[];
+    final avatarPicked = Completer<void>();
+    final avatarSaved = Completer<void>();
+    ImageSource? pickedSource;
+    final api = _fakeProfileApi(
+      profile: profile,
+      savedUpdates: savedUpdates,
+      savedAvatars: savedAvatars,
+      avatarSaved: avatarSaved,
+    );
+    addTearDown(api.dispose);
+    final png = image_lib.encodePng(image_lib.Image(width: 12, height: 12));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilScreen(
+          profileApi: api,
+          pickAvatarImage: (source) async {
+            pickedSource = source;
+            if (!avatarPicked.isCompleted) avatarPicked.complete();
+            return XFile.fromData(
+              png,
+              name: 'photo.format-inconnu',
+              mimeType: 'application/octet-stream',
+            );
+          },
+          normalizeAvatarImage: (bytes) async {
+            expect(bytes, png);
+            return NormalizedProfileAvatar(
+              bytes: image_lib.encodeJpg(image_lib.Image(width: 8, height: 8)),
+              mimeType: 'image/jpeg',
+            );
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('profile-avatar')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Galerie'));
+    await tester.pump();
+    await tester.runAsync(
+      () => avatarPicked.future.timeout(const Duration(seconds: 2)),
+    );
+    expect(pickedSource, ImageSource.gallery);
+    await tester.runAsync(
+      () => avatarSaved.future.timeout(const Duration(seconds: 10)),
+    );
+    await tester.pumpAndSettle();
+
+    expect(savedAvatars, hasLength(1));
+    expect(savedAvatars.single['mimeType'], 'image/jpeg');
+    final uploadedBytes = base64Decode(savedAvatars.single['data'] as String);
+    expect(uploadedBytes.take(3), [0xff, 0xd8, 0xff]);
+    expect(find.text('Photo de profil enregistrée.'), findsOneWidget);
   });
 
   testWidgets('enregistre le nom de l’entreprise sans erreur de dialogue', (
@@ -125,7 +212,10 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
     await tester.pumpAndSettle();
     await _openProfileMenu(tester, 'Entreprise');
-    await tester.enterText(find.byKey(const ValueKey('profile-company')), 'Topo EG39');
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-company')),
+      'Topo EG39',
+    );
     await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
     await tester.pumpAndSettle();
 

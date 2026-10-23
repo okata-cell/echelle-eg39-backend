@@ -38,6 +38,7 @@ dependencies:
 
   # Image picker for selecting photos from gallery or camera
   image_picker: ^1.2.3
+  image: ^4.10.1
 
   # URL launcher for opening external links (YouTube, etc.)
   url_launcher: ^6.3.2
