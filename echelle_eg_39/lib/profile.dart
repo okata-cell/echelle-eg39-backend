@@ -380,11 +380,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
       TextEditingController();
   final TextEditingController _personalPasswordController =
       TextEditingController();
-  final TextEditingController _companyAddressController =
-      TextEditingController();
-  final TextEditingController _companyCityController = TextEditingController();
-  final TextEditingController _companyCountryController =
-      TextEditingController();
   late final ProfileApi _profileApi = widget.profileApi ?? ProfileApi();
   ProfileRecord? _profile;
   Uint8List? _selectedAvatarBytes;
@@ -394,17 +389,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
   String _userName = '';
   String _userEmail = '';
   String _userPhone = '';
-  String _userAddress = '';
-  String _userCity = '';
-  String _userCountry = 'Togo';
   bool _isCompanyLocationExpanded = false;
   final GlobalKey _companyLocationAnchor = GlobalKey();
-
-  String get _addressSummary => [
-    _userAddress,
-    _userCity,
-    _userCountry,
-  ].where((part) => part.trim().isNotEmpty).join(', ');
 
   @override
   void initState() {
@@ -418,9 +404,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     _personalLastNameController.dispose();
     _personalEmailController.dispose();
     _personalPasswordController.dispose();
-    _companyAddressController.dispose();
-    _companyCityController.dispose();
-    _companyCountryController.dispose();
     if (widget.profileApi == null) _profileApi.dispose();
     super.dispose();
   }
@@ -462,9 +445,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
       _userName = profile.fullName;
       _userEmail = profile.email;
       _userPhone = profile.phone;
-      _userAddress = profile.address;
-      _userCity = profile.city;
-      _userCountry = profile.country;
       _selectedAvatarBytes = profile.avatarData == null
           ? null
           : base64Decode(profile.avatarData!);
@@ -515,9 +495,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     String? email,
     String? phone,
     String? company,
-    String? address,
-    String? city,
-    String? country,
     String? currentPassword,
     required String successMessage,
   }) async {
@@ -535,9 +512,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
         email: email ?? profile.email,
         phone: phone ?? profile.phone,
         company: company ?? profile.company,
-        address: address ?? profile.address,
-        city: city ?? profile.city,
-        country: country ?? profile.country,
+        address: profile.address,
+        city: profile.city,
+        country: profile.country,
         currentPassword: currentPassword,
       );
       await _applyProfile(updated, cache: true);
@@ -972,13 +949,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
         'Mot de passe',
         () => _showPasswordDialog(context),
         trailing: '••••••••',
-      ),
-      _buildMenuItem(
-        context,
-        Icons.location_on,
-        'Adresse de l’entreprise',
-        () => _showAddressDialog(context),
-        trailing: _addressSummary,
       ),
     ]);
   }
@@ -1558,84 +1528,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
     phoneController.dispose();
     passwordController.dispose();
-  }
-
-  Future<void> _showAddressDialog(BuildContext context) async {
-    final profile = _profile;
-    if (profile == null) return;
-    final addressController = _companyAddressController..text = profile.address;
-    final cityController = _companyCityController..text = profile.city;
-    final countryController = _companyCountryController..text = profile.country;
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        var isSubmitting = false;
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) => AlertDialog(
-            title: const Text('Adresse de l’entreprise'),
-            content: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextField(
-                    key: const ValueKey('profile-company-address'),
-                    controller: addressController,
-                    decoration: const InputDecoration(
-                      labelText: 'Adresse complète',
-                    ),
-                    maxLines: 2,
-                  ),
-                  TextField(
-                    key: const ValueKey('profile-city'),
-                    controller: cityController,
-                    decoration: const InputDecoration(labelText: 'Ville'),
-                  ),
-                  TextField(
-                    key: const ValueKey('profile-country'),
-                    controller: countryController,
-                    decoration: const InputDecoration(labelText: 'Pays'),
-                  ),
-                ],
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () => Navigator.pop(dialogContext),
-                child: const Text('Annuler'),
-              ),
-              FilledButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        setDialogState(() => isSubmitting = true);
-                        final saved = await _saveProfile(
-                          address: addressController.text,
-                          city: cityController.text,
-                          country: countryController.text,
-                          successMessage: 'Adresse enregistrée.',
-                        );
-                        if (dialogContext.mounted && saved) {
-                          Navigator.pop(dialogContext);
-                        }
-                        if (dialogContext.mounted && !saved) {
-                          setDialogState(() => isSubmitting = false);
-                        }
-                      },
-                child: isSubmitting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Enregistrer'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
   }
 
   Future<void> _showPasswordDialog(BuildContext context) async {

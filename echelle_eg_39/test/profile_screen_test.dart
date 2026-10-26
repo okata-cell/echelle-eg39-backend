@@ -112,33 +112,6 @@ void main() {
     expect(prefs.getString('userName'), 'Ama Koffi');
   });
 
-  testWidgets('enregistre l’adresse de l’entreprise sans erreur de dialogue', (
-    tester,
-  ) async {
-    final profile = _profile();
-    final savedUpdates = <Map<String, dynamic>>[];
-    final api = _fakeProfileApi(profile: profile, savedUpdates: savedUpdates);
-    addTearDown(api.dispose);
-
-    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
-    await tester.pumpAndSettle();
-    await _openProfileMenu(tester, 'Adresse de l’entreprise');
-    await tester.enterText(
-      find.byKey(const ValueKey('profile-company-address')),
-      '12 rue du Port',
-    );
-    await tester.enterText(find.byKey(const ValueKey('profile-city')), 'Lomé');
-    await tester.enterText(
-      find.byKey(const ValueKey('profile-country')),
-      'Togo',
-    );
-    await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
-    await tester.pumpAndSettle();
-
-    expect(savedUpdates.single['address'], '12 rue du Port');
-    expect(find.text('Adresse enregistrée.'), findsOneWidget);
-  });
-
   testWidgets('normalise une image au nom inconnu avant envoi de l’avatar', (
     tester,
   ) async {
@@ -242,9 +215,7 @@ void main() {
     },
   );
 
-  testWidgets('retire les entrées supprimées et garde l’adresse en dernier', (
-    tester,
-  ) async {
+  testWidgets('retire les entrées supprimées du menu', (tester) async {
     final profile = _profile();
     final savedUpdates = <Map<String, dynamic>>[];
     final api = _fakeProfileApi(profile: profile, savedUpdates: savedUpdates);
@@ -257,25 +228,14 @@ void main() {
       'Paramètres',
       'Préférences de contact',
       'Entreprise',
+      'Adresse de l’entreprise',
     ]) {
       expect(find.byKey(ValueKey('profile-menu-$removed')), findsNothing);
     }
 
-    final addressItem = find.byKey(
-      const ValueKey('profile-menu-Adresse de l’entreprise'),
-    );
-    final passwordItem = find.byKey(
-      const ValueKey('profile-menu-Mot de passe'),
-    );
-    final supportItem = find.byKey(const ValueKey('profile-menu-Chat Support'));
-    expect(addressItem, findsOneWidget);
     expect(
-      tester.getTopLeft(addressItem).dy,
-      greaterThan(tester.getTopLeft(passwordItem).dy),
-    );
-    expect(
-      tester.getTopLeft(addressItem).dy,
-      lessThan(tester.getTopLeft(supportItem).dy),
+      find.byKey(const ValueKey('profile-menu-Mot de passe')),
+      findsOneWidget,
     );
   });
 
