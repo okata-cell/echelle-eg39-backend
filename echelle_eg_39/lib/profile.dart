@@ -353,7 +353,7 @@ class ProfilScreen extends StatefulWidget {
     this.pickAvatarImage,
     this.normalizeAvatarImage,
     this.launchGoogleMaps,
-    this.companyLocationScreenBuilder,
+    this.companyLocationCardBuilder,
   });
 
   final ProfileApi? profileApi;
@@ -361,8 +361,8 @@ class ProfilScreen extends StatefulWidget {
   final ProfileAvatarNormalizer? normalizeAvatarImage;
   final ProfileGoogleMapsLauncher? launchGoogleMaps;
 
-  /// Remplace l'écran de localisation (tests et aperçu hors ligne).
-  final WidgetBuilder? companyLocationScreenBuilder;
+  /// Remplace la carte affichée sous « Nous localiser » (tests, hors ligne).
+  final WidgetBuilder? companyLocationCardBuilder;
 
   @override
   State<ProfilScreen> createState() => _ProfilScreenState();
@@ -397,6 +397,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
   String _userAddress = '';
   String _userCity = '';
   String _userCountry = 'Togo';
+  bool _isCompanyLocationExpanded = false;
+  final GlobalKey _companyLocationAnchor = GlobalKey();
 
   String get _addressSummary => [
     _userAddress,
@@ -981,27 +983,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
     ]);
   }
 
-  Future<void> _openCompanyLocation(BuildContext context) async {
-    final builder = widget.companyLocationScreenBuilder;
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (routeContext) => builder != null
-            ? builder(routeContext)
-            : const CompanyLocationScreen(),
-      ),
-    );
-  }
-
   /// Section "Support"
   Widget _buildSupportSection(BuildContext context) {
     return _buildSection('Support', [
-      _buildMenuItem(
-        context,
-        Icons.place_outlined,
-        'Nous localiser',
-        () => _openCompanyLocation(context),
-        trailing: 'Carte',
-      ),
       _buildMenuItem(
         context,
         Icons.chat,
@@ -1021,7 +1005,75 @@ class _ProfilScreenState extends State<ProfilScreen> {
         'À propos',
         () => _showAboutDialog(context),
       ),
+      _buildCompanyLocationEntry(context),
     ]);
+  }
+
+  /// Dernière entrée du menu : « Nous localiser » déplie la carte juste en
+  /// dessous, sans quitter l'écran de profil.
+  Widget _buildCompanyLocationEntry(BuildContext context) {
+    final expanded = _isCompanyLocationExpanded;
+    final duration = _motionDuration(context, _locationExpansionDuration);
+    return Column(
+      key: _companyLocationAnchor,
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        _buildMenuItem(
+          context,
+          Icons.place_outlined,
+          'Nous localiser',
+          _toggleCompanyLocation,
+          trailing: expanded ? 'Réduire' : 'Carte',
+          highlighted: expanded,
+          expanded: expanded,
+        ),
+        AnimatedSize(
+          duration: duration,
+          curve: Curves.easeOutCubic,
+          alignment: Alignment.topCenter,
+          child: expanded
+              ? Container(
+                  key: const ValueKey('company-location-inline'),
+                  padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
+                  color: const Color(0xFFF6F8FC),
+                  child: _buildCompanyLocationCard(context),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCompanyLocationCard(BuildContext context) {
+    final builder = widget.companyLocationCardBuilder;
+    if (builder != null) return builder(context);
+    return const CompanyLocationCard();
+  }
+
+  static const Duration _locationExpansionDuration = Duration(
+    milliseconds: 240,
+  );
+
+  Duration _motionDuration(BuildContext context, Duration preferred) {
+    return MediaQuery.maybeDisableAnimationsOf(context) ?? false
+        ? Duration.zero
+        : preferred;
+  }
+
+  void _toggleCompanyLocation() {
+    final willExpand = !_isCompanyLocationExpanded;
+    setState(() => _isCompanyLocationExpanded = willExpand);
+    if (!willExpand) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final anchor = _companyLocationAnchor.currentContext;
+      if (!mounted || anchor == null) return;
+      Scrollable.ensureVisible(
+        anchor,
+        duration: _motionDuration(context, _locationExpansionDuration),
+        curve: Curves.easeOutCubic,
+        alignment: 0.02,
+      );
+    });
   }
 
   /// Informations de l'application
@@ -1196,50 +1248,83 @@ class _ProfilScreenState extends State<ProfilScreen> {
     String title,
     VoidCallback onTap, {
     String? trailing,
+    bool highlighted = false,
+    bool? expanded,
   }) {
-    return InkWell(
-      key: ValueKey('profile-menu-$title'),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-        decoration: const BoxDecoration(
-          border: Border(
-            bottom: BorderSide(color: Color(0xFFF3F4F6), width: 1),
+    return Semantics(
+      button: true,
+      expanded: expanded,
+      child: InkWell(
+        key: ValueKey('profile-menu-$title'),
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+          decoration: BoxDecoration(
+            color: highlighted ? const Color(0xFFEFF4FF) : Colors.transparent,
+            border: const Border(
+              bottom: BorderSide(color: Color(0xFFF3F4F6), width: 1),
+            ),
           ),
-        ),
-        child: Row(
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: const Color(0xFFDBEAFE),
-                borderRadius: BorderRadius.circular(10),
+          child: Row(
+            children: [
+              Container(
+                width: 36,
+                height: 36,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFDBEAFE),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: const Color(0xFF2563EB), size: 20),
               ),
-              child: Icon(icon, color: const Color(0xFF2563EB), size: 20),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                title,
-                style: GoogleFonts.poppins(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w500,
-                  color: const Color(0xFF111827),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Flexible(
+                      flex: 3,
+                      child: Text(
+                        title,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: GoogleFonts.poppins(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
+                          color: const Color(0xFF111827),
+                        ),
+                      ),
+                    ),
+                    if (trailing != null) ...[
+                      const SizedBox(width: 8),
+                      Flexible(
+                        flex: 2,
+                        child: Text(
+                          trailing,
+                          maxLines: 1,
+                          textAlign: TextAlign.right,
+                          overflow: TextOverflow.ellipsis,
+                          style: GoogleFonts.poppins(
+                            fontSize: 13,
+                            color: const Color(0xFF6B7280),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
-            ),
-            if (trailing != null)
-              Text(
-                trailing,
-                style: GoogleFonts.poppins(
-                  fontSize: 13,
-                  color: const Color(0xFF6B7280),
+              const SizedBox(width: 8),
+              AnimatedSwitcher(
+                duration: const Duration(milliseconds: 180),
+                child: Icon(
+                  expanded == true ? Icons.expand_more : Icons.chevron_right,
+                  key: ValueKey(expanded == true),
+                  color: Colors.grey[400],
+                  size: 20,
                 ),
               ),
-            const SizedBox(width: 8),
-            Icon(Icons.chevron_right, color: Colors.grey[400], size: 20),
-          ],
+            ],
+          ),
         ),
       ),
     );

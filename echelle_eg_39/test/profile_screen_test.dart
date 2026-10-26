@@ -279,20 +279,100 @@ void main() {
     );
   });
 
-  testWidgets('« Nous localiser » ouvre la fiche de l’entreprise', (
+  testWidgets('« Nous localiser » déplie la carte sous le bouton', (
     tester,
   ) async {
-    final profile = _profile();
-    final savedUpdates = <Map<String, dynamic>>[];
-    final api = _fakeProfileApi(profile: profile, savedUpdates: savedUpdates);
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+    final inlineMap = find.byKey(const ValueKey('inline-company-map'));
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilScreen(
+          profileApi: api,
+          companyLocationCardBuilder: (_) =>
+              const SizedBox(key: ValueKey('inline-company-map'), height: 180),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final locationItem = find.byKey(
+      const ValueKey('profile-menu-Nous localiser'),
+    );
+    await tester.ensureVisible(locationItem);
+    await tester.pumpAndSettle();
+    expect(inlineMap, findsNothing);
+
+    await tester.tap(locationItem);
+    await tester.pumpAndSettle();
+
+    // La carte est visible dans le profil, juste sous son bouton.
+    expect(inlineMap, findsOneWidget);
+    expect(find.text('Afi Koffi'), findsOneWidget);
+    expect(
+      tester.getTopLeft(inlineMap).dy,
+      greaterThanOrEqualTo(tester.getBottomLeft(locationItem).dy - 0.5),
+    );
+
+    await tester.tap(locationItem);
+    await tester.pumpAndSettle();
+    expect(inlineMap, findsNothing);
+  });
+
+  testWidgets('« Nous localiser » est la dernière entrée, après le support', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
+    await tester.pumpAndSettle();
+
+    final locationItem = find.byKey(
+      const ValueKey('profile-menu-Nous localiser'),
+    );
+    await tester.ensureVisible(locationItem);
+    await tester.pumpAndSettle();
+
+    final locationTop = tester.getTopLeft(locationItem).dy;
+    for (final above in ['Chat Support', 'Centre d\'aide', 'À propos']) {
+      expect(
+        locationTop,
+        greaterThan(
+          tester.getTopLeft(find.byKey(ValueKey('profile-menu-$above'))).dy,
+        ),
+        reason: '« $above » doit précéder « Nous localiser »',
+      );
+    }
+  });
+
+  testWidgets('la carte dépliée tient sur un petit écran sans déborder', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(320, 640);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
     addTearDown(api.dispose);
 
     await tester.pumpWidget(
       MaterialApp(
         home: ProfilScreen(
           profileApi: api,
-          companyLocationScreenBuilder: (_) =>
-              const Scaffold(body: Text('Carte de l’agence')),
+          companyLocationCardBuilder: (_) =>
+              const SizedBox(key: ValueKey('inline-company-map'), height: 320),
         ),
       ),
     );
@@ -305,6 +385,7 @@ void main() {
     await tester.tap(locationItem);
     await tester.pumpAndSettle();
 
-    expect(find.text('Carte de l’agence'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+    expect(find.byKey(const ValueKey('company-location-inline')), findsOneWidget);
   });
 }

@@ -11,8 +11,6 @@ class CompanyLocation {
   static const String name = 'ÉCHELLE EG39';
   static const String address =
       'Lomé, Rue des frères franciscains, après les rails';
-  static const String landmark =
-      'Après les rails, prenez la rue des frères franciscains : l’agence est sur votre droite.';
   static const String plusCode = '55PH+CR6 Lomé, Togo';
 
   /// Position résolue depuis le lien de localisation fourni par l'entreprise.
@@ -31,13 +29,17 @@ class CompanyLocation {
 typedef CompanyMapLauncher = Future<bool> Function(Uri uri);
 typedef CompanyAddressCopier = Future<void> Function(String address);
 
-/// Écran dédié : carte, marqueur et adresse de l'agence.
-class CompanyLocationScreen extends StatelessWidget {
-  const CompanyLocationScreen({
+/// Fiche blanche arrondie : carte, étiquette du nom, adresse et itinéraire.
+///
+/// Conçue pour être posée directement dans le menu profil, sous l'entrée
+/// « Nous localiser ».
+class CompanyLocationCard extends StatefulWidget {
+  const CompanyLocationCard({
     super.key,
     this.mapBuilder,
     this.openMaps,
     this.copyAddress,
+    this.mapHeight = 208,
   });
 
   /// Remplaçable pour les tests et le mode hors ligne.
@@ -45,51 +47,8 @@ class CompanyLocationScreen extends StatelessWidget {
   final CompanyMapLauncher? openMaps;
   final CompanyAddressCopier? copyAddress;
 
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
-      appBar: AppBar(
-        backgroundColor: const Color(0xFFF9FAFB),
-        foregroundColor: const Color(0xFF1D1D1F),
-        elevation: 0,
-        scrolledUnderElevation: 0,
-        title: const Text(
-          'Nous localiser',
-          style: TextStyle(fontWeight: FontWeight.w600, fontSize: 19),
-        ),
-      ),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            CompanyLocationCard(
-              mapBuilder: mapBuilder,
-              openMaps: openMaps,
-              copyAddress: copyAddress,
-            ),
-            const SizedBox(height: 18),
-            const _AccessNote(),
-          ],
-        ),
-      ),
-    );
-  }
-}
-
-/// Fiche blanche arrondie : carte, étiquette du nom, adresse et itinéraire.
-class CompanyLocationCard extends StatefulWidget {
-  const CompanyLocationCard({
-    super.key,
-    this.mapBuilder,
-    this.openMaps,
-    this.copyAddress,
-  });
-
-  final WidgetBuilder? mapBuilder;
-  final CompanyMapLauncher? openMaps;
-  final CompanyAddressCopier? copyAddress;
+  /// Hauteur de l'ouverture de carte, adaptée à l'insertion dans un menu.
+  final double mapHeight;
 
   @override
   State<CompanyLocationCard> createState() => _CompanyLocationCardState();
@@ -124,15 +83,13 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
 
   Future<void> _copyAddress() async {
     final copy = widget.copyAddress;
+    const fullAddress =
+        '${CompanyLocation.name} — ${CompanyLocation.address}';
     try {
       if (copy != null) {
-        await copy('${CompanyLocation.name} — ${CompanyLocation.address}');
+        await copy(fullAddress);
       } else {
-        await Clipboard.setData(
-          ClipboardData(
-            text: '${CompanyLocation.name} — ${CompanyLocation.address}',
-          ),
-        );
+        await Clipboard.setData(const ClipboardData(text: fullAddress));
       }
       if (mounted) _showMessage('Adresse copiée.');
     } catch (_) {
@@ -166,12 +123,12 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
         border: Border.all(color: const Color(0xFFE0E0E0)),
       ),
       child: Padding(
-        padding: const EdgeInsets.all(18),
+        padding: const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _buildMapAperture(context),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             Text(
               CompanyLocation.address,
               style: const TextStyle(
@@ -190,9 +147,9 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
                 color: Color(0xFF7A7A7A),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 14),
             const Divider(height: 1, color: Color(0xFFF0F0F0)),
-            const SizedBox(height: 8),
+            const SizedBox(height: 6),
             Wrap(
               alignment: WrapAlignment.spaceBetween,
               crossAxisAlignment: WrapCrossAlignment.center,
@@ -235,9 +192,10 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
   Widget _buildMapAperture(BuildContext context) {
     final map = widget.mapBuilder?.call(context) ?? _buildMap();
     return ClipRRect(
+      key: const ValueKey('company-map-frame'),
       borderRadius: BorderRadius.circular(12),
       child: SizedBox(
-        height: 232,
+        height: widget.mapHeight,
         width: double.infinity,
         child: Stack(
           children: [
@@ -245,35 +203,21 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
             Positioned(
               top: 12,
               left: 12,
-              child: _NameLabel(name: CompanyLocation.name),
+              right: 12,
+              child: Align(
+                alignment: Alignment.topLeft,
+                child: _NameLabel(name: CompanyLocation.name),
+              ),
             ),
             Positioned(
-              right: 12,
-              bottom: 12,
+              right: 10,
+              bottom: 10,
               child: _RecenterButton(onPressed: _recenter),
             ),
-            Positioned(
+            const Positioned(
               left: 8,
-              bottom: 6,
-              child: RichAttributionWidget(
-                alignment: AttributionAlignment.bottomLeft,
-                attributions: [
-                  TextSourceAttribution(
-                    'OpenStreetMap contributors',
-                    onTap: () => launchUrl(
-                      Uri.parse('https://www.openstreetmap.org/copyright'),
-                      mode: LaunchMode.externalApplication,
-                    ),
-                    textStyle: const TextStyle(
-                      fontSize: 10,
-                      color: Color(0xFF4B5563),
-                      decoration: TextDecoration.underline,
-                    ),
-                  ),
-                ],
-                permanentHeight: 24,
-                showFlutterMapAttribution: false,
-              ),
+              bottom: 8,
+              child: _MapAttribution(),
             ),
           ],
         ),
@@ -426,15 +370,46 @@ class _NameLabel extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          Text(
-            'Entreprise $name',
-            style: const TextStyle(
-              fontSize: 13,
-              fontWeight: FontWeight.w600,
-              color: Color(0xFF1D1D1F),
+          Flexible(
+            child: Text(
+              'Entreprise $name',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: Color(0xFF1D1D1F),
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+}
+
+/// Mention légale OpenStreetMap, toujours visible sur l'ouverture de carte.
+class _MapAttribution extends StatelessWidget {
+  const _MapAttribution();
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: const Color(0xF2FFFFFF),
+      borderRadius: BorderRadius.circular(6),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(6),
+        onTap: () => launchUrl(
+          Uri.parse('https://www.openstreetmap.org/copyright'),
+          mode: LaunchMode.externalApplication,
+        ),
+        child: const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+          child: Text(
+            '© OpenStreetMap contributors',
+            style: TextStyle(fontSize: 9.5, color: Color(0xFF4B5563)),
+          ),
+        ),
       ),
     );
   }
@@ -447,62 +422,24 @@ class _RecenterButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
-      color: Colors.white,
-      shape: const StadiumBorder(),
-      child: InkWell(
-        customBorder: const StadiumBorder(),
-        onTap: onPressed,
-        child: const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.my_location, size: 15, color: Color(0xFF2563EB)),
-              SizedBox(width: 6),
-              Text(
-                'Recentrer',
-                style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w600,
-                  color: Color(0xFF1D1D1F),
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
-
-class _AccessNote extends StatelessWidget {
-  const _AccessNote();
-
-  @override
-  Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF5F5F7),
-        borderRadius: BorderRadius.circular(14),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          const Icon(Icons.route_outlined, size: 20, color: Color(0xFF7A7A7A)),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              CompanyLocation.landmark,
-              style: const TextStyle(
-                fontSize: 13,
-                height: 1.4,
-                color: Color(0xFF333333),
-              ),
+    return Tooltip(
+      message: 'Recentrer la carte sur l’agence',
+      child: Material(
+        color: Colors.white,
+        shape: const CircleBorder(),
+        child: InkWell(
+          customBorder: const CircleBorder(),
+          onTap: onPressed,
+          child: const SizedBox(
+            width: 38,
+            height: 38,
+            child: Icon(
+              Icons.my_location,
+              size: 17,
+              color: Color(0xFF2563EB),
             ),
           ),
-        ],
+        ),
       ),
     );
   }

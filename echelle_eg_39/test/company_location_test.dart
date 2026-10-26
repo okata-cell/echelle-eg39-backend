@@ -48,6 +48,24 @@ void main() {
     );
   });
 
+  testWidgets('l’ouverture de carte respecte la hauteur demandée', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(
+        CompanyLocationCard(
+          mapHeight: 168,
+          mapBuilder: (_) => const SizedBox(key: ValueKey('test-map')),
+        ),
+      ),
+    );
+
+    expect(
+      tester.getSize(find.byKey(const ValueKey('company-map-frame'))).height,
+      168,
+    );
+  });
+
   testWidgets('le marqueur décrit l’emplacement de l’entreprise', (
     tester,
   ) async {
@@ -137,8 +155,8 @@ void main() {
     addTearDown(tester.view.resetDevicePixelRatio);
 
     await tester.pumpWidget(
-      MaterialApp(
-        home: CompanyLocationScreen(
+      _host(
+        CompanyLocationCard(
           mapBuilder: (_) => const SizedBox(),
           openMaps: (_) async => true,
         ),
@@ -161,21 +179,5 @@ void main() {
     expect(find.byType(FlutterMap), findsOneWidget);
     expect(find.byType(CompanyLocationMarker), findsOneWidget);
     expect(find.text('Entreprise ÉCHELLE EG39'), findsOneWidget);
-  });
-
-  testWidgets('l’écran utilise la carte fournie et la note d’accès', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: CompanyLocationScreen(
-          mapBuilder: (_) => const SizedBox(key: ValueKey('screen-map')),
-        ),
-      ),
-    );
-
-    expect(find.text('Nous localiser'), findsOneWidget);
-    expect(find.byKey(const ValueKey('screen-map')), findsOneWidget);
-    expect(find.textContaining('Après les rails'), findsOneWidget);
   });
 }
