@@ -389,7 +389,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
   String _userName = '';
   String _userEmail = '';
   String _userPhone = '';
-  bool _isCompanyLocationExpanded = false;
+  /// La carte de l'agence est visible dès l'ouverture du menu.
+  bool _isCompanyLocationExpanded = true;
   final GlobalKey _companyLocationAnchor = GlobalKey();
 
   @override
@@ -1287,7 +1288,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
               AnimatedSwitcher(
                 duration: const Duration(milliseconds: 180),
                 child: Icon(
-                  expanded == true ? Icons.expand_more : Icons.chevron_right,
+                  expanded == true ? Icons.expand_less : Icons.chevron_right,
                   key: ValueKey(expanded == true),
                   color: Colors.grey[400],
                   size: 20,

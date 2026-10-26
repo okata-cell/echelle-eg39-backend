@@ -239,7 +239,7 @@ void main() {
     );
   });
 
-  testWidgets('« Nous localiser » déplie la carte sous le bouton', (
+  testWidgets('la carte de l’agence s’affiche sans clic sous « Nous localiser »', (
     tester,
   ) async {
     final api = _fakeProfileApi(
@@ -265,12 +265,8 @@ void main() {
     );
     await tester.ensureVisible(locationItem);
     await tester.pumpAndSettle();
-    expect(inlineMap, findsNothing);
 
-    await tester.tap(locationItem);
-    await tester.pumpAndSettle();
-
-    // La carte est visible dans le profil, juste sous son bouton.
+    // Aucun clic : la carte est déjà là, juste sous son entrée.
     expect(inlineMap, findsOneWidget);
     expect(find.text('Afi Koffi'), findsOneWidget);
     expect(
@@ -278,9 +274,14 @@ void main() {
       greaterThanOrEqualTo(tester.getBottomLeft(locationItem).dy - 0.5),
     );
 
+    // Le clic sert uniquement à replier pour gagner de la place.
     await tester.tap(locationItem);
     await tester.pumpAndSettle();
     expect(inlineMap, findsNothing);
+
+    await tester.tap(locationItem);
+    await tester.pumpAndSettle();
+    expect(inlineMap, findsOneWidget);
   });
 
   testWidgets('« Nous localiser » est la dernière entrée, après le support', (
@@ -313,7 +314,7 @@ void main() {
     }
   });
 
-  testWidgets('la carte dépliée tient sur un petit écran sans déborder', (
+  testWidgets('la carte affichée d’emblée tient sur un petit écran', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(320, 640);
@@ -342,10 +343,12 @@ void main() {
       const ValueKey('profile-menu-Nous localiser'),
     );
     await tester.ensureVisible(locationItem);
-    await tester.tap(locationItem);
     await tester.pumpAndSettle();
 
     expect(tester.takeException(), isNull);
-    expect(find.byKey(const ValueKey('company-location-inline')), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('company-location-inline')),
+      findsOneWidget,
+    );
   });
 }
