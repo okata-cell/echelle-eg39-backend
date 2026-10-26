@@ -1,4 +1,6 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+<!-- Required in release builds to load map tiles and sync profile data. -->
+<uses-permission android:name="android.permission.INTERNET"/>
 <application
         android:label="echelle_eg_39"
         android:name="${applicationName}"

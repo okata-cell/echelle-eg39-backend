@@ -43,6 +43,10 @@ dependencies:
   # URL launcher for opening external links (YouTube, etc.)
   url_launcher: ^6.3.2
 
+  # Map rendering for the company location card
+  flutter_map: ^8.3.2
+  latlong2: ^0.9.1
+
   # PDF generation and printing
   pdf: ^3.13.1
   printing: ^5.15.1

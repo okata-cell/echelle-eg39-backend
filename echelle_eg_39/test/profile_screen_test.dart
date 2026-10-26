@@ -242,7 +242,7 @@ void main() {
     },
   );
 
-  testWidgets('enregistre le nom de l’entreprise sans erreur de dialogue', (
+  testWidgets('retire les entrées supprimées et garde l’adresse en dernier', (
     tester,
   ) async {
     final profile = _profile();
@@ -252,15 +252,59 @@ void main() {
 
     await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
     await tester.pumpAndSettle();
-    await _openProfileMenu(tester, 'Entreprise');
-    await tester.enterText(
-      find.byKey(const ValueKey('profile-company')),
-      'Topo EG39',
+
+    for (final removed in [
+      'Paramètres',
+      'Préférences de contact',
+      'Entreprise',
+    ]) {
+      expect(find.byKey(ValueKey('profile-menu-$removed')), findsNothing);
+    }
+
+    final addressItem = find.byKey(
+      const ValueKey('profile-menu-Adresse de l’entreprise'),
     );
-    await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+    final passwordItem = find.byKey(
+      const ValueKey('profile-menu-Mot de passe'),
+    );
+    final supportItem = find.byKey(const ValueKey('profile-menu-Chat Support'));
+    expect(addressItem, findsOneWidget);
+    expect(
+      tester.getTopLeft(addressItem).dy,
+      greaterThan(tester.getTopLeft(passwordItem).dy),
+    );
+    expect(
+      tester.getTopLeft(addressItem).dy,
+      lessThan(tester.getTopLeft(supportItem).dy),
+    );
+  });
+
+  testWidgets('« Nous localiser » ouvre la fiche de l’entreprise', (
+    tester,
+  ) async {
+    final profile = _profile();
+    final savedUpdates = <Map<String, dynamic>>[];
+    final api = _fakeProfileApi(profile: profile, savedUpdates: savedUpdates);
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilScreen(
+          profileApi: api,
+          companyLocationScreenBuilder: (_) =>
+              const Scaffold(body: Text('Carte de l’agence')),
+        ),
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(savedUpdates.single['company'], 'Topo EG39');
-    expect(find.text('Entreprise enregistrée.'), findsOneWidget);
+    final locationItem = find.byKey(
+      const ValueKey('profile-menu-Nous localiser'),
+    );
+    await tester.ensureVisible(locationItem);
+    await tester.tap(locationItem);
+    await tester.pumpAndSettle();
+
+    expect(find.text('Carte de l’agence'), findsOneWidget);
   });
 }

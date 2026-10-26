@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_avatar_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
 
@@ -352,12 +353,16 @@ class ProfilScreen extends StatefulWidget {
     this.pickAvatarImage,
     this.normalizeAvatarImage,
     this.launchGoogleMaps,
+    this.companyLocationScreenBuilder,
   });
 
   final ProfileApi? profileApi;
   final ProfileAvatarPicker? pickAvatarImage;
   final ProfileAvatarNormalizer? normalizeAvatarImage;
   final ProfileGoogleMapsLauncher? launchGoogleMaps;
+
+  /// Remplace l'écran de localisation (tests et aperçu hors ligne).
+  final WidgetBuilder? companyLocationScreenBuilder;
 
   @override
   State<ProfilScreen> createState() => _ProfilScreenState();
@@ -380,7 +385,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
   final TextEditingController _companyCityController = TextEditingController();
   final TextEditingController _companyCountryController =
       TextEditingController();
-  final TextEditingController _companyNameController = TextEditingController();
   late final ProfileApi _profileApi = widget.profileApi ?? ProfileApi();
   ProfileRecord? _profile;
   Uint8List? _selectedAvatarBytes;
@@ -393,11 +397,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
   String _userAddress = '';
   String _userCity = '';
   String _userCountry = 'Togo';
-  String _userCompany = '';
-  String _contactPreference = 'Email';
-  bool _notificationsEnabled = true;
-  bool _smsEnabled = true;
-  bool _callsEnabled = false;
 
   String get _addressSummary => [
     _userAddress,
@@ -420,7 +419,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     _companyAddressController.dispose();
     _companyCityController.dispose();
     _companyCountryController.dispose();
-    _companyNameController.dispose();
     if (widget.profileApi == null) _profileApi.dispose();
     super.dispose();
   }
@@ -430,7 +428,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
       _isLoadingProfile = true;
       _profileError = null;
     });
-    await _loadLocalPreferences();
 
     try {
       final profile = await _profileApi.loadProfile();
@@ -453,18 +450,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     }
   }
 
-  Future<void> _loadLocalPreferences() async {
-    final prefs = await SharedPreferences.getInstance();
-    if (!mounted) return;
-    setState(() {
-      _contactPreference =
-          prefs.getString('profile.contactPreference') ?? 'Email';
-      _notificationsEnabled = prefs.getBool('profile.notifications') ?? true;
-      _smsEnabled = prefs.getBool('profile.sms') ?? true;
-      _callsEnabled = prefs.getBool('profile.calls') ?? false;
-    });
-  }
-
   Future<void> _applyProfile(
     ProfileRecord profile, {
     required bool cache,
@@ -475,7 +460,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
       _userName = profile.fullName;
       _userEmail = profile.email;
       _userPhone = profile.phone;
-      _userCompany = profile.company;
       _userAddress = profile.address;
       _userCity = profile.city;
       _userCountry = profile.country;
@@ -982,20 +966,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
       ),
       _buildMenuItem(
         context,
-        Icons.location_on,
-        'Adresse de l’entreprise',
-        () => _showAddressDialog(context),
-        trailing: _addressSummary,
-      ),
-      _buildMenuItem(
-        context,
-        Icons.business,
-        'Entreprise',
-        () => _showProfessionalInfoDialog(context),
-        trailing: _userCompany,
-      ),
-      _buildMenuItem(
-        context,
         Icons.lock,
         'Mot de passe',
         () => _showPasswordDialog(context),
@@ -1003,23 +973,35 @@ class _ProfilScreenState extends State<ProfilScreen> {
       ),
       _buildMenuItem(
         context,
-        Icons.contact_phone,
-        'Préférences de contact',
-        () => _showContactPreferencesDialog(context),
-        trailing: _contactPreference,
-      ),
-      _buildMenuItem(
-        context,
-        Icons.settings,
-        'Paramètres',
-        () => _showSettingsDialog(context),
+        Icons.location_on,
+        'Adresse de l’entreprise',
+        () => _showAddressDialog(context),
+        trailing: _addressSummary,
       ),
     ]);
+  }
+
+  Future<void> _openCompanyLocation(BuildContext context) async {
+    final builder = widget.companyLocationScreenBuilder;
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (routeContext) => builder != null
+            ? builder(routeContext)
+            : const CompanyLocationScreen(),
+      ),
+    );
   }
 
   /// Section "Support"
   Widget _buildSupportSection(BuildContext context) {
     return _buildSection('Support', [
+      _buildMenuItem(
+        context,
+        Icons.place_outlined,
+        'Nous localiser',
+        () => _openCompanyLocation(context),
+        trailing: 'Carte',
+      ),
       _buildMenuItem(
         context,
         Icons.chat,
@@ -1571,39 +1553,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  Future<void> _showProfessionalInfoDialog(BuildContext context) async {
-    final controller = _companyNameController..text = _userCompany;
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Informations professionnelles'),
-        content: TextField(
-          key: const ValueKey('profile-company'),
-          controller: controller,
-          maxLength: 255,
-          decoration: const InputDecoration(labelText: 'Entreprise'),
-          textCapitalization: TextCapitalization.words,
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(dialogContext),
-            child: const Text('Annuler'),
-          ),
-          FilledButton(
-            onPressed: () async {
-              final saved = await _saveProfile(
-                company: controller.text,
-                successMessage: 'Entreprise enregistrée.',
-              );
-              if (dialogContext.mounted && saved) Navigator.pop(dialogContext);
-            },
-            child: const Text('Enregistrer'),
-          ),
-        ],
-      ),
-    );
-  }
-
   Future<void> _showPasswordDialog(BuildContext context) async {
     final currentPasswordController = TextEditingController();
     final newPasswordController = TextEditingController();
@@ -1716,126 +1665,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     currentPasswordController.dispose();
     newPasswordController.dispose();
     confirmPasswordController.dispose();
-  }
-
-  Future<void> _showContactPreferencesDialog(BuildContext context) async {
-    var preference = _contactPreference;
-    var notifications = _notificationsEnabled;
-    var sms = _smsEnabled;
-    var calls = _callsEnabled;
-
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Préférences de contact'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text('Moyen de contact préféré'),
-                ),
-                RadioGroup<String>(
-                  groupValue: preference,
-                  onChanged: (value) {
-                    if (value != null) setDialogState(() => preference = value);
-                  },
-                  child: const Column(
-                    children: [
-                      RadioListTile<String>(
-                        title: Text('E-mail'),
-                        value: 'Email',
-                      ),
-                      RadioListTile<String>(title: Text('SMS'), value: 'SMS'),
-                      RadioListTile<String>(
-                        title: Text('Appel téléphonique'),
-                        value: 'Appels',
-                      ),
-                    ],
-                  ),
-                ),
-                const Divider(),
-                SwitchListTile(
-                  title: const Text('Notifications push'),
-                  value: notifications,
-                  onChanged: (value) =>
-                      setDialogState(() => notifications = value),
-                ),
-                SwitchListTile(
-                  title: const Text('Recevoir les SMS'),
-                  value: sms,
-                  onChanged: (value) => setDialogState(() => sms = value),
-                ),
-                SwitchListTile(
-                  title: const Text('Recevoir les appels'),
-                  value: calls,
-                  onChanged: (value) => setDialogState(() => calls = value),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Enregistrer'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (!mounted || saved != true) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('profile.contactPreference', preference);
-    await prefs.setBool('profile.notifications', notifications);
-    await prefs.setBool('profile.sms', sms);
-    await prefs.setBool('profile.calls', calls);
-    setState(() {
-      _contactPreference = preference;
-      _notificationsEnabled = notifications;
-      _smsEnabled = sms;
-      _callsEnabled = calls;
-    });
-    _showProfileMessage('Préférences enregistrées sur cet appareil.');
-  }
-
-  Future<void> _showSettingsDialog(BuildContext context) async {
-    var notifications = _notificationsEnabled;
-    final saved = await showDialog<bool>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Paramètres'),
-          content: SwitchListTile(
-            title: const Text('Notifications push'),
-            subtitle: const Text('Préférence enregistrée sur cet appareil.'),
-            value: notifications,
-            onChanged: (value) => setDialogState(() => notifications = value),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext, false),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.pop(dialogContext, true),
-              child: const Text('Enregistrer'),
-            ),
-          ],
-        ),
-      ),
-    );
-    if (!mounted || saved != true) return;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool('profile.notifications', notifications);
-    setState(() => _notificationsEnabled = notifications);
-    _showProfileMessage('Préférence enregistrée sur cet appareil.');
   }
 
   // Méthodes pour le centre d'aide - Déclarées d'abord pour éviter les erreurs
@@ -2916,7 +2745,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 SizedBox(height: 8),
-                Text('Lomé, quartier Aflao Gagli, Togo'),
+                Text(CompanyLocation.address),
+                SizedBox(height: 4),
+                Text(
+                  CompanyLocation.plusCode,
+                  style: TextStyle(fontSize: 12, color: Color(0xFF7A7A7A)),
+                ),
                 SizedBox(height: 16),
                 Text(
                   'Zone d\'intervention',
