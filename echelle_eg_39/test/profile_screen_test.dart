@@ -266,7 +266,7 @@ void main() {
     await tester.ensureVisible(locationItem);
     await tester.pumpAndSettle();
 
-    // Aucun clic : la carte est déjà là, juste sous son entrée.
+    // Aucun clic : la carte est déjà là, juste sous son intitulé.
     expect(inlineMap, findsOneWidget);
     expect(find.text('Afi Koffi'), findsOneWidget);
     expect(
@@ -274,11 +274,18 @@ void main() {
       greaterThanOrEqualTo(tester.getBottomLeft(locationItem).dy - 0.5),
     );
 
-    // Le clic sert uniquement à replier pour gagner de la place.
-    await tester.tap(locationItem);
-    await tester.pumpAndSettle();
-    expect(inlineMap, findsNothing);
+    // Plus aucun libellé de repli ni chevron sur cette entrée.
+    expect(find.text('Réduire'), findsNothing);
+    expect(find.text('Carte'), findsNothing);
+    expect(
+      find.descendant(
+        of: locationItem,
+        matching: find.byIcon(Icons.chevron_right),
+      ),
+      findsNothing,
+    );
 
+    // L'entrée n'est plus un bouton : toucher ne masque pas la carte.
     await tester.tap(locationItem);
     await tester.pumpAndSettle();
     expect(inlineMap, findsOneWidget);
