@@ -310,18 +310,14 @@ void main() {
     await tester.tap(helpItem);
     await tester.pumpAndSettle();
 
-    for (final kept in [
-      'FAQ dynamique',
-      'Signaler un problème',
-      'Glossaire',
-      'Contact direct',
-    ]) {
+    for (final kept in ['FAQ dynamique', 'Glossaire', 'Contact direct']) {
       expect(find.text(kept), findsOneWidget, reason: '$kept doit rester');
     }
     for (final removed in [
       'Tutoriels vidéo',
       'Base de connaissances',
       'Centre de formation',
+      'Signaler un problème',
     ]) {
       expect(find.text(removed), findsNothing, reason: '$removed est supprimé');
     }
