@@ -291,6 +291,42 @@ void main() {
     expect(inlineMap, findsOneWidget);
   });
 
+  testWidgets('le centre d’aide ne garde que les rubriques actives', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
+    await tester.pumpAndSettle();
+
+    final helpItem = find.byKey(
+      const ValueKey('profile-menu-Centre d\'aide'),
+    );
+    await tester.ensureVisible(helpItem);
+    await tester.tap(helpItem);
+    await tester.pumpAndSettle();
+
+    for (final kept in [
+      'FAQ dynamique',
+      'Signaler un problème',
+      'Glossaire',
+      'Contact direct',
+    ]) {
+      expect(find.text(kept), findsOneWidget, reason: '$kept doit rester');
+    }
+    for (final removed in [
+      'Tutoriels vidéo',
+      'Base de connaissances',
+      'Centre de formation',
+    ]) {
+      expect(find.text(removed), findsNothing, reason: '$removed est supprimé');
+    }
+  });
+
   testWidgets('« Nous localiser » est la dernière entrée, après le support', (
     tester,
   ) async {

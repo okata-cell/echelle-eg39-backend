@@ -1679,91 +1679,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Construit un élément vidéo
-  Widget _buildVideoItem(String title, String url) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: const Icon(Icons.play_circle, color: Color(0xFFDC2626)),
-        title: Text(title),
-        subtitle: const Text('Cliquer pour voir la vidéo'),
-        trailing: const Icon(Icons.open_in_new),
-        onTap: () => _openYouTubeVideo(url),
-      ),
-    );
-  }
-
-  /// Ouvre une recherche YouTube basée sur le titre de la vidéo
-  Future<void> _openYouTubeVideo(String videoTitle) async {
-    try {
-      // Nettoyer le titre pour en faire une requête de recherche efficace
-      String searchQuery = _generateSearchQuery(videoTitle);
-
-      // Créer l'URL de recherche YouTube
-      String youtubeSearchUrl =
-          'https://www.youtube.com/results?search_query=${Uri.encodeComponent(searchQuery)}';
-      Uri searchUri = Uri.parse(youtubeSearchUrl);
-
-      if (await canLaunchUrl(searchUri)) {
-        await launchUrl(searchUri, mode: LaunchMode.externalApplication);
-      } else {
-        // Fallback: recherche générique sur la topographie
-        String fallbackUrl =
-            'https://www.youtube.com/results?search_query=topographie+gps+formation';
-        Uri fallbackUri = Uri.parse(fallbackUrl);
-        if (await canLaunchUrl(fallbackUri)) {
-          await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-        }
-      }
-    } catch (e) {
-      // En cas d'erreur, ouvrir une recherche YouTube générique
-      String fallbackUrl =
-          'https://www.youtube.com/results?search_query=tutoriel+topographie+gps';
-      Uri fallbackUri = Uri.parse(fallbackUrl);
-      if (await canLaunchUrl(fallbackUri)) {
-        await launchUrl(fallbackUri, mode: LaunchMode.externalApplication);
-      }
-    }
-  }
-
-  /// Génère une requête de recherche optimisée à partir du titre
-  String _generateSearchQuery(String title) {
-    // Dictionnaire de mots-clés pour améliorer les recherches
-    Map<String, String> keywords = {
-      'GPS e-survey E300': 'GPS e-survey E300 configuration tutorial',
-      'Théodolite Leica': 'Leica theodolite tutorial使用方法',
-      'Station totale': 'total station surveying tutorial',
-      'Niveau automatique': 'automatic level surveying tutorial',
-      'Calibration GPS': 'GPS calibration RTK tutorial',
-      'Formation topographie': 'surveying basics tutorial',
-      'Calcul de surfaces': 'land area calculation surveying',
-      'Implantation d\'ouvrages': 'construction staking surveying tutorial',
-    };
-
-    // Rechercher des correspondances dans le dictionnaire
-    for (String key in keywords.keys) {
-      if (title.contains(key)) {
-        return keywords[key]!;
-      }
-    }
-
-    // Si aucune correspondance trouvée, utiliser le titre original
-    return title;
-  }
-
-  /// Article consultable : tap to expand the complete information.
-  Widget _buildKnowledgeItem(String title, String description) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ExpansionTile(
-        leading: const Icon(Icons.article_outlined, color: Color(0xFF2563EB)),
-        title: Text(title),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [Text(description)],
-      ),
-    );
-  }
-
   /// Terme de glossaire en lecture seule (pas de faux bouton d’action).
   Widget _buildGlossaryItem(String term, String definition) {
     return Card(
@@ -1795,28 +1710,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  Widget _buildTrainingItem({
-    required String title,
-    required String description,
-    required bool selected,
-    required VoidCallback onTap,
-  }) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: const Icon(Icons.school_outlined, color: Color(0xFF2563EB)),
-        title: Text(title, style: const TextStyle(fontWeight: FontWeight.w600)),
-        subtitle: Text(description),
-        trailing: Icon(
-          selected ? Icons.radio_button_checked : Icons.radio_button_off,
-          color: selected ? const Color(0xFF2563EB) : Colors.grey,
-        ),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  /// Affiche le dialog du centre d'aide avec les 7 nouvelles fonctionnalités
+  /// Affiche le dialog du centre d'aide
   void _showHelpCenterDialog(BuildContext context) {
     showDialog(
       context: context,
@@ -1846,32 +1740,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 ),
                 _buildHelpCenterItem(
                   context,
-                  Icons.play_circle_outline,
-                  'Tutoriels vidéo',
-                  'Guides d\'utilisation des équipements',
-                  () {
-                    Navigator.of(context).pop();
-                    _showVideoTutorialsDialog(context);
-                  },
-                ),
-                _buildHelpCenterItem(
-                  context,
                   Icons.bug_report,
                   'Signaler un problème',
                   'Formulaire avec photos et description',
                   () {
                     Navigator.of(context).pop();
                     _showReportProblemDialog(context);
-                  },
-                ),
-                _buildHelpCenterItem(
-                  context,
-                  Icons.library_books,
-                  'Base de connaissances',
-                  'Articles techniques sur la topographie',
-                  () {
-                    Navigator.of(context).pop();
-                    _showKnowledgeBaseDialog(context);
                   },
                 ),
                 _buildHelpCenterItem(
@@ -1892,16 +1766,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   () {
                     Navigator.of(context).pop();
                     _showDirectContactDialog(context);
-                  },
-                ),
-                _buildHelpCenterItem(
-                  context,
-                  Icons.school,
-                  'Centre de formation',
-                  'Calendrier des formations disponibles',
-                  () {
-                    Navigator.of(context).pop();
-                    _showTrainingCenterDialog(context);
                   },
                 ),
               ],
@@ -1945,68 +1809,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 _buildFAQItem(
                   'Comment réserver un équipement ?',
                   'Utilisez la section Location de l\'application pour vérifier la disponibilité et réserver.',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Dialog Tutoriels vidéo
-  void _showVideoTutorialsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Tutoriels Vidéo'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildVideoItem(
-                  'GPS e-survey E300 - Configuration',
-                  'GPS e-survey E300 configuration tutorial',
-                ),
-
-                _buildVideoItem(
-                  'Théodolite Leica - Utilisation de base',
-                  'Leica theodolite tutorial使用方法',
-                ),
-
-                _buildVideoItem(
-                  'Station totale - Relevé topographique',
-                  'total station surveying tutorial',
-                ),
-
-                _buildVideoItem(
-                  'Niveau automatique - Nivellement',
-                  'automatic level surveying tutorial',
-                ),
-
-                _buildVideoItem(
-                  'Calibration GPS de précision',
-                  'GPS calibration RTK tutorial',
-                ),
-                _buildVideoItem(
-                  'Formation topographie de base',
-                  'surveying basics tutorial',
-                ),
-                _buildVideoItem(
-                  'Calcul de surfaces topographiques',
-                  'land area calculation surveying',
-                ),
-                _buildVideoItem(
-                  'Implantation d\'ouvrages',
-                  'construction staking surveying tutorial',
                 ),
               ],
             ),
@@ -2210,45 +2012,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     messageController.dispose();
   }
 
-  /// Dialog Base de connaissances
-  void _showKnowledgeBaseDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Base de connaissances'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildKnowledgeItem(
-                  'Principes de topographie',
-                  'Les bases de la topographie moderne',
-                ),
-                _buildKnowledgeItem(
-                  'GPS de précision',
-                  'Fonctionnement et calibration',
-                ),
-                _buildKnowledgeItem('Calcul de surfaces', 'Méthodes et outils'),
-                _buildKnowledgeItem(
-                  'Implantation d\'ouvrages',
-                  'Techniques et bonnes pratiques',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
   /// Dialog Glossaire
   void _showGlossaryDialog(BuildContext context) {
     final searchController = TextEditingController();
@@ -2396,80 +2159,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ],
       ),
     );
-  }
-
-  /// L’inscription devient une demande d’intérêt, sans dates de session promises.
-  Future<void> _showTrainingCenterDialog(BuildContext context) async {
-    const trainings = <(String, String)>[
-      (
-        'Initiation GPS',
-        'Formation de base à l’utilisation des GPS de précision.',
-      ),
-      (
-        'Perfectionnement Théodolite',
-        'Techniques avancées de mesure angulaire.',
-      ),
-      ('Stations totales', 'Utilisation des stations totales en topographie.'),
-      ('Calcul topographique', 'Méthodes de calcul et de compensation.'),
-    ];
-
-    var selectedTraining = '';
-    final requestedTraining = await showDialog<String>(
-      context: context,
-      builder: (dialogContext) => StatefulBuilder(
-        builder: (dialogContext, setDialogState) => AlertDialog(
-          title: const Text('Centre de formation'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const Text(
-                    'Choisissez un thème. L’équipe vous contactera au sujet des prochaines sessions.',
-                  ),
-                  const SizedBox(height: 12),
-                  for (final training in trainings)
-                    _buildTrainingItem(
-                      title: training.$1,
-                      description: training.$2,
-                      selected: selectedTraining == training.$1,
-                      onTap: () =>
-                          setDialogState(() => selectedTraining = training.$1),
-                    ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: const Text('Annuler'),
-            ),
-            FilledButton(
-              onPressed: selectedTraining.isEmpty
-                  ? null
-                  : () => Navigator.pop(dialogContext, selectedTraining),
-              child: const Text('Demander à être recontacté'),
-            ),
-          ],
-        ),
-      ),
-    );
-
-    if (!mounted || requestedTraining == null) return;
-    try {
-      await _profileApi.registerTrainingInterest(
-        trainingName: requestedTraining,
-      );
-      if (mounted) {
-        _showProfileMessage(
-          'Demande enregistrée. L’équipe vous contactera pour cette formation.',
-        );
-      }
-    } on ProfileApiException catch (error) {
-      if (mounted) _showProfileMessage(error.message, isError: true);
-    }
   }
 
   /// Construit un élément du menu À propos
