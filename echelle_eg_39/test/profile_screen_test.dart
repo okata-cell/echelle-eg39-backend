@@ -240,57 +240,60 @@ void main() {
     );
   });
 
-  testWidgets('la carte de l’agence s’affiche sans clic sous « Nous localiser »', (
-    tester,
-  ) async {
-    final api = _fakeProfileApi(
-      profile: _profile(),
-      savedUpdates: <Map<String, dynamic>>[],
-    );
-    addTearDown(api.dispose);
-    final inlineMap = find.byKey(const ValueKey('inline-company-map'));
+  testWidgets(
+    'la carte de l’agence s’affiche sans clic sous « Nous localiser »',
+    (tester) async {
+      final api = _fakeProfileApi(
+        profile: _profile(),
+        savedUpdates: <Map<String, dynamic>>[],
+      );
+      addTearDown(api.dispose);
+      final inlineMap = find.byKey(const ValueKey('inline-company-map'));
 
-    await tester.pumpWidget(
-      MaterialApp(
-        home: ProfilScreen(
-          profileApi: api,
-          companyLocationCardBuilder: (_) =>
-              const SizedBox(key: ValueKey('inline-company-map'), height: 180),
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ProfilScreen(
+            profileApi: api,
+            companyLocationCardBuilder: (_) => const SizedBox(
+              key: ValueKey('inline-company-map'),
+              height: 180,
+            ),
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
 
-    final locationItem = find.byKey(
-      const ValueKey('profile-menu-Nous localiser'),
-    );
-    await tester.ensureVisible(locationItem);
-    await tester.pumpAndSettle();
+      final locationItem = find.byKey(
+        const ValueKey('profile-menu-Nous localiser'),
+      );
+      await tester.ensureVisible(locationItem);
+      await tester.pumpAndSettle();
 
-    // Aucun clic : la carte est déjà là, juste sous son intitulé.
-    expect(inlineMap, findsOneWidget);
-    expect(find.text('Afi Koffi'), findsOneWidget);
-    expect(
-      tester.getTopLeft(inlineMap).dy,
-      greaterThanOrEqualTo(tester.getBottomLeft(locationItem).dy - 0.5),
-    );
+      // Aucun clic : la carte est déjà là, juste sous son intitulé.
+      expect(inlineMap, findsOneWidget);
+      expect(find.text('Afi Koffi'), findsOneWidget);
+      expect(
+        tester.getTopLeft(inlineMap).dy,
+        greaterThanOrEqualTo(tester.getBottomLeft(locationItem).dy - 0.5),
+      );
 
-    // Plus aucun libellé de repli ni chevron sur cette entrée.
-    expect(find.text('Réduire'), findsNothing);
-    expect(find.text('Carte'), findsNothing);
-    expect(
-      find.descendant(
-        of: locationItem,
-        matching: find.byIcon(Icons.chevron_right),
-      ),
-      findsNothing,
-    );
+      // Plus aucun libellé de repli ni chevron sur cette entrée.
+      expect(find.text('Réduire'), findsNothing);
+      expect(find.text('Carte'), findsNothing);
+      expect(
+        find.descendant(
+          of: locationItem,
+          matching: find.byIcon(Icons.chevron_right),
+        ),
+        findsNothing,
+      );
 
-    // L'entrée n'est plus un bouton : toucher ne masque pas la carte.
-    await tester.tap(locationItem);
-    await tester.pumpAndSettle();
-    expect(inlineMap, findsOneWidget);
-  });
+      // L'entrée n'est plus un bouton : toucher ne masque pas la carte.
+      await tester.tap(locationItem);
+      await tester.pumpAndSettle();
+      expect(inlineMap, findsOneWidget);
+    },
+  );
 
   testWidgets('le centre d’aide ne garde que les rubriques actives', (
     tester,
@@ -304,9 +307,7 @@ void main() {
     await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
     await tester.pumpAndSettle();
 
-    final helpItem = find.byKey(
-      const ValueKey('profile-menu-Centre d\'aide'),
-    );
+    final helpItem = find.byKey(const ValueKey('profile-menu-Centre d\'aide'));
     await tester.ensureVisible(helpItem);
     await tester.tap(helpItem);
     await tester.pumpAndSettle();
@@ -373,6 +374,10 @@ void main() {
     await tester.tap(find.text('Contact direct'));
     await tester.pumpAndSettle();
 
+    // L’adresse affichée est celle exploitée par l’entreprise.
+    expect(find.text('admin@echelle-eg39.com'), findsOneWidget);
+    expect(find.textContaining('contact@echelle-eg39.com'), findsNothing);
+
     await tester.tap(find.text('Téléphone'));
     await tester.pumpAndSettle();
     expect(opened.last.scheme, 'tel');
@@ -382,9 +387,9 @@ void main() {
     await tester.tap(find.text('E-mail'));
     await tester.pumpAndSettle();
     expect(opened.last.scheme, 'mailto');
-    expect(opened.last.path, 'contact@echelle-eg39.com');
+    expect(opened.last.path, 'admin@echelle-eg39.com');
     expect(find.textContaining('Adresse copiée'), findsOneWidget);
-    expect(clipboard, contains('contact@echelle-eg39.com'));
+    expect(clipboard, contains('admin@echelle-eg39.com'));
 
     final copiesBeforeWhatsApp = clipboard.length;
     canOpen = true;
@@ -393,6 +398,56 @@ void main() {
     expect(opened.last.host, 'wa.me');
     expect(opened.last.path, '/22890014329');
     expect(clipboard.length, copiesBeforeWhatsApp);
+  });
+
+  testWidgets('le partage écrit à l’adresse exploitée par l’entreprise', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+    final opened = <Uri>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilScreen(
+          profileApi: api,
+          launchContactUri: (uri) async {
+            opened.add(uri);
+            return true;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openProfileMenu(tester, 'À propos');
+    final aboutList = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Partage'),
+      120,
+      scrollable: aboutList,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Partage'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.widgetWithText(ActionChip, 'E-mail'));
+    await tester.pumpAndSettle();
+
+    expect(opened.last.scheme, 'mailto');
+    expect(opened.last.path, 'admin@echelle-eg39.com');
+    expect(opened.last.queryParameters['subject'], 'ÉCHELLE EG39');
+    expect(
+      opened.last.queryParameters['body'],
+      contains('admin@echelle-eg39.com'),
+    );
+    expect(opened.last.queryParameters['body'], isNot(contains('contact@')));
   });
 
   testWidgets('« Nous localiser » est la dernière entrée, après le support', (

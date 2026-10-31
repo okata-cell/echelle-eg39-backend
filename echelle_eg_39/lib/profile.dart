@@ -8,6 +8,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_avatar_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
@@ -1925,8 +1926,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   /// Les actions ouvrent maintenant le composeur système correspondant.
   void _showDirectContactDialog(BuildContext context) {
-    const phone = '+22890014329';
-    const email = 'contact@echelle-eg39.com';
     showDialog(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -1939,43 +1938,41 @@ class _ProfilScreenState extends State<ProfilScreen> {
               _buildContactItem(
                 Icons.phone,
                 'Téléphone',
-                '+228 90 01 43 29',
+                CompanyContact.phoneDisplay,
                 () => _launchContact(
-                  Uri(scheme: 'tel', path: phone),
-                  copyValue: '+228 90 01 43 29',
-                  fallbackMessage:
-                      'Aucune application d’appel. Numéro copié : '
-                      '+228 90 01 43 29',
+                  CompanyContact.phoneUri,
+                  copyValue: CompanyContact.phoneDisplay,
+                  fallbackMessage: CompanyContact.phoneFallbackMessage,
                 ),
               ),
               _buildContactItem(
                 Icons.email,
                 'E-mail',
-                email,
+                CompanyContact.email,
                 () => _launchContact(
-                  Uri(scheme: 'mailto', path: email),
-                  copyValue: email,
-                  fallbackMessage:
-                      'Aucune application e-mail. Adresse copiée : $email',
+                  CompanyContact.emailUri,
+                  copyValue: CompanyContact.email,
+                  fallbackMessage: CompanyContact.emailFallbackMessage,
                 ),
               ),
               _buildContactItem(
                 Icons.chat,
                 'WhatsApp',
-                '+228 90 01 43 29',
+                CompanyContact.phoneDisplay,
                 () => _launchContact(
-                  Uri.https('wa.me', '/22890014329', {
-                    'text': 'Bonjour ÉCHELLE EG39, j’ai besoin d’aide.',
-                  }),
-                  copyValue: '+228 90 01 43 29',
-                  fallbackMessage:
-                      'WhatsApp introuvable. Numéro copié : +228 90 01 43 29',
+                  CompanyContact.whatsAppUri(
+                    text:
+                        'Bonjour ${CompanyContact.name}, '
+                        'j’ai besoin d’aide.',
+                  ),
+                  copyValue: CompanyContact.phoneDisplay,
+                  fallbackMessage: CompanyContact.whatsAppFallbackMessage,
                 ),
               ),
               _buildContactItem(
                 Icons.schedule,
                 'Horaires',
-                'Lundi–vendredi : 8h–18h\nSamedi : sur demande',
+                CompanyContact.hours,
                 null,
               ),
             ],
@@ -2725,8 +2722,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   /// Partage un texte réel via le composeur WhatsApp, e-mail ou le presse-papiers.
   void _showShareDialog(BuildContext context) {
-    const invitation =
-        'Découvrez ÉCHELLE EG39, votre partenaire en équipements de topographie. Contact : +228 90 01 43 29 — contact@echelle-eg39.com';
+    const invitation = CompanyContact.introduction;
     showDialog<void>(
       context: context,
       builder: (dialogContext) => AlertDialog(
@@ -2747,7 +2743,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   onPressed: () {
                     Navigator.pop(dialogContext);
                     _launchContact(
-                      Uri.https('wa.me', '/', {'text': invitation}),
+                      CompanyContact.whatsAppShareUri(invitation),
                       copyValue: invitation,
                       fallbackMessage:
                           'WhatsApp introuvable. Message copié dans le '
@@ -2761,18 +2757,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   onPressed: () {
                     Navigator.pop(dialogContext);
                     _launchContact(
-                      Uri(
-                        scheme: 'mailto',
-                        path: 'contact@echelle-eg39.com',
-                        queryParameters: {
-                          'subject': 'ÉCHELLE EG39',
-                          'body': invitation,
-                        },
+                      CompanyContact.emailUriWith(
+                        subject: CompanyContact.name,
+                        body: invitation,
                       ),
-                      copyValue: 'contact@echelle-eg39.com',
-                      fallbackMessage:
-                          'Aucune application e-mail. Adresse copiée : '
-                          'contact@echelle-eg39.com',
+                      copyValue: CompanyContact.email,
+                      fallbackMessage: CompanyContact.emailFallbackMessage,
                     );
                   },
                 ),
