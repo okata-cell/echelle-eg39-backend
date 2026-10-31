@@ -5,6 +5,7 @@ import 'package:echelle_eg_39/profile.dart';
 import 'package:echelle_eg_39/profile_api.dart';
 import 'package:echelle_eg_39/profile_avatar_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
@@ -321,6 +322,77 @@ void main() {
     ]) {
       expect(find.text(removed), findsNothing, reason: '$removed est supprimé');
     }
+  });
+
+  testWidgets('Contact direct ouvre tel/mailto et copie en cas d’absence', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+    final opened = <Uri>[];
+    final clipboard = <String>[];
+    var canOpen = true;
+    final messenger = TestDefaultBinaryMessengerBinding.instance;
+    messenger.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        if (call.method == 'Clipboard.setData') {
+          final payload = call.arguments as Map<Object?, Object?>;
+          clipboard.add(payload['text'] as String? ?? '');
+        }
+        return null;
+      },
+    );
+    addTearDown(
+      () => messenger.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilScreen(
+          profileApi: api,
+          launchContactUri: (uri) async {
+            opened.add(uri);
+            return canOpen;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final helpItem = find.byKey(const ValueKey('profile-menu-Centre d\'aide'));
+    await tester.ensureVisible(helpItem);
+    await tester.tap(helpItem);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Contact direct'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Téléphone'));
+    await tester.pumpAndSettle();
+    expect(opened.last.scheme, 'tel');
+    expect(opened.last.path, '+22890014329');
+
+    canOpen = false;
+    await tester.tap(find.text('E-mail'));
+    await tester.pumpAndSettle();
+    expect(opened.last.scheme, 'mailto');
+    expect(opened.last.path, 'contact@echelle-eg39.com');
+    expect(find.textContaining('Adresse copiée'), findsOneWidget);
+    expect(clipboard, contains('contact@echelle-eg39.com'));
+
+    final copiesBeforeWhatsApp = clipboard.length;
+    canOpen = true;
+    await tester.tap(find.text('WhatsApp'));
+    await tester.pumpAndSettle();
+    expect(opened.last.host, 'wa.me');
+    expect(opened.last.path, '/22890014329');
+    expect(clipboard.length, copiesBeforeWhatsApp);
   });
 
   testWidgets('« Nous localiser » est la dernière entrée, après le support', (

@@ -30,6 +30,16 @@
 	<string>ÉCHELLE EG39 utilise l’appareil photo pour créer des visuels de promotion.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
 	<string>ÉCHELLE EG39 accède à votre galerie pour choisir un visuel de promotion.</string>
+	<key>LSApplicationQueriesSchemes</key>
+	<array>
+		<string>tel</string>
+		<string>mailto</string>
+		<string>whatsapp</string>
+		<string>https</string>
+		<string>http</string>
+		<string>maps</string>
+		<string>comgooglemaps</string>
+	</array>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>

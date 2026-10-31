@@ -345,6 +345,7 @@ typedef ProfileAvatarPicker = Future<XFile?> Function(ImageSource source);
 typedef ProfileAvatarNormalizer =
     Future<NormalizedProfileAvatar> Function(Uint8List sourceBytes);
 typedef ProfileGoogleMapsLauncher = Future<bool> Function(Uri uri);
+typedef ProfileContactLauncher = Future<bool> Function(Uri uri);
 
 class ProfilScreen extends StatefulWidget {
   const ProfilScreen({
@@ -353,6 +354,7 @@ class ProfilScreen extends StatefulWidget {
     this.pickAvatarImage,
     this.normalizeAvatarImage,
     this.launchGoogleMaps,
+    this.launchContactUri,
     this.companyLocationCardBuilder,
   });
 
@@ -360,6 +362,9 @@ class ProfilScreen extends StatefulWidget {
   final ProfileAvatarPicker? pickAvatarImage;
   final ProfileAvatarNormalizer? normalizeAvatarImage;
   final ProfileGoogleMapsLauncher? launchGoogleMaps;
+
+  /// Remplace l'ouverture du composeur téléphone / e-mail (tests).
+  final ProfileContactLauncher? launchContactUri;
 
   /// Remplace la carte affichée sous « Nous localiser » (tests, hors ligne).
   final WidgetBuilder? companyLocationCardBuilder;
@@ -1887,26 +1892,35 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  Future<void> _launchContact(Uri uri) async {
+  /// Ouvre le composeur système correspondant au lien.
+  ///
+  /// Aucun pré-contrôle `canLaunchUrl` : sur iOS il dépend de
+  /// `LSApplicationQueriesSchemes` et sur Android 11+ de `<queries>`, ce qui
+  /// faisait échouer `tel:` et `mailto:` alors que les applications existent.
+  /// Si rien ne s'ouvre (simulateur sans app Téléphone/Mail, appareil sans
+  /// client mail), la coordonnée est copiée pour rester utilisable.
+  Future<void> _launchContact(
+    Uri uri, {
+    required String copyValue,
+    required String fallbackMessage,
+  }) async {
+    var launched = false;
     try {
-      if (!await canLaunchUrl(uri)) {
-        if (mounted) {
-          _showProfileMessage(
-            'Impossible d’ouvrir cette application.',
-            isError: true,
-          );
-        }
-        return;
-      }
-      await launchUrl(uri, mode: LaunchMode.externalApplication);
+      final launcher = widget.launchContactUri;
+      launched = launcher != null
+          ? await launcher(uri)
+          : await launchUrl(uri, mode: LaunchMode.externalApplication);
     } catch (_) {
-      if (mounted) {
-        _showProfileMessage(
-          'Impossible d’ouvrir cette application.',
-          isError: true,
-        );
-      }
+      launched = false;
     }
+    if (launched || !mounted) return;
+    try {
+      await Clipboard.setData(ClipboardData(text: copyValue));
+    } catch (_) {
+      // Le presse-papiers peut être indisponible : le message reste utile.
+    }
+    if (!mounted) return;
+    _showProfileMessage(fallbackMessage);
   }
 
   /// Les actions ouvrent maintenant le composeur système correspondant.
@@ -1926,13 +1940,24 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 Icons.phone,
                 'Téléphone',
                 '+228 90 01 43 29',
-                () => _launchContact(Uri(scheme: 'tel', path: phone)),
+                () => _launchContact(
+                  Uri(scheme: 'tel', path: phone),
+                  copyValue: '+228 90 01 43 29',
+                  fallbackMessage:
+                      'Aucune application d’appel. Numéro copié : '
+                      '+228 90 01 43 29',
+                ),
               ),
               _buildContactItem(
                 Icons.email,
                 'E-mail',
                 email,
-                () => _launchContact(Uri(scheme: 'mailto', path: email)),
+                () => _launchContact(
+                  Uri(scheme: 'mailto', path: email),
+                  copyValue: email,
+                  fallbackMessage:
+                      'Aucune application e-mail. Adresse copiée : $email',
+                ),
               ),
               _buildContactItem(
                 Icons.chat,
@@ -1942,6 +1967,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   Uri.https('wa.me', '/22890014329', {
                     'text': 'Bonjour ÉCHELLE EG39, j’ai besoin d’aide.',
                   }),
+                  copyValue: '+228 90 01 43 29',
+                  fallbackMessage:
+                      'WhatsApp introuvable. Numéro copié : +228 90 01 43 29',
                 ),
               ),
               _buildContactItem(
@@ -2720,6 +2748,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
                     Navigator.pop(dialogContext);
                     _launchContact(
                       Uri.https('wa.me', '/', {'text': invitation}),
+                      copyValue: invitation,
+                      fallbackMessage:
+                          'WhatsApp introuvable. Message copié dans le '
+                          'presse-papiers.',
                     );
                   },
                 ),
@@ -2737,6 +2769,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
                           'body': invitation,
                         },
                       ),
+                      copyValue: 'contact@echelle-eg39.com',
+                      fallbackMessage:
+                          'Aucune application e-mail. Adresse copiée : '
+                          'contact@echelle-eg39.com',
                     );
                   },
                 ),
