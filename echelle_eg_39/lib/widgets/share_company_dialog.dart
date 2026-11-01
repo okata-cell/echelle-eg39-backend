@@ -137,6 +137,9 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
   @override
   Widget build(BuildContext context) {
     return AlertDialog(
+      backgroundColor: Colors.white,
+      surfaceTintColor: Colors.transparent,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
       contentPadding: const EdgeInsets.fromLTRB(20, 16, 20, 4),
       actionsPadding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
