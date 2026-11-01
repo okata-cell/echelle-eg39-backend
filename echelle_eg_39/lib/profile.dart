@@ -2282,7 +2282,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Dialog Notre équipe
+  /// Dialog Notre équipe.
+  ///
+  /// Les noms et fonctions viennent de `lib/team.dart` : ne les codez pas ici,
+  /// ils seraient ignorés par les autres écrans et par les tests.
   void _showTeamDialog(BuildContext context) {
     showDialog(
       context: context,
