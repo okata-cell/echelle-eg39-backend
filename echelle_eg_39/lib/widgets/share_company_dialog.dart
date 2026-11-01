@@ -6,6 +6,7 @@ import 'package:url_launcher/url_launcher.dart';
 
 import '../company_contact.dart';
 import '../company_share.dart';
+import 'app_action_group.dart';
 
 typedef ShareUriLauncher = Future<bool> Function(Uri uri);
 typedef ShareTextCopier = Future<void> Function(String text);
@@ -36,13 +37,6 @@ class ShareCompanyDialog extends StatefulWidget {
 }
 
 class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
-  static const Color _ink = Color(0xFF1D1D1F);
-  static const Color _muted = Color(0xFF7A7A7A);
-  static const Color _accent = Color(0xFF2563EB);
-  static const Color _parchment = Color(0xFFF5F5F7);
-  static const Color _hairline = Color(0xFFE0E0E0);
-  static const Color _divider = Color(0xFFF0F0F0);
-
   bool _isMessageExpanded = false;
   bool _isCopied = false;
 
@@ -67,7 +61,7 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
       ..showSnackBar(
         SnackBar(
           content: Text(message),
-          backgroundColor: _ink,
+          backgroundColor: AppActionPalette.ink,
           behavior: SnackBarBehavior.floating,
         ),
       );
@@ -148,7 +142,7 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
         style: TextStyle(
           fontSize: 17,
           fontWeight: FontWeight.w600,
-          color: _ink,
+          color: AppActionPalette.ink,
         ),
       ),
       content: SizedBox(
@@ -160,73 +154,77 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
             children: [
               _buildMessageWell(),
               const SizedBox(height: 18),
-              _buildGroup([
-                _networkRow(
-                  id: 'whatsapp',
-                  icon: FontAwesomeIcons.whatsapp,
-                  brand: const Color(0xFF25D366),
-                  label: 'WhatsApp',
-                  onTap: () => _openNetwork(CompanyShare.whatsAppUri()),
-                ),
-                _networkRow(
-                  id: 'facebook',
-                  icon: FontAwesomeIcons.facebook,
-                  brand: const Color(0xFF1877F2),
-                  label: 'Facebook',
-                  onTap: () => _openNetwork(CompanyShare.facebookUri()),
-                ),
-                _networkRow(
-                  id: 'instagram',
-                  icon: FontAwesomeIcons.instagram,
-                  brand: const Color(0xFFE1306C),
-                  label: 'Instagram',
-                  onTap: _openInstagram,
-                ),
-                _networkRow(
-                  id: 'telegram',
-                  icon: FontAwesomeIcons.telegram,
-                  brand: const Color(0xFF229ED9),
-                  label: 'Telegram',
-                  onTap: () => _openNetwork(CompanyShare.telegramUri()),
-                ),
-                _networkRow(
-                  id: 'x',
-                  icon: FontAwesomeIcons.x,
-                  brand: _ink,
-                  label: 'X',
-                  onTap: () => _openNetwork(CompanyShare.xUri()),
-                ),
-                _networkRow(
-                  id: 'linkedin',
-                  icon: FontAwesomeIcons.linkedinIn,
-                  brand: const Color(0xFF0A66C2),
-                  label: 'LinkedIn',
-                  onTap: () => _openNetwork(CompanyShare.linkedInUri()),
-                ),
-                _networkRow(
-                  id: 'email',
-                  icon: FontAwesomeIcons.envelope,
-                  brand: _accent,
-                  label: 'E-mail',
-                  onTap: () => _openNetwork(CompanyShare.emailUri()),
-                ),
-              ]),
+              AppActionGroup(
+                children: [
+                  _networkRow(
+                    id: 'whatsapp',
+                    icon: FontAwesomeIcons.whatsapp,
+                    brand: const Color(0xFF25D366),
+                    label: 'WhatsApp',
+                    onTap: () => _openNetwork(CompanyShare.whatsAppUri()),
+                  ),
+                  _networkRow(
+                    id: 'facebook',
+                    icon: FontAwesomeIcons.facebook,
+                    brand: const Color(0xFF1877F2),
+                    label: 'Facebook',
+                    onTap: () => _openNetwork(CompanyShare.facebookUri()),
+                  ),
+                  _networkRow(
+                    id: 'instagram',
+                    icon: FontAwesomeIcons.instagram,
+                    brand: const Color(0xFFE1306C),
+                    label: 'Instagram',
+                    onTap: _openInstagram,
+                  ),
+                  _networkRow(
+                    id: 'telegram',
+                    icon: FontAwesomeIcons.telegram,
+                    brand: const Color(0xFF229ED9),
+                    label: 'Telegram',
+                    onTap: () => _openNetwork(CompanyShare.telegramUri()),
+                  ),
+                  _networkRow(
+                    id: 'x',
+                    icon: FontAwesomeIcons.x,
+                    brand: AppActionPalette.ink,
+                    label: 'X',
+                    onTap: () => _openNetwork(CompanyShare.xUri()),
+                  ),
+                  _networkRow(
+                    id: 'linkedin',
+                    icon: FontAwesomeIcons.linkedinIn,
+                    brand: const Color(0xFF0A66C2),
+                    label: 'LinkedIn',
+                    onTap: () => _openNetwork(CompanyShare.linkedInUri()),
+                  ),
+                  _networkRow(
+                    id: 'email',
+                    icon: FontAwesomeIcons.envelope,
+                    brand: AppActionPalette.accent,
+                    label: 'E-mail',
+                    onTap: () => _openNetwork(CompanyShare.emailUri()),
+                  ),
+                ],
+              ),
               const SizedBox(height: 14),
-              _buildGroup([
-                _utilityRow(
-                  id: 'system',
-                  icon: Icons.ios_share,
-                  label: 'Autres applications',
-                  onTap: _openSystemShare,
-                ),
-                _utilityRow(
-                  id: 'copy',
-                  icon: Icons.content_copy_outlined,
-                  label: 'Copier le message',
-                  onTap: _copyMessage,
-                  trailing: _isCopied ? _buildCopiedBadge() : null,
-                ),
-              ]),
+              AppActionGroup(
+                children: [
+                  _utilityRow(
+                    id: 'system',
+                    icon: Icons.ios_share,
+                    label: 'Autres applications',
+                    onTap: _openSystemShare,
+                  ),
+                  _utilityRow(
+                    id: 'copy',
+                    icon: Icons.content_copy_outlined,
+                    label: 'Copier le message',
+                    onTap: _copyMessage,
+                    trailing: _isCopied ? _buildCopiedBadge() : null,
+                  ),
+                ],
+              ),
             ],
           ),
         ),
@@ -246,7 +244,7 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
       width: double.infinity,
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: _parchment,
+        color: AppActionPalette.parchment,
         borderRadius: BorderRadius.circular(11),
       ),
       child: Column(
@@ -259,7 +257,7 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
                 width: 7,
                 height: 7,
                 decoration: const BoxDecoration(
-                  color: _accent,
+                  color: AppActionPalette.accent,
                   shape: BoxShape.circle,
                 ),
               ),
@@ -272,7 +270,7 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.w600,
-                    color: _ink,
+                    color: AppActionPalette.ink,
                   ),
                 ),
               ),
@@ -281,11 +279,19 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
           const SizedBox(height: 6),
           const Text(
             CompanyContact.phoneDisplay,
-            style: TextStyle(fontSize: 13, height: 1.35, color: _muted),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              color: AppActionPalette.muted,
+            ),
           ),
           const Text(
             CompanyContact.email,
-            style: TextStyle(fontSize: 13, height: 1.35, color: _muted),
+            style: TextStyle(
+              fontSize: 13,
+              height: 1.35,
+              color: AppActionPalette.muted,
+            ),
           ),
           const SizedBox(height: 10),
           Text(
@@ -310,39 +316,18 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
               minimumSize: const Size(0, 32),
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
               alignment: Alignment.centerLeft,
-              foregroundColor: _accent,
+              foregroundColor: AppActionPalette.accent,
             ),
             child: Text(
               _isMessageExpanded ? 'Masquer le message' : 'Voir le message',
               style: const TextStyle(
                 fontSize: 13,
                 fontWeight: FontWeight.w600,
-                color: _accent,
+                color: AppActionPalette.accent,
               ),
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  Widget _buildGroup(List<Widget> rows) {
-    final children = <Widget>[];
-    for (var index = 0; index < rows.length; index++) {
-      if (index > 0) {
-        children.add(const Divider(height: 1, thickness: 1, color: _divider));
-      }
-      children.add(rows[index]);
-    }
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(11),
-        border: Border.all(color: _hairline),
-      ),
-      child: ClipRRect(
-        borderRadius: BorderRadius.circular(11),
-        child: Column(mainAxisSize: MainAxisSize.min, children: children),
       ),
     );
   }
@@ -354,19 +339,11 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
     required String label,
     required VoidCallback onTap,
   }) {
-    return _ShareRow(
+    return AppActionRow(
       key: ValueKey('share-network-$id'),
       onTap: onTap,
       label: label,
-      leading: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: _parchment,
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Center(child: FaIcon(icon, size: 16, color: brand)),
-      ),
+      leading: AppGlyphTile(child: FaIcon(icon, size: 16, color: brand)),
     );
   }
 
@@ -377,84 +354,32 @@ class _ShareCompanyDialogState extends State<ShareCompanyDialog> {
     required VoidCallback onTap,
     Widget? trailing,
   }) {
-    return _ShareRow(
+    return AppActionRow(
       key: ValueKey('share-action-$id'),
       onTap: onTap,
       label: label,
       trailing: trailing,
-      leading: Container(
-        width: 32,
-        height: 32,
-        decoration: BoxDecoration(
-          color: _parchment,
-          borderRadius: BorderRadius.circular(9),
-        ),
-        child: Icon(icon, size: 17, color: _accent),
+      leading: AppGlyphTile(
+        child: Icon(icon, size: 17, color: AppActionPalette.accent),
       ),
     );
   }
 
   Widget _buildCopiedBadge() {
-    return Row(
+    return const Row(
       mainAxisSize: MainAxisSize.min,
-      children: const [
-        Icon(Icons.check, size: 15, color: _accent),
+      children: [
+        Icon(Icons.check, size: 15, color: AppActionPalette.accent),
         SizedBox(width: 4),
         Text(
           'Copié',
           style: TextStyle(
             fontSize: 12,
             fontWeight: FontWeight.w600,
-            color: _accent,
+            color: AppActionPalette.accent,
           ),
         ),
       ],
-    );
-  }
-}
-
-class _ShareRow extends StatelessWidget {
-  const _ShareRow({
-    super.key,
-    required this.leading,
-    required this.label,
-    required this.onTap,
-    this.trailing,
-  });
-
-  final Widget leading;
-  final String label;
-  final VoidCallback onTap;
-  final Widget? trailing;
-
-  @override
-  Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      child: SizedBox(
-        height: 44,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
-          child: Row(
-            children: [
-              leading,
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  label,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(
-                    fontSize: 15,
-                    color: Color(0xFF1D1D1F),
-                  ),
-                ),
-              ),
-              ?trailing,
-            ],
-          ),
-        ),
-      ),
     );
   }
 }

@@ -8,10 +8,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_avatar_image.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'app_links.dart';
 import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
+import 'widgets/invite_app_dialog.dart';
 import 'widgets/share_company_dialog.dart';
 
 /// Fil de messages du support, conservé localement à l’écran et transmis à l’API.
@@ -2113,9 +2115,21 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 ),
                 _buildAboutItem(
                   context,
+                  Icons.download_for_offline_outlined,
+                  'Inviter à installer',
+                  AppLinks.isPublished
+                      ? 'Lien Google Play et App Store'
+                      : 'Bientôt sur Google Play et l’App Store',
+                  () {
+                    Navigator.of(context).pop();
+                    _showInviteDialog(context);
+                  },
+                ),
+                _buildAboutItem(
+                  context,
                   Icons.share,
-                  'Partage',
-                  'Invitez vos collègues',
+                  'Partager nos coordonnées',
+                  'Envoyez notre fiche à vos collègues',
                   () {
                     Navigator.of(context).pop();
                     _showShareDialog(context);
@@ -2565,6 +2579,14 @@ class _ProfilScreenState extends State<ProfilScreen> {
           ],
         );
       },
+    );
+  }
+
+  /// Invite un nouvel utilisateur à installer l’application.
+  void _showInviteDialog(BuildContext context) {
+    showDialog<void>(
+      context: context,
+      builder: (_) => InviteAppDialog(openUri: widget.launchContactUri),
     );
   }
 

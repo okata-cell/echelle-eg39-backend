@@ -430,12 +430,12 @@ void main() {
       matching: find.byType(Scrollable),
     );
     await tester.scrollUntilVisible(
-      find.text('Partage'),
+      find.text('Partager nos coordonnées'),
       120,
       scrollable: aboutList,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Partage'));
+    await tester.tap(find.text('Partager nos coordonnées'));
     await tester.pumpAndSettle();
 
     final emailRow = find.byKey(const ValueKey('share-network-email'));
@@ -483,12 +483,12 @@ void main() {
       matching: find.byType(Scrollable),
     );
     await tester.scrollUntilVisible(
-      find.text('Partage'),
+      find.text('Partager nos coordonnées'),
       120,
       scrollable: aboutList,
     );
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Partage'));
+    await tester.tap(find.text('Partager nos coordonnées'));
     await tester.pumpAndSettle();
 
     for (final network in [
@@ -538,7 +538,7 @@ void main() {
 
     for (final removed in ['Évaluation', 'Certifications']) {
       await tester.scrollUntilVisible(
-        find.text('Partage'),
+        find.text('Partager nos coordonnées'),
         120,
         scrollable: aboutList,
       );
@@ -575,6 +575,38 @@ void main() {
         reason: '$removed est supprimé des partenaires',
       );
     }
+  });
+
+  testWidgets('« Inviter à installer » annonce l’attente de publication', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
+    await tester.pumpAndSettle();
+
+    await _openProfileMenu(tester, 'À propos');
+    final aboutList = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Inviter à installer'),
+      120,
+      scrollable: aboutList,
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('Bientôt sur Google Play et l’App Store'), findsOneWidget);
+
+    await tester.tap(find.text('Inviter à installer'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Application bientôt disponible'), findsOneWidget);
+    expect(find.textContaining('n’est pas encore publiée'), findsOneWidget);
   });
 
   testWidgets('« Nous localiser » est la dernière entrée, après le support', (
