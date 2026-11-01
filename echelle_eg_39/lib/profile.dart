@@ -13,6 +13,7 @@ import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
+import 'support_assistant.dart';
 import 'team.dart';
 import 'widgets/invite_app_dialog.dart';
 import 'widgets/share_company_dialog.dart';
@@ -41,6 +42,9 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
   bool _isSending = false;
   String? _sendError;
 
+  /// Répondeur local : répond avec les faits de l’entreprise, sans réseau.
+  final SupportAssistant _assistant = const SupportAssistant();
+
   @override
   void dispose() {
     _messageController.dispose();
@@ -52,44 +56,67 @@ class _ChatSupportDialogState extends State<ChatSupportDialog> {
     final messageText = _messageController.text.trim();
     if (messageText.isEmpty || _isSending) return;
 
+    final answer = _assistant.answer(messageText);
+
     setState(() {
       _isSending = true;
       _sendError = null;
+      _messages.add(
+        ChatMessage(text: messageText, isBot: false, timestamp: DateTime.now()),
+      );
+      if (answer != null) {
+        _messages.add(
+          ChatMessage(
+            text: answer.answer,
+            isBot: true,
+            timestamp: DateTime.now(),
+          ),
+        );
+      }
     });
+    _messageController.clear();
+    _scrollToLatest();
+
+    // Réponse trouvée dans la fiche de l’entreprise : rien à transmettre.
+    if (answer != null) {
+      if (mounted) setState(() => _isSending = false);
+      return;
+    }
+
     try {
       await widget.profileApi.submitSupportMessage(message: messageText);
       if (!mounted) return;
-      final timestamp = DateTime.now();
       setState(() {
-        _messages
-          ..add(
-            ChatMessage(text: messageText, isBot: false, timestamp: timestamp),
-          )
-          ..add(
-            ChatMessage(
-              text:
-                  'Votre message a été transmis au support. L’équipe vous recontactera via les coordonnées de votre compte.',
-              isBot: true,
-              timestamp: DateTime.now(),
-            ),
-          );
+        _messages.add(
+          ChatMessage(
+            text:
+                'Je n’ai pas cette information dans la fiche de l’entreprise. '
+                'Votre message a été transmis au support : l’équipe vous '
+                'recontactera via les coordonnées de votre compte.',
+            isBot: true,
+            timestamp: DateTime.now(),
+          ),
+        );
         _sendError = null;
       });
-      _messageController.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (_scrollController.hasClients) {
-          _scrollController.animateTo(
-            _scrollController.position.maxScrollExtent,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        }
-      });
+      _scrollToLatest();
     } on ProfileApiException catch (error) {
       if (mounted) setState(() => _sendError = error.message);
     } finally {
       if (mounted) setState(() => _isSending = false);
     }
+  }
+
+  void _scrollToLatest() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (_scrollController.hasClients) {
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOut,
+        );
+      }
+    });
   }
 
   @override
