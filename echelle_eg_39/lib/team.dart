@@ -31,25 +31,25 @@ const List<TeamMember> kTeamMembers = [
   TeamMember(
     firstName: 'BADJO Gregoire',
     role: 'Directeur Général',
-    specialty: 'Expert en topographie, dessinateur et cartographe',
+    specialty: 'Expert en Topographie, Dessinateur et Cartographe',
     color: Color(0xFF2563EB),
   ),
   TeamMember(
     firstName: 'Valentin Koko',
     role: 'Technicien Topographie',
-    specialty: 'Expert en GPS et stations totales',
+    specialty: 'Expert en GPS et Stations totales',
     color: Color(0xFF059669),
   ),
   TeamMember(
     firstName: 'Marcel',
-    role: 'Technicien et opérateur',
-    specialty: 'Expert en GPS e-survey et station totale Leica',
+    role: 'Technicien et Opérateur',
+    specialty: 'Expert en GPS e-survey et Station totale Leica',
     color: Color(0xFFDC2626),
   ),
   TeamMember(
     firstName: 'Maurice',
-    role: 'Technicien et opérateur',
-    specialty: 'Expert en GPS e-survey et station totale Leica',
+    role: 'Technicien et Opérateur',
+    specialty: 'Expert en GPS e-survey et Station totale Leica',
     color: Color(0xFF7C3AED),
   ),
 ];

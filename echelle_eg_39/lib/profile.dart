@@ -2287,6 +2287,15 @@ class _ProfilScreenState extends State<ProfilScreen> {
   /// Les noms et fonctions viennent de `lib/team.dart` : ne les codez pas ici,
   /// ils seraient ignorés par les autres écrans et par les tests.
   void _showTeamDialog(BuildContext context) {
+    // Trace de diagnostic : montre dans le terminal l’équipe réellement
+    // compilée, pour distinguer un problème de données d’un problème de build.
+    assert(() {
+      debugPrint(
+        'Équipe compilée (${kTeamMembers.length}) : '
+        '${kTeamMembers.map((member) => member.firstName).join(', ')}',
+      );
+      return true;
+    }());
     showDialog(
       context: context,
       builder: (BuildContext context) {

@@ -7,10 +7,14 @@ void main() {
     expect(kTeamMembers, hasLength(4));
     expect(kTeamMembers.first.firstName, 'BADJO Gregoire');
     expect(kTeamMembers.first.initial, 'B');
+    expect(kTeamMembers.first.role, 'Directeur Général');
+    // Le libellé affiché est exactement « fonction » puis « spécialité » :
+    // la casse du texte est libre, la structure ne l’est pas.
     expect(
       kTeamMembers.first.subtitle,
-      'Directeur Général\nExpert en topographie, dessinateur et cartographe',
+      '${kTeamMembers.first.role}\n${kTeamMembers.first.specialty}',
     );
+    expect(kTeamMembers.first.specialty.toLowerCase(), contains('topographie'));
     expect(kTeamMembers.map((member) => member.firstName), [
       'BADJO Gregoire',
       'Valentin Koko',
