@@ -4,6 +4,7 @@ import 'dart:convert';
 import 'package:echelle_eg_39/company_location.dart';
 import 'package:echelle_eg_39/profile.dart';
 import 'package:echelle_eg_39/profile_api.dart';
+import 'package:echelle_eg_39/team.dart';
 import 'package:echelle_eg_39/profile_avatar_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -573,6 +574,31 @@ void main() {
         find.text(removed),
         findsNothing,
         reason: '$removed est supprimé des partenaires',
+      );
+    }
+  });
+
+  testWidgets('« Notre équipe » lit la liste partagée dans team.dart', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
+    await tester.pumpAndSettle();
+
+    await _openProfileMenu(tester, 'À propos');
+    await tester.tap(find.text('Notre équipe'));
+    await tester.pumpAndSettle();
+
+    for (final member in kTeamMembers) {
+      expect(
+        find.byKey(ValueKey('team-member-${member.firstName}')),
+        findsOneWidget,
+        reason: '${member.firstName} doit venir de team.dart',
       );
     }
   });

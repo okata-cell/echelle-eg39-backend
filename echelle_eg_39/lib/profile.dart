@@ -13,6 +13,7 @@ import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
+import 'team.dart';
 import 'widgets/invite_app_dialog.dart';
 import 'widgets/share_company_dialog.dart';
 
@@ -2261,50 +2262,23 @@ class _ProfilScreenState extends State<ProfilScreen> {
       builder: (BuildContext context) {
         return AlertDialog(
           title: const Text('Notre équipe'),
-          content: const SingleChildScrollView(
+          content: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Color(0xFF2563EB),
-                    child: Text('M', style: TextStyle(color: Colors.white)),
+                for (final member in kTeamMembers)
+                  ListTile(
+                    key: ValueKey('team-member-${member.firstName}'),
+                    leading: CircleAvatar(
+                      backgroundColor: member.color,
+                      child: Text(
+                        member.initial,
+                        style: const TextStyle(color: Colors.white),
+                      ),
+                    ),
+                    title: Text(member.firstName),
+                    subtitle: Text(member.subtitle),
                   ),
-                  title: Text('Maurice'),
-                  subtitle: Text('Directeur Général\nExpert en topographie'),
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Color(0xFF059669),
-                    child: Text('A', style: TextStyle(color: Colors.white)),
-                  ),
-                  title: Text('Akossiwa'),
-                  subtitle: Text('Responsable Commerciale\nSpécialiste GPS'),
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Color(0xFFDC2626),
-                    child: Text('K', style: TextStyle(color: Colors.white)),
-                  ),
-                  title: Text('Koffi'),
-                  subtitle: Text('Technicien SAV\nExpert en réparation'),
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Color(0xFF7C3AED),
-                    child: Text('Y', style: TextStyle(color: Colors.white)),
-                  ),
-                  title: Text('Yao'),
-                  subtitle: Text('Formateur\nExpert en théodolites'),
-                ),
-                ListTile(
-                  leading: CircleAvatar(
-                    backgroundColor: Color(0xFFEA580C),
-                    child: Text('A', style: TextStyle(color: Colors.white)),
-                  ),
-                  title: Text('Abigail'),
-                  subtitle: Text('Responsable Administrative\nSupport client'),
-                ),
               ],
             ),
           ),
