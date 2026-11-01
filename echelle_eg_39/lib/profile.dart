@@ -12,6 +12,7 @@ import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
+import 'widgets/share_company_dialog.dart';
 
 /// Fil de messages du support, conservé localement à l’écran et transmis à l’API.
 class ChatSupportDialog extends StatefulWidget {
@@ -2064,7 +2065,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   context,
                   Icons.handshake,
                   'Nos partenaires',
-                  'Leica, Stonex, e-survey',
+                  'Leica, e-survey',
                   () {
                     Navigator.of(context).pop();
                     _showPartnersDialog(context);
@@ -2112,32 +2113,12 @@ class _ProfilScreenState extends State<ProfilScreen> {
                 ),
                 _buildAboutItem(
                   context,
-                  Icons.star,
-                  'Évaluation',
-                  'Notez l\'application',
-                  () {
-                    Navigator.of(context).pop();
-                    _showRatingDialog(context);
-                  },
-                ),
-                _buildAboutItem(
-                  context,
                   Icons.share,
                   'Partage',
                   'Invitez vos collègues',
                   () {
                     Navigator.of(context).pop();
                     _showShareDialog(context);
-                  },
-                ),
-                _buildAboutItem(
-                  context,
-                  Icons.verified,
-                  'Certifications',
-                  'ISO et agréments techniques',
-                  () {
-                    Navigator.of(context).pop();
-                    _showCertificationsDialog(context);
                   },
                 ),
               ],
@@ -2341,27 +2322,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
                   subtitle: Text('Équipements de précision suisses'),
                 ),
                 ListTile(
-                  leading: Icon(Icons.science, color: Color(0xFF059669)),
-                  title: Text('Stonex'),
-                  subtitle: Text('Technologies de mesure italiennes'),
-                ),
-                ListTile(
                   leading: Icon(Icons.satellite_alt, color: Color(0xFFDC2626)),
                   title: Text('e-survey'),
                   subtitle: Text('GPS de nouvelle génération'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.construction, color: Color(0xFF7C3AED)),
-                  title: Text('Trimble'),
-                  subtitle: Text('Solutions de géolocalisation'),
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.precision_manufacturing,
-                    color: Color(0xFFEA580C),
-                  ),
-                  title: Text('Sokkia'),
-                  subtitle: Text('Instruments topographiques japonais'),
                 ),
               ],
             ),
@@ -2605,254 +2568,11 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Enregistre réellement la note et son commentaire dans le compte connecté.
-  Future<void> _showRatingDialog(BuildContext context) async {
-    var selectedRating = 5;
-    final commentController = TextEditingController();
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        var isSubmitting = false;
-        String? error;
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) => AlertDialog(
-            title: const Text('Évaluer l’application'),
-            content: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                const Text('Comment évaluez-vous notre application ?'),
-                const SizedBox(height: 16),
-                Semantics(
-                  label: 'Note : $selectedRating sur 5 étoiles',
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: List.generate(
-                      5,
-                      (index) => IconButton(
-                        tooltip: '${index + 1} étoile${index == 0 ? '' : 's'}',
-                        onPressed: isSubmitting
-                            ? null
-                            : () => setDialogState(
-                                () => selectedRating = index + 1,
-                              ),
-                        icon: Icon(
-                          index < selectedRating
-                              ? Icons.star
-                              : Icons.star_border,
-                          color: const Color(0xFF9A6700),
-                          size: 32,
-                        ),
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: commentController,
-                  maxLength: 1000,
-                  decoration: const InputDecoration(
-                    labelText: 'Commentaire (facultatif)',
-                    border: OutlineInputBorder(),
-                  ),
-                  maxLines: 3,
-                ),
-                if (error != null)
-                  Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
-                      error!,
-                      style: const TextStyle(color: Color(0xFFB42318)),
-                    ),
-                  ),
-              ],
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () => Navigator.pop(dialogContext),
-                child: const Text('Annuler'),
-              ),
-              FilledButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        setDialogState(() {
-                          isSubmitting = true;
-                          error = null;
-                        });
-                        try {
-                          await _profileApi.submitRating(
-                            rating: selectedRating,
-                            comment: commentController.text,
-                          );
-                          if (!dialogContext.mounted) {
-                            return;
-                          }
-                          Navigator.pop(dialogContext);
-                          if (mounted) {
-                            _showProfileMessage(
-                              'Merci, votre évaluation a été enregistrée.',
-                            );
-                          }
-                        } on ProfileApiException catch (apiError) {
-                          if (dialogContext.mounted) {
-                            setDialogState(() {
-                              isSubmitting = false;
-                              error = apiError.message;
-                            });
-                          }
-                        }
-                      },
-                child: isSubmitting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Envoyer'),
-              ),
-            ],
-          ),
-        );
-      },
-    );
-    commentController.dispose();
-  }
-
-  /// Partage un texte réel via le composeur WhatsApp, e-mail ou le presse-papiers.
+  /// Envoie la fiche de l’entreprise vers les réseaux sociaux.
   void _showShareDialog(BuildContext context) {
-    const invitation = CompanyContact.introduction;
     showDialog<void>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Partager ÉCHELLE EG39'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Text('Partagez les coordonnées de l’entreprise.'),
-            const SizedBox(height: 16),
-            Wrap(
-              alignment: WrapAlignment.center,
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                ActionChip(
-                  avatar: const Icon(Icons.chat_outlined),
-                  label: const Text('WhatsApp'),
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    _launchContact(
-                      CompanyContact.whatsAppShareUri(invitation),
-                      copyValue: invitation,
-                      fallbackMessage:
-                          'WhatsApp introuvable. Message copié dans le '
-                          'presse-papiers.',
-                    );
-                  },
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.email_outlined),
-                  label: const Text('E-mail'),
-                  onPressed: () {
-                    Navigator.pop(dialogContext);
-                    _launchContact(
-                      CompanyContact.emailUriWith(
-                        subject: CompanyContact.name,
-                        body: invitation,
-                      ),
-                      copyValue: CompanyContact.email,
-                      fallbackMessage: CompanyContact.emailFallbackMessage,
-                    );
-                  },
-                ),
-                ActionChip(
-                  avatar: const Icon(Icons.copy_outlined),
-                  label: const Text('Copier le texte'),
-                  onPressed: () async {
-                    await Clipboard.setData(
-                      const ClipboardData(text: invitation),
-                    );
-                    if (!dialogContext.mounted) return;
-                    Navigator.pop(dialogContext);
-                    if (mounted) _showProfileMessage('Texte copié.');
-                  },
-                ),
-              ],
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
-    );
-  }
-
-  /// Dialog Certifications
-  void _showCertificationsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Certifications'),
-          content: const SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.verified, color: Color(0xFF2563EB)),
-                  title: Text('ISO 9001:2015'),
-                  subtitle: Text('Management de la qualité'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.security, color: Color(0xFF059669)),
-                  title: Text('ISO 14001:2015'),
-                  subtitle: Text('Management environnemental'),
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.health_and_safety,
-                    color: Color(0xFFDC2626),
-                  ),
-                  title: Text('ISO 45001:2018'),
-                  subtitle: Text('Santé et sécurité au travail'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.gavel, color: Color(0xFF7C3AED)),
-                  title: Text('Agréments techniques'),
-                  subtitle: Text('Reconnaissance officielle'),
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.precision_manufacturing,
-                    color: Color(0xFFEA580C),
-                  ),
-                  title: Text('Certifications partenaires'),
-                  subtitle: Text('Leica, Stonex, e-survey'),
-                ),
-                ListTile(
-                  leading: Icon(
-                    Icons.account_balance_wallet,
-                    color: Color(0xFF1F2937),
-                  ),
-                  title: Text('Licences de distribution'),
-                  subtitle: Text('Autorisations officielles'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
+      builder: (_) => ShareCompanyDialog(openUri: widget.launchContactUri),
     );
   }
 }

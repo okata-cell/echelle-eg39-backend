@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:echelle_eg_39/company_location.dart';
 import 'package:echelle_eg_39/profile.dart';
 import 'package:echelle_eg_39/profile_api.dart';
 import 'package:echelle_eg_39/profile_avatar_image.dart';
@@ -437,17 +438,143 @@ void main() {
     await tester.tap(find.text('Partage'));
     await tester.pumpAndSettle();
 
-    await tester.tap(find.widgetWithText(ActionChip, 'E-mail'));
+    final emailRow = find.byKey(const ValueKey('share-network-email'));
+    await tester.ensureVisible(emailRow);
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey('share-network-email')));
     await tester.pumpAndSettle();
 
     expect(opened.last.scheme, 'mailto');
     expect(opened.last.path, 'admin@echelle-eg39.com');
-    expect(opened.last.queryParameters['subject'], 'ÉCHELLE EG39');
+    expect(opened.last.queryParameters['subject'], contains('ÉCHELLE EG39'));
     expect(
       opened.last.queryParameters['body'],
       contains('admin@echelle-eg39.com'),
     );
     expect(opened.last.queryParameters['body'], isNot(contains('contact@')));
+  });
+
+  testWidgets('le partage propose les réseaux sociaux avec leurs marques', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+    final opened = <Uri>[];
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: ProfilScreen(
+          profileApi: api,
+          launchContactUri: (uri) async {
+            opened.add(uri);
+            return true;
+          },
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    await _openProfileMenu(tester, 'À propos');
+    final aboutList = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(Scrollable),
+    );
+    await tester.scrollUntilVisible(
+      find.text('Partage'),
+      120,
+      scrollable: aboutList,
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Partage'));
+    await tester.pumpAndSettle();
+
+    for (final network in [
+      'whatsapp',
+      'facebook',
+      'instagram',
+      'telegram',
+      'x',
+      'linkedin',
+      'email',
+    ]) {
+      expect(
+        find.byKey(ValueKey('share-network-$network')),
+        findsOneWidget,
+        reason: '$network doit être proposé',
+      );
+    }
+    expect(find.byKey(const ValueKey('share-action-system')), findsOneWidget);
+
+    final facebookRow = find.byKey(const ValueKey('share-network-facebook'));
+    await tester.ensureVisible(facebookRow);
+    await tester.pumpAndSettle();
+    await tester.tap(facebookRow);
+    await tester.pumpAndSettle();
+
+    expect(opened.last.host, 'www.facebook.com');
+    expect(opened.last.queryParameters['u'], CompanyLocation.mapsUrl);
+  });
+
+  testWidgets('le menu À propos ne garde plus Évaluation ni Certifications', (
+    tester,
+  ) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
+    await tester.pumpAndSettle();
+
+    await _openProfileMenu(tester, 'À propos');
+    final aboutList = find.descendant(
+      of: find.byType(AlertDialog),
+      matching: find.byType(Scrollable),
+    );
+
+    for (final removed in ['Évaluation', 'Certifications']) {
+      await tester.scrollUntilVisible(
+        find.text('Partage'),
+        120,
+        scrollable: aboutList,
+      );
+      expect(
+        find.text(removed),
+        findsNothing,
+        reason: '$removed est supprimé du menu',
+      );
+    }
+    expect(find.text('Évaluation'), findsNothing);
+    expect(find.text('Certifications'), findsNothing);
+  });
+
+  testWidgets('nos partenaires ne garde que Leica et e-survey', (tester) async {
+    final api = _fakeProfileApi(
+      profile: _profile(),
+      savedUpdates: <Map<String, dynamic>>[],
+    );
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
+    await tester.pumpAndSettle();
+
+    await _openProfileMenu(tester, 'À propos');
+    await tester.tap(find.text('Nos partenaires'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('Leica'), findsOneWidget);
+    expect(find.text('e-survey'), findsOneWidget);
+    for (final removed in ['Stonex', 'Trimble', 'Sokkia']) {
+      expect(
+        find.text(removed),
+        findsNothing,
+        reason: '$removed est supprimé des partenaires',
+      );
+    }
   });
 
   testWidgets('« Nous localiser » est la dernière entrée, après le support', (
