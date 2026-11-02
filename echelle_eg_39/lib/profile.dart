@@ -379,6 +379,97 @@ typedef ProfileAvatarNormalizer =
 typedef ProfileGoogleMapsLauncher = Future<bool> Function(Uri uri);
 typedef ProfileContactLauncher = Future<bool> Function(Uri uri);
 
+/// Jetons visuels de l’écran Profil.
+///
+/// Reprend le langage déjà utilisé par l’écran Location et la fiche agence :
+/// fond parchemin, cartes blanches à filet fin, un seul bleu d’action.
+class _ProfileTokens {
+  const _ProfileTokens._();
+
+  static const Color canvas = Color(0xFFF5F5F7);
+  static const Color surface = Colors.white;
+  static const Color surfaceMuted = Color(0xFFF5F7FA);
+  static const Color ink = Color(0xFF1D1D1F);
+  static const Color muted = Color(0xFF7A7A7A);
+  static const Color border = Color(0xFFE6E6E6);
+  static const Color divider = Color(0xFFF0F0F0);
+  static const Color primary = Color(0xFF0066CC);
+  static const Color chevron = Color(0xFFC7C7CC);
+  static const Color danger = Color(0xFFB42318);
+
+  static const double radiusCard = 18;
+  static const double pagePadding = 16;
+  static const double avatarSize = 64;
+  static const double touchTarget = 44;
+}
+
+/// Styles de texte de l’écran Profil (échelle 400 / 600 / 700).
+class _ProfileText {
+  const _ProfileText._();
+
+  static TextStyle _style(
+    double size,
+    FontWeight weight, {
+    Color color = _ProfileTokens.ink,
+    double? height,
+    double? letterSpacing,
+  }) {
+    return GoogleFonts.poppins(
+      fontSize: size,
+      fontWeight: weight,
+      color: color,
+      height: height,
+      letterSpacing: letterSpacing,
+    );
+  }
+
+  static TextStyle get pageTitle =>
+      _style(28, FontWeight.w700, height: 1.1, letterSpacing: -0.6);
+
+  static TextStyle get name =>
+      _style(21, FontWeight.w700, height: 1.15, letterSpacing: -0.4);
+
+  static TextStyle get email => _style(14, FontWeight.w400, color: _ProfileTokens.muted);
+
+  static TextStyle get identityStrong => _style(14, FontWeight.w600, height: 1.35);
+
+  static TextStyle get identityMuted =>
+      _style(14, FontWeight.w400, color: _ProfileTokens.muted, height: 1.35);
+
+  static TextStyle get sectionTitle =>
+      _style(17, FontWeight.w700, letterSpacing: -0.2);
+
+  static TextStyle get rowTitle =>
+      _style(16, FontWeight.w600, height: 1.2, letterSpacing: -0.2);
+
+  static TextStyle get rowSubtitle =>
+      _style(12, FontWeight.w400, color: _ProfileTokens.muted, height: 1.3);
+
+  static TextStyle get rowValue =>
+      _style(12, FontWeight.w600, height: 1.3, letterSpacing: -0.1);
+
+  static TextStyle get appName => _style(15, FontWeight.w700, letterSpacing: -0.15);
+
+  static TextStyle get appVersion =>
+      _style(13, FontWeight.w400, color: _ProfileTokens.muted);
+
+  static TextStyle get actionLabel => _style(15, FontWeight.w600);
+}
+
+/// Filet de séparation entre deux lignes d’une même carte.
+class _ProfileRowDivider extends StatelessWidget {
+  const _ProfileRowDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      height: 1,
+      margin: const EdgeInsets.symmetric(horizontal: _ProfileTokens.pagePadding),
+      color: _ProfileTokens.divider,
+    );
+  }
+}
+
 class ProfilScreen extends StatefulWidget {
   const ProfilScreen({
     super.key,
@@ -580,7 +671,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFFF9FAFB),
+      backgroundColor: _ProfileTokens.canvas,
       body: SafeArea(
         child: _isLoadingProfile && _profile == null
             ? const Center(
@@ -653,22 +744,41 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Construit l'en-tête avec avatar et informations utilisateur
+  /// Construit l'en-tête : titre de page puis fiche d'identité compacte.
   Widget _buildHeader() {
-    return Container(
-      decoration: const BoxDecoration(
-        gradient: LinearGradient(
-          colors: [Color(0xFF2563EB), Color(0xFF1E40AF)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          child: Text('Profil', style: _ProfileText.pageTitle),
         ),
+        const SizedBox(height: 12),
+        Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: _ProfileTokens.pagePadding,
+          ),
+          child: _buildIdentityCard(),
+        ),
+      ],
+    );
+  }
+
+  /// Fiche blanche : avatar modifiable et informations du compte connecté.
+  Widget _buildIdentityCard() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _ProfileTokens.surface,
+        borderRadius: BorderRadius.circular(_ProfileTokens.radiusCard),
+        border: Border.all(color: _ProfileTokens.border),
       ),
-      padding: const EdgeInsets.symmetric(vertical: 48),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           _buildAvatar(),
-          const SizedBox(height: 12),
-          _buildUserInfo(),
+          const SizedBox(width: 14),
+          Expanded(child: _buildUserInfo()),
         ],
       ),
     );
@@ -679,71 +789,57 @@ class _ProfilScreenState extends State<ProfilScreen> {
     return GestureDetector(
       key: const ValueKey('profile-avatar'),
       onTap: _showImagePickerDialog,
-      child: Container(
-        width: 80,
-        height: 80,
-        decoration: BoxDecoration(
-          color: Colors.white,
-          shape: BoxShape.circle,
-          border: Border.all(color: Colors.white, width: 3),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withValues(alpha: 0.1),
-              blurRadius: 8,
-              offset: const Offset(0, 2),
-            ),
-          ],
-        ),
+      child: SizedBox(
+        width: 70,
+        height: 70,
         child: Stack(
+          clipBehavior: Clip.none,
           children: [
-            if (_selectedAvatarBytes != null)
-              ClipOval(
-                child: Image.memory(
-                  _selectedAvatarBytes!,
-                  width: 80,
-                  height: 80,
-                  fit: BoxFit.cover,
-                  errorBuilder: (_, _, _) => const Icon(
-                    Icons.person,
-                    size: 40,
-                    color: Color(0xFF2563EB),
-                  ),
-                ),
-              )
-            else
-              Center(
-                child: Text(
-                  _userName.trim().isEmpty
-                      ? '…'
-                      : _userName
-                            .trim()
-                            .split(RegExp(r'\\s+'))
-                            .take(2)
-                            .map(
-                              (part) =>
-                                  part.isEmpty ? '' : part[0].toUpperCase(),
-                            )
-                            .join(),
-                  style: const TextStyle(
-                    color: Color(0xFF2563EB),
-                    fontSize: 24,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
+            Container(
+              width: _ProfileTokens.avatarSize,
+              height: _ProfileTokens.avatarSize,
+              clipBehavior: Clip.antiAlias,
+              decoration: BoxDecoration(
+                color: _ProfileTokens.surfaceMuted,
+                shape: BoxShape.circle,
+                border: Border.all(color: _ProfileTokens.border),
               ),
+              child: _selectedAvatarBytes != null
+                  ? Image.memory(
+                      _selectedAvatarBytes!,
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const Icon(
+                        Icons.person,
+                        size: 32,
+                        color: _ProfileTokens.primary,
+                      ),
+                    )
+                  : Center(
+                      child: Text(
+                        _userInitials,
+                        style: GoogleFonts.poppins(
+                          fontSize: 21,
+                          fontWeight: FontWeight.w700,
+                          letterSpacing: -0.4,
+                          color: _ProfileTokens.primary,
+                        ),
+                      ),
+                    ),
+            ),
             Positioned(
               bottom: 0,
               right: 0,
               child: Container(
                 width: 24,
                 height: 24,
-                decoration: const BoxDecoration(
-                  color: Color(0xFF2563EB),
+                decoration: BoxDecoration(
+                  color: _ProfileTokens.primary,
                   shape: BoxShape.circle,
+                  border: Border.all(color: _ProfileTokens.surface, width: 2),
                 ),
                 child: const Icon(
                   Icons.camera_alt,
-                  size: 14,
+                  size: 12,
                   color: Colors.white,
                 ),
               ),
@@ -752,6 +848,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ),
       ),
     );
+  }
+
+  /// Initiales affichées quand aucune photo n'est choisie.
+  String get _userInitials {
+    final name = _userName.trim();
+    if (name.isEmpty) return '…';
+    return name
+        .split(RegExp(r'\s+'))
+        .take(2)
+        .map((part) => part.isEmpty ? '' : part[0].toUpperCase())
+        .join();
   }
 
   /// Affiche le dialog pour choisir entre galerie et caméra
@@ -893,71 +1000,114 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   /// Construit les informations réelles renvoyées par le compte connecté.
   Widget _buildUserInfo() {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20),
-      child: Column(
-        children: [
-          Text(
-            _userName,
-            textAlign: TextAlign.center,
-            style: GoogleFonts.poppins(
-              fontSize: 22,
-              fontWeight: FontWeight.w700,
-              color: Colors.white,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              Flexible(
+    final role = _roleLabel;
+    final company = _profile?.company.trim() ?? '';
+    final place = _placeLabel;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.only(top: 2),
                 child: Text(
-                  _userEmail,
+                  _userName,
+                  maxLines: 2,
                   overflow: TextOverflow.ellipsis,
-                  style: GoogleFonts.poppins(
-                    fontSize: 14,
-                    color: const Color(0xFFBFDBFE),
-                  ),
+                  style: _ProfileText.name,
                 ),
               ),
-              const SizedBox(width: 8),
-              IconButton(
-                tooltip: 'Modifier les informations personnelles',
-                onPressed: () => _showPersonalInfoDialog(context),
-                style: IconButton.styleFrom(
-                  backgroundColor: Colors.white24,
-                  foregroundColor: Colors.white,
-                  minimumSize: const Size(32, 32),
-                  maximumSize: const Size(32, 32),
-                  padding: EdgeInsets.zero,
-                ),
-                icon: const Icon(Icons.edit_outlined, size: 16),
-              ),
-            ],
-          ),
+            ),
+            const SizedBox(width: 4),
+            _buildEditProfileButton(),
+          ],
+        ),
+        const SizedBox(height: 4),
+        Text(
+          _userEmail,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: _ProfileText.email,
+        ),
+        if (role != null) ...[
+          const SizedBox(height: 10),
+          Text(role, style: _ProfileText.identityStrong),
         ],
-      ),
+        if (company.isNotEmpty)
+          Text(company, style: _ProfileText.identityStrong),
+        if (place != null) ...[
+          const SizedBox(height: 2),
+          Text(place, style: _ProfileText.identityMuted),
+        ],
+      ],
     );
+  }
+
+  /// Crayon d'édition des informations personnelles.
+  Widget _buildEditProfileButton() {
+    return IconButton(
+      tooltip: 'Modifier les informations personnelles',
+      onPressed: () => _showPersonalInfoDialog(context),
+      style: IconButton.styleFrom(
+        backgroundColor: _ProfileTokens.surfaceMuted,
+        foregroundColor: _ProfileTokens.primary,
+        minimumSize: const Size(
+          _ProfileTokens.touchTarget,
+          _ProfileTokens.touchTarget,
+        ),
+        maximumSize: const Size(
+          _ProfileTokens.touchTarget,
+          _ProfileTokens.touchTarget,
+        ),
+        padding: EdgeInsets.zero,
+      ),
+      icon: const Icon(Icons.edit_outlined, size: 16),
+    );
+  }
+
+  /// Rôle lisible : les comptes ordinaires portent « client » en base.
+  String? get _roleLabel {
+    final raw = (_profile?.role ?? '').trim();
+    if (raw.isEmpty) return null;
+    return switch (raw.toLowerCase()) {
+      'client' => 'Compte client',
+      'admin' || 'administrateur' => 'Administrateur',
+      _ => '${raw[0].toUpperCase()}${raw.substring(1)}',
+    };
+  }
+
+  /// Ville et pays du compte, quand ils sont renseignés.
+  String? get _placeLabel {
+    final parts = [
+      (_profile?.city ?? '').trim(),
+      (_profile?.country ?? '').trim(),
+    ].where((part) => part.isNotEmpty).toList();
+    if (parts.isEmpty) return null;
+    return parts.join(', ');
   }
 
   /// Construit le contenu principal de l'écran
   Widget _buildContent(BuildContext context) {
-    return Transform.translate(
-      offset: const Offset(0, -32),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16),
-        child: Column(
-          children: [
-            _buildAccountSection(context),
-            const SizedBox(height: 16),
-            _buildSupportSection(context),
-            const SizedBox(height: 16),
-            _buildAppInfo(),
-            const SizedBox(height: 16),
-            _buildLogoutButton(context),
-            const SizedBox(height: 24),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(
+        _ProfileTokens.pagePadding,
+        24,
+        _ProfileTokens.pagePadding,
+        24,
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          _buildAccountSection(context),
+          const SizedBox(height: 24),
+          _buildSupportSection(context),
+          const SizedBox(height: 24),
+          _buildAppInfo(),
+          const SizedBox(height: 16),
+          _buildLogoutButton(context),
+        ],
       ),
     );
   }
@@ -967,22 +1117,25 @@ class _ProfilScreenState extends State<ProfilScreen> {
     return _buildSection('Mon compte', [
       _buildMenuItem(
         context,
-        Icons.person,
+        Icons.person_outline,
         'Informations personnelles',
         () => _showPersonalInfoDialog(context),
+        subtitle: 'Votre nom et votre adresse e-mail',
       ),
       _buildMenuItem(
         context,
-        Icons.phone,
+        Icons.phone_outlined,
         'Numéro de téléphone',
         () => _showPhoneDialog(context),
+        subtitle: 'Joignable sur ce numéro',
         trailing: _userPhone,
       ),
       _buildMenuItem(
         context,
-        Icons.lock,
+        Icons.lock_outline,
         'Mot de passe',
         () => _showPasswordDialog(context),
+        subtitle: 'Sécuriser l’accès au compte',
         trailing: '••••••••',
       ),
     ]);
@@ -993,15 +1146,17 @@ class _ProfilScreenState extends State<ProfilScreen> {
     return _buildSection('Support', [
       _buildMenuItem(
         context,
-        Icons.chat,
+        Icons.chat_bubble_outline,
         'Chat Support',
         () => _showChatSupportDialog(context),
+        subtitle: 'Écrire directement à l’équipe',
       ),
       _buildMenuItem(
         context,
-        Icons.help_center,
+        Icons.help_outline,
         'Centre d\'aide',
         () => _showHelpCenterDialog(context),
+        subtitle: 'FAQ, glossaire et contact',
       ),
 
       _buildMenuItem(
@@ -1009,6 +1164,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
         Icons.info_outline,
         'À propos',
         () => _showAboutDialog(context),
+        subtitle: 'ÉCHELLE EG39 et ses services',
       ),
       _buildCompanyLocationEntry(context),
     ]);
@@ -1023,11 +1179,11 @@ class _ProfilScreenState extends State<ProfilScreen> {
         _buildStaticMenuItem(
           icon: Icons.place_outlined,
           title: 'Nous localiser',
+          subtitle: 'Agence ÉCHELLE EG39',
         ),
         Container(
           key: const ValueKey('company-location-inline'),
-          padding: const EdgeInsets.fromLTRB(12, 4, 12, 14),
-          color: const Color(0xFFF6F8FC),
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
           child: _buildCompanyLocationCard(context),
         ),
       ],
@@ -1037,7 +1193,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
   Widget _buildCompanyLocationCard(BuildContext context) {
     final builder = widget.companyLocationCardBuilder;
     if (builder != null) return builder(context);
-    return const CompanyLocationCard();
+    return const CompanyLocationCard(
+      embedded: true,
+      hours: CompanyContact.hours,
+    );
   }
 
   /// Informations de l'application
@@ -1045,57 +1204,59 @@ class _ProfilScreenState extends State<ProfilScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
+        color: _ProfileTokens.surface,
+        borderRadius: BorderRadius.circular(_ProfileTokens.radiusCard),
+        border: Border.all(color: _ProfileTokens.border),
       ),
-      child: Column(
+      child: Row(
         children: [
-          Text(
-            'ÉCHELLE EG39',
-            style: GoogleFonts.poppins(
-              fontSize: 16,
-              fontWeight: FontWeight.w700,
-              color: const Color(0xFF111827),
-            ),
+          const Icon(
+            Icons.verified_user_outlined,
+            size: 20,
+            color: _ProfileTokens.primary,
           ),
-          const SizedBox(height: 4),
-          Text(
-            'Version 1.0.0',
-            style: GoogleFonts.poppins(
-              fontSize: 12,
-              color: const Color(0xFF6B7280),
-            ),
+          const SizedBox(width: 12),
+          Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text('ÉCHELLE EG39', style: _ProfileText.appName),
+              const SizedBox(height: 2),
+              Text('Version 1.0.0', style: _ProfileText.appVersion),
+            ],
           ),
         ],
       ),
     );
   }
 
-  /// Bouton de déconnexion
+  /// Action secondaire de déconnexion : pilule discrète, jamais dominante.
   Widget _buildLogoutButton(BuildContext context) {
-    return SizedBox(
-      width: double.infinity,
-      child: ElevatedButton.icon(
-        onPressed: () => _showLogoutDialog(context),
-        icon: const Icon(Icons.logout),
-        label: Text(
-          'Se déconnecter',
-          style: GoogleFonts.poppins(fontWeight: FontWeight.w600),
+    return Semantics(
+      button: true,
+      label: 'Se déconnecter',
+      child: Material(
+        color: _ProfileTokens.surface,
+        shape: StadiumBorder(
+          side: BorderSide(color: _ProfileTokens.border),
         ),
-        style: ElevatedButton.styleFrom(
-          backgroundColor: const Color(0xFFFEE2E2),
-          foregroundColor: const Color(0xFFDC2626),
-          padding: const EdgeInsets.symmetric(vertical: 14),
-          elevation: 0,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _showLogoutDialog(context),
+          customBorder: const StadiumBorder(),
+          child: SizedBox(
+            height: 48,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const Icon(
+                  Icons.logout,
+                  size: 17,
+                  color: _ProfileTokens.danger,
+                ),
+                const SizedBox(width: 8),
+                Text('Se déconnecter', style: _ProfileText.actionLabel),
+              ],
+            ),
           ),
         ),
       ),
@@ -1170,38 +1331,37 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Construit une section avec titre et éléments
+  /// Construit une section : intitulé puis carte blanche à filet fin.
+  ///
+  /// Les lignes sont séparées par un filet inséré entre elles, jamais
+  /// après la dernière.
   Widget _buildSection(String title, List<Widget> items) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 4),
+          child: Text(title, style: _ProfileText.sectionTitle),
+        ),
+        const SizedBox(height: 8),
+        Container(
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: _ProfileTokens.surface,
+            borderRadius: BorderRadius.circular(_ProfileTokens.radiusCard),
+            border: Border.all(color: _ProfileTokens.border),
           ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Text(
-              title,
-              style: GoogleFonts.poppins(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-                color: const Color(0xFF111827),
-              ),
-            ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              for (var index = 0; index < items.length; index++) ...[
+                if (index > 0) const _ProfileRowDivider(),
+                items[index],
+              ],
+            ],
           ),
-          const Divider(height: 1, color: Color(0xFFE5E7EB)),
-          ...items,
-        ],
-      ),
+        ),
+      ],
     );
   }
 
@@ -1211,21 +1371,24 @@ class _ProfilScreenState extends State<ProfilScreen> {
     IconData icon,
     String title,
     VoidCallback onTap, {
+    String? subtitle,
     String? trailing,
   }) {
     return Semantics(
       button: true,
+      label: subtitle == null ? title : '$title. $subtitle',
       child: InkWell(
         key: ValueKey('profile-menu-$title'),
         onTap: onTap,
         child: _buildMenuRow(
           icon: icon,
           title: title,
+          subtitle: subtitle,
           trailing: trailing,
           trailingWidget: const Icon(
             Icons.chevron_right,
-            color: Color(0xFF9CA3AF),
-            size: 20,
+            color: _ProfileTokens.chevron,
+            size: 17,
           ),
         ),
       ),
@@ -1236,15 +1399,18 @@ class _ProfilScreenState extends State<ProfilScreen> {
   Widget _buildStaticMenuItem({
     required IconData icon,
     required String title,
+    String? subtitle,
     String? trailing,
     Widget? trailingWidget,
   }) {
     return Semantics(
       header: true,
+      label: subtitle == null ? title : '$title. $subtitle',
       child: _buildMenuRow(
         key: ValueKey('profile-menu-$title'),
         icon: icon,
         title: title,
+        subtitle: subtitle,
         trailing: trailing,
         trailingWidget: trailingWidget,
       ),
@@ -1255,58 +1421,59 @@ class _ProfilScreenState extends State<ProfilScreen> {
     Key? key,
     required IconData icon,
     required String title,
+    String? subtitle,
     String? trailing,
     Widget? trailingWidget,
   }) {
     return Container(
       key: key,
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-      decoration: const BoxDecoration(
-        border: Border(bottom: BorderSide(color: Color(0xFFF3F4F6), width: 1)),
-      ),
+      constraints: const BoxConstraints(minHeight: 64),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Row(
         children: [
-          Container(
-            width: 36,
-            height: 36,
-            decoration: BoxDecoration(
-              color: const Color(0xFFDBEAFE),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: const Color(0xFF2563EB), size: 20),
-          ),
+          Icon(icon, color: _ProfileTokens.primary, size: 20),
           const SizedBox(width: 12),
           Expanded(
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
               children: [
-                Flexible(
-                  flex: 3,
-                  child: Text(
-                    title,
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: _ProfileText.rowTitle,
+                ),
+                if (subtitle != null) ...[
+                  const SizedBox(height: 3),
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          subtitle,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: _ProfileText.rowSubtitle,
+                        ),
+                      ),
+                      if (trailing != null) ...[
+                        const SizedBox(width: 8),
+                        Text(
+                          trailing,
+                          maxLines: 1,
+                          textAlign: TextAlign.right,
+                          style: _ProfileText.rowValue,
+                        ),
+                      ],
+                    ],
+                  ),
+                ] else if (trailing != null) ...[
+                  const SizedBox(height: 3),
+                  Text(
+                    trailing,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w500,
-                      color: const Color(0xFF111827),
-                    ),
-                  ),
-                ),
-                if (trailing != null) ...[
-                  const SizedBox(width: 8),
-                  Flexible(
-                    flex: 2,
-                    child: Text(
-                      trailing,
-                      maxLines: 1,
-                      textAlign: TextAlign.right,
-                      overflow: TextOverflow.ellipsis,
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        color: const Color(0xFF6B7280),
-                      ),
-                    ),
+                    style: _ProfileText.rowValue,
                   ),
                 ],
               ],

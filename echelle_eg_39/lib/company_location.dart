@@ -40,6 +40,8 @@ class CompanyLocationCard extends StatefulWidget {
     this.openMaps,
     this.copyAddress,
     this.mapHeight = 208,
+    this.embedded = false,
+    this.hours,
   });
 
   /// Remplaçable pour les tests et le mode hors ligne.
@@ -49,6 +51,12 @@ class CompanyLocationCard extends StatefulWidget {
 
   /// Hauteur de l'ouverture de carte, adaptée à l'insertion dans un menu.
   final double mapHeight;
+
+  /// Posée dans une carte existante : ni contour, ni fond, ni marge propre.
+  final bool embedded;
+
+  /// Horaires affichés sous l'adresse, quand ils sont fournis.
+  final String? hours;
 
   @override
   State<CompanyLocationCard> createState() => _CompanyLocationCardState();
@@ -117,13 +125,17 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
   Widget build(BuildContext context) {
     return Container(
       key: const ValueKey('company-location-card'),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFE0E0E0)),
-      ),
+      decoration: widget.embedded
+          ? null
+          : BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(18),
+              border: Border.all(color: const Color(0xFFE0E0E0)),
+            ),
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: widget.embedded
+            ? const EdgeInsets.all(0)
+            : const EdgeInsets.all(16),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -147,6 +159,17 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
                 color: Color(0xFF7A7A7A),
               ),
             ),
+            if (widget.hours != null) ...[
+              const SizedBox(height: 6),
+              Text(
+                widget.hours!,
+                style: const TextStyle(
+                  fontSize: 12,
+                  height: 1.45,
+                  color: Color(0xFF7A7A7A),
+                ),
+              ),
+            ],
             const SizedBox(height: 14),
             const Divider(height: 1, color: Color(0xFFF0F0F0)),
             const SizedBox(height: 6),
@@ -160,21 +183,28 @@ class _CompanyLocationCardState extends State<CompanyLocationCard> {
                   key: const ValueKey('company-location-copy'),
                   onPressed: _copyAddress,
                   tooltip: 'Copier l’adresse',
-                  icon: const Icon(
-                    Icons.content_copy_outlined,
-                    size: 20,
-                    color: Color(0xFF7A7A7A),
+                  style: IconButton.styleFrom(
+                    minimumSize: const Size(44, 44),
+                    maximumSize: const Size(44, 44),
+                    padding: EdgeInsets.zero,
+                    side: const BorderSide(color: Color(0xFFE6E6E6)),
+                    foregroundColor: const Color(0xFF7A7A7A),
                   ),
+                  icon: const Icon(Icons.content_copy_outlined, size: 17),
                 ),
                 FilledButton.icon(
                   key: const ValueKey('company-location-itinerary'),
                   onPressed: _openItinerary,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF2563EB),
+                    backgroundColor: const Color(0xFF0066CC),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 18,
+                      horizontal: 20,
                       vertical: 12,
+                    ),
+                    textStyle: const TextStyle(
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
                     ),
                     shape: const StadiumBorder(),
                   ),
@@ -277,7 +307,7 @@ class CompanyLocationMarker extends StatelessWidget {
 
 class _ReticlePainter extends CustomPainter {
   static const Color _ink = Color(0xFF1D1D1F);
-  static const Color _brand = Color(0xFF2563EB);
+  static const Color _brand = Color(0xFF0066CC);
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -365,7 +395,7 @@ class _NameLabel extends StatelessWidget {
             width: 7,
             height: 7,
             decoration: const BoxDecoration(
-              color: Color(0xFF2563EB),
+              color: Color(0xFF0066CC),
               shape: BoxShape.circle,
             ),
           ),
@@ -436,7 +466,7 @@ class _RecenterButton extends StatelessWidget {
             child: Icon(
               Icons.my_location,
               size: 17,
-              color: Color(0xFF2563EB),
+              color: Color(0xFF0066CC),
             ),
           ),
         ),
