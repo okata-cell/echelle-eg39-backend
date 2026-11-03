@@ -101,6 +101,10 @@ void main() {
     expect(find.text('Afi Koffi'), findsOneWidget);
 
     await _openProfileMenu(tester, 'Informations personnelles');
+
+    // Le formulaire s’ouvre sur les coordonnées : l’identité est un onglet.
+    await tester.tap(find.text('Identité'));
+    await tester.pumpAndSettle();
     await tester.enterText(
       find.byKey(const ValueKey('profile-first-name')),
       'Ama',
@@ -109,6 +113,12 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(savedUpdates.single['firstName'], 'Ama');
+
+    // Les champs facultatifs traversent le formulaire sans être perdus.
+    expect(savedUpdates.single['company'], 'EG39');
+    expect(savedUpdates.single['address'], 'Aflao Gagli');
+    expect(savedUpdates.single['city'], 'Lomé');
+    expect(savedUpdates.single['country'], 'Togo');
     expect(find.text('Ama Koffi'), findsOneWidget);
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getString('token'), 'renewed');
@@ -426,14 +436,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await _openProfileMenu(tester, 'À propos');
-    final aboutList = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(Scrollable),
-    );
     await tester.scrollUntilVisible(
       find.text('Partager nos coordonnées'),
       120,
-      scrollable: aboutList,
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Partager nos coordonnées'));
@@ -479,14 +485,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await _openProfileMenu(tester, 'À propos');
-    final aboutList = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(Scrollable),
-    );
     await tester.scrollUntilVisible(
       find.text('Partager nos coordonnées'),
       120,
-      scrollable: aboutList,
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Partager nos coordonnées'));
@@ -532,25 +534,15 @@ void main() {
     await tester.pumpAndSettle();
 
     await _openProfileMenu(tester, 'À propos');
-    final aboutList = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(Scrollable),
-    );
 
     for (final removed in ['Évaluation', 'Certifications']) {
-      await tester.scrollUntilVisible(
-        find.text('Partager nos coordonnées'),
-        120,
-        scrollable: aboutList,
-      );
       expect(
         find.text(removed),
         findsNothing,
         reason: '$removed est supprimé du menu',
       );
     }
-    expect(find.text('Évaluation'), findsNothing);
-    expect(find.text('Certifications'), findsNothing);
+    expect(find.text('Partager nos coordonnées'), findsOneWidget);
   });
 
   testWidgets('nos partenaires ne garde que Leica et e-survey', (tester) async {
@@ -616,14 +608,10 @@ void main() {
     await tester.pumpAndSettle();
 
     await _openProfileMenu(tester, 'À propos');
-    final aboutList = find.descendant(
-      of: find.byType(AlertDialog),
-      matching: find.byType(Scrollable),
-    );
     await tester.scrollUntilVisible(
       find.text('Inviter à installer'),
       120,
-      scrollable: aboutList,
+      scrollable: find.byType(Scrollable).last,
     );
     await tester.pumpAndSettle();
     expect(find.text('Bientôt sur Google Play et l’App Store'), findsOneWidget);

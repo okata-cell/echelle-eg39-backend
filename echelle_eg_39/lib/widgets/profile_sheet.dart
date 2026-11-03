@@ -313,34 +313,48 @@ class ProfilePillButton extends StatelessWidget {
     required this.label,
     required this.onPressed,
     this.icon,
+    this.busy = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
 
+  /// Envoi en cours : la pilule garde sa couleur et affiche un cercle d’attente.
+  final bool busy;
+
   @override
   Widget build(BuildContext context) {
     return FilledButton(
-      onPressed: onPressed,
+      onPressed: busy ? null : onPressed,
       style: FilledButton.styleFrom(
         backgroundColor: ProfileTokens.primary,
         foregroundColor: Colors.white,
+        disabledBackgroundColor: ProfileTokens.primary,
+        disabledForegroundColor: Colors.white,
         minimumSize: const Size(0, 48),
         padding: const EdgeInsets.symmetric(horizontal: 20),
         textStyle: ProfileText.actionLabel,
         shape: const StadiumBorder(),
       ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          if (icon != null) ...[
-            Icon(icon, size: 18),
-            const SizedBox(width: 8),
-          ],
-          Text(label),
-        ],
-      ),
+      child: busy
+          ? const SizedBox.square(
+              dimension: 18,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (icon != null) ...[
+                  Icon(icon, size: 18),
+                  const SizedBox(width: 8),
+                ],
+                Text(label),
+              ],
+            ),
     );
   }
 }
@@ -401,6 +415,301 @@ class ProfileChip extends StatelessWidget {
         border: Border.all(color: ProfileTokens.border),
       ),
       child: Text(label, style: ProfileText.chip),
+    );
+  }
+}
+
+/// Tuile d’une grille de destinations : icône, libellé, chevron.
+///
+/// Le libellé est ancré en bas de la tuile pour que les quatre tuiles d’une
+/// même rangée alignent leur texte, quelle que soit la longueur des intitulés.
+class ProfileTile extends StatelessWidget {
+  const ProfileTile({
+    super.key,
+    required this.icon,
+    required this.label,
+    required this.onTap,
+    this.description,
+    this.height = 112,
+  });
+
+  final IconData icon;
+  final String label;
+  final String? description;
+  final VoidCallback onTap;
+  final double height;
+
+  @override
+  Widget build(BuildContext context) {
+    return Semantics(
+      button: true,
+      label: label,
+      child: Container(
+        height: height,
+        clipBehavior: Clip.antiAlias,
+        decoration: BoxDecoration(
+          color: ProfileTokens.surface,
+          borderRadius: BorderRadius.circular(ProfileTokens.radiusCard),
+          border: Border.all(color: ProfileTokens.border),
+        ),
+        child: Material(
+          color: Colors.transparent,
+          child: InkWell(
+            onTap: onTap,
+            child: Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  Icon(icon, size: 22, color: ProfileTokens.primary),
+                  const Spacer(),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      Expanded(child: _label()),
+                      const SizedBox(width: 4),
+                      const Icon(
+                        Icons.chevron_right,
+                        size: 16,
+                        color: ProfileTokens.chevron,
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _label() {
+    if (description == null) {
+      return Text(
+        label,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: ProfileText.rowTitle.copyWith(fontSize: 15),
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Text(
+          label,
+          maxLines: 2,
+          overflow: TextOverflow.ellipsis,
+          style: ProfileText.rowTitle.copyWith(fontSize: 15),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          description!,
+          maxLines: 3,
+          overflow: TextOverflow.ellipsis,
+          style: ProfileText.rowSubtitle,
+        ),
+      ],
+    );
+  }
+}
+
+/// Grille de tuiles à deux colonnes, gouttière de 12 px.
+class ProfileTileGrid extends StatelessWidget {
+  const ProfileTileGrid({super.key, required this.tiles, this.spacing = 12});
+
+  final List<Widget> tiles;
+  final double spacing;
+
+  @override
+  Widget build(BuildContext context) {
+    final rows = <Widget>[];
+    for (var index = 0; index < tiles.length; index += 2) {
+      final hasSecond = index + 1 < tiles.length;
+      rows.add(
+        Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(child: tiles[index]),
+            SizedBox(width: spacing),
+            if (hasSecond)
+              Expanded(child: tiles[index + 1])
+            else
+              const Expanded(child: SizedBox.shrink()),
+          ],
+        ),
+      );
+      if (index + 2 < tiles.length) rows.add(SizedBox(height: spacing));
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: rows,
+    );
+  }
+}
+
+/// Sélecteur segmenté des groupes de champs d’une feuille de formulaire.
+class ProfileSegmentedControl extends StatelessWidget {
+  const ProfileSegmentedControl({
+    super.key,
+    required this.labels,
+    required this.selectedIndex,
+    required this.onSelected,
+  });
+
+  final List<String> labels;
+  final int selectedIndex;
+  final ValueChanged<int> onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: ProfileTokens.initials,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        children: [
+          for (var index = 0; index < labels.length; index++)
+            Expanded(
+              child: Semantics(
+                button: true,
+                selected: index == selectedIndex,
+                child: Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(9),
+                    onTap: () => onSelected(index),
+                    child: Container(
+                      height: 40,
+                      alignment: Alignment.center,
+                      decoration: index == selectedIndex
+                          ? BoxDecoration(
+                              color: ProfileTokens.surface,
+                              borderRadius: BorderRadius.circular(9),
+                              border: Border.all(color: ProfileTokens.border),
+                            )
+                          : null,
+                      child: Text(
+                        labels[index],
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: ProfileText.sheetRow.copyWith(
+                          fontSize: 14,
+                          fontWeight: index == selectedIndex
+                              ? FontWeight.w700
+                              : FontWeight.w500,
+                          color: index == selectedIndex
+                              ? ProfileTokens.ink
+                              : ProfileTokens.muted,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+/// Champ de formulaire d’une feuille : libellé visible, mention facultative,
+/// valeur saisie et message d’erreur éventuel.
+class ProfileTextField extends StatelessWidget {
+  const ProfileTextField({
+    super.key,
+    required this.label,
+    required this.controller,
+    this.optional = false,
+    this.helperText,
+    this.obscureText = false,
+    this.keyboardType,
+    this.textCapitalization = TextCapitalization.none,
+    this.textInputAction = TextInputAction.next,
+    this.autofillHints,
+    this.validator,
+  });
+
+  final String label;
+  final TextEditingController controller;
+
+  /// Ajoute « Facultatif » à droite du libellé ; le champ reste enregistrable
+  /// vide.
+  final bool optional;
+  final String? helperText;
+  final bool obscureText;
+  final TextInputType? keyboardType;
+  final TextCapitalization textCapitalization;
+  final TextInputAction textInputAction;
+  final Iterable<String>? autofillHints;
+  final String? Function(String? value)? validator;
+
+  @override
+  Widget build(BuildContext context) {
+    final border = OutlineInputBorder(
+      borderRadius: BorderRadius.circular(ProfileTokens.radiusField),
+      borderSide: const BorderSide(color: ProfileTokens.border),
+    );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        Row(
+          children: [
+            Expanded(child: Text(label, style: ProfileText.footNote)),
+            if (optional) Text('Facultatif', style: ProfileText.footNote),
+          ],
+        ),
+        const SizedBox(height: 8),
+        TextFormField(
+          controller: controller,
+          obscureText: obscureText,
+          keyboardType: keyboardType,
+          textCapitalization: textCapitalization,
+          textInputAction: textInputAction,
+          autofillHints: autofillHints,
+          validator: validator,
+          style: ProfileText.fieldText,
+          decoration: InputDecoration(
+            isDense: true,
+            filled: true,
+            fillColor: ProfileTokens.canvas,
+            contentPadding: const EdgeInsets.symmetric(
+              horizontal: 16,
+              vertical: 14,
+            ),
+            border: border,
+            enabledBorder: border,
+            disabledBorder: border,
+            focusedBorder: border.copyWith(
+              borderSide: const BorderSide(
+                color: ProfileTokens.primary,
+                width: 1.5,
+              ),
+            ),
+            errorBorder: border.copyWith(
+              borderSide: const BorderSide(color: ProfileTokens.danger),
+            ),
+            focusedErrorBorder: border.copyWith(
+              borderSide: const BorderSide(
+                color: ProfileTokens.danger,
+                width: 1.5,
+              ),
+            ),
+            errorStyle: ProfileText.footNote.copyWith(
+              color: ProfileTokens.danger,
+            ),
+            helperText: helperText,
+            helperStyle: ProfileText.footNote,
+          ),
+        ),
+      ],
     );
   }
 }

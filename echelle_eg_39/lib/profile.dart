@@ -7,25 +7,15 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_avatar_image.dart';
 
-import 'app_links.dart';
 import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
 import 'profile_theme.dart';
 import 'support_assistant.dart';
-import 'widgets/company_info_screen.dart';
-import 'widgets/credits_screen.dart';
-import 'widgets/direct_contact_screen.dart';
-import 'widgets/faq_screen.dart';
-import 'widgets/glossary_screen.dart';
-import 'widgets/invite_app_screen.dart';
-import 'widgets/partners_screen.dart';
-import 'widgets/privacy_policy_screen.dart';
-import 'widgets/services_screen.dart';
-import 'widgets/share_company_screen.dart';
-import 'widgets/team_screen.dart';
-import 'widgets/terms_of_use_screen.dart';
+import 'widgets/about_hub_screen.dart';
+import 'widgets/help_center_screen.dart';
+import 'widgets/personal_info_screen.dart';
 
 /// Fil de messages du support, conservé localement à l’écran et transmis à l’API.
 class ChatSupportDialog extends StatefulWidget {
@@ -437,14 +427,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
   static const _profileCacheKey = 'profile_cache';
 
   final ImagePicker _picker = ImagePicker();
-  final TextEditingController _personalFirstNameController =
-      TextEditingController();
-  final TextEditingController _personalLastNameController =
-      TextEditingController();
-  final TextEditingController _personalEmailController =
-      TextEditingController();
-  final TextEditingController _personalPasswordController =
-      TextEditingController();
   late final ProfileApi _profileApi = widget.profileApi ?? ProfileApi();
   ProfileRecord? _profile;
   Uint8List? _selectedAvatarBytes;
@@ -463,10 +445,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   @override
   void dispose() {
-    _personalFirstNameController.dispose();
-    _personalLastNameController.dispose();
-    _personalEmailController.dispose();
-    _personalPasswordController.dispose();
     if (widget.profileApi == null) _profileApi.dispose();
     super.dispose();
   }
@@ -558,6 +536,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
     String? email,
     String? phone,
     String? company,
+    String? address,
+    String? city,
+    String? country,
     String? currentPassword,
     required String successMessage,
   }) async {
@@ -575,9 +556,9 @@ class _ProfilScreenState extends State<ProfilScreen> {
         email: email ?? profile.email,
         phone: phone ?? profile.phone,
         company: company ?? profile.company,
-        address: profile.address,
-        city: profile.city,
-        country: profile.country,
+        address: address ?? profile.address,
+        city: city ?? profile.city,
+        country: country ?? profile.country,
         currentPassword: currentPassword,
       );
       await _applyProfile(updated, cache: true);
@@ -986,7 +967,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
   Widget _buildEditProfileButton() {
     return IconButton(
       tooltip: 'Modifier les informations personnelles',
-      onPressed: () => _showPersonalInfoDialog(context),
+      onPressed: () => _openPersonalInfo(context),
       style: IconButton.styleFrom(
         backgroundColor: _ProfileTokens.surfaceMuted,
         foregroundColor: _ProfileTokens.primary,
@@ -1056,8 +1037,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
         context,
         Icons.person_outline,
         'Informations personnelles',
-        () => _showPersonalInfoDialog(context),
-        subtitle: 'Votre nom et votre adresse e-mail',
+        () => _openPersonalInfo(context),
+        subtitle: 'Identité, e-mail et coordonnées',
       ),
       _buildMenuItem(
         context,
@@ -1092,7 +1073,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
         context,
         Icons.help_outline,
         'Centre d\'aide',
-        () => _showHelpCenterDialog(context),
+        () => _openSheet(
+          context,
+          HelpCenterScreen(launchUri: widget.launchContactUri),
+        ),
         subtitle: 'FAQ, glossaire et contact',
       ),
 
@@ -1100,7 +1084,13 @@ class _ProfilScreenState extends State<ProfilScreen> {
         context,
         Icons.info_outline,
         'À propos',
-        () => _showAboutDialog(context),
+        () => _openSheet(
+          context,
+          AboutHubScreen(
+            openUri: widget.launchContactUri,
+            launchMaps: widget.launchGoogleMaps,
+          ),
+        ),
         subtitle: 'ÉCHELLE EG39 et ses services',
       ),
       _buildCompanyLocationEntry(context),
@@ -1427,131 +1417,32 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
   // Dialogs pour les nouvelles fonctionnalités
 
-  Future<void> _showPersonalInfoDialog(BuildContext context) async {
+  /// Ouvre la feuille « Informations personnelles ».
+  ///
+  /// Un seul formulaire et un seul bouton : le sélecteur ne fait que montrer un
+  /// groupe de champs à la fois, sans perdre les valeurs saisies.
+  Future<void> _openPersonalInfo(BuildContext context) async {
     final profile = _profile;
     if (profile == null) return;
 
-    final firstNameController = _personalFirstNameController
-      ..text = profile.firstName;
-    final lastNameController = _personalLastNameController
-      ..text = profile.lastName;
-    final emailController = _personalEmailController..text = profile.email;
-    final passwordController = _personalPasswordController..clear();
-    final formKey = GlobalKey<FormState>();
-
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        var isSubmitting = false;
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) => AlertDialog(
-            title: const Text('Informations personnelles'),
-            content: Form(
-              key: formKey,
-              child: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    TextFormField(
-                      key: const ValueKey('profile-first-name'),
-                      controller: firstNameController,
-                      decoration: const InputDecoration(labelText: 'Prénom'),
-                      textCapitalization: TextCapitalization.words,
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                          ? 'Saisissez votre prénom.'
-                          : null,
-                    ),
-                    TextFormField(
-                      key: const ValueKey('profile-last-name'),
-                      controller: lastNameController,
-                      decoration: const InputDecoration(labelText: 'Nom'),
-                      textCapitalization: TextCapitalization.words,
-                      validator: (value) =>
-                          value == null || value.trim().isEmpty
-                          ? 'Saisissez votre nom.'
-                          : null,
-                    ),
-                    TextFormField(
-                      controller: emailController,
-                      decoration: const InputDecoration(
-                        labelText: 'Adresse e-mail',
-                      ),
-                      keyboardType: TextInputType.emailAddress,
-                      validator: (value) {
-                        final email = value?.trim() ?? '';
-                        return RegExp(
-                              r'^[^@\s]+@[^@\s]+\.[^@\s]+$',
-                            ).hasMatch(email)
-                            ? null
-                            : 'Saisissez une adresse e-mail valide.';
-                      },
-                    ),
-                    const SizedBox(height: 12),
-                    TextFormField(
-                      controller: passwordController,
-                      decoration: const InputDecoration(
-                        labelText: 'Mot de passe actuel',
-                        helperText: 'Requis si vous changez votre e-mail.',
-                      ),
-                      obscureText: true,
-                    ),
-                  ],
-                ),
-              ),
-            ),
-            actions: [
-              TextButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () => Navigator.pop(dialogContext),
-                child: const Text('Annuler'),
-              ),
-              FilledButton(
-                onPressed: isSubmitting
-                    ? null
-                    : () async {
-                        if (!(formKey.currentState?.validate() ?? false)) {
-                          return;
-                        }
-                        final contactChanged =
-                            emailController.text.trim() != profile.email;
-                        if (contactChanged && passwordController.text.isEmpty) {
-                          _showProfileMessage(
-                            'Saisissez votre mot de passe actuel pour changer l’e-mail.',
-                            isError: true,
-                          );
-                          return;
-                        }
-                        setDialogState(() => isSubmitting = true);
-                        final saved = await _saveProfile(
-                          firstName: firstNameController.text,
-                          lastName: lastNameController.text,
-                          email: emailController.text,
-                          currentPassword: passwordController.text,
-                          successMessage:
-                              'Informations personnelles enregistrées.',
-                        );
-                        if (dialogContext.mounted && saved) {
-                          Navigator.pop(dialogContext);
-                        }
-                        if (dialogContext.mounted && !saved) {
-                          setDialogState(() => isSubmitting = false);
-                        }
-                      },
-                child: isSubmitting
-                    ? const SizedBox.square(
-                        dimension: 18,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                    : const Text('Enregistrer'),
-              ),
-            ],
+    await Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (_) => PersonalInfoScreen(
+          profile: profile,
+          onSubmit: (draft) => _saveProfile(
+            firstName: draft.firstName,
+            lastName: draft.lastName,
+            email: draft.email,
+            company: draft.company,
+            address: draft.address,
+            city: draft.city,
+            country: draft.country,
+            currentPassword: draft.currentPassword,
+            successMessage: 'Informations personnelles enregistrées.',
           ),
-        );
-      },
+        ),
+      ),
     );
-    passwordController.clear();
   }
 
   Future<void> _showPhoneDialog(BuildContext context) async {
@@ -1769,42 +1660,6 @@ class _ProfilScreenState extends State<ProfilScreen> {
     confirmPasswordController.dispose();
   }
 
-  // Méthodes pour le centre d'aide - Déclarées d'abord pour éviter les erreurs
-
-  /// Construit un élément du centre d'aide
-  Widget _buildHelpCenterItem(
-    BuildContext context,
-    IconData icon,
-    String title,
-    String subtitle,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: const Color(0xFF2563EB)),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(fontSize: 14, color: Colors.grey),
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
-    );
-  }
-
   /// Ouvre une feuille de détail par-dessus l’écran Profil.
   void _openSheet(BuildContext context, Widget screen) {
     Navigator.of(context).push(
@@ -1812,215 +1667,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Affiche le sommaire du centre d'aide.
-  ///
-  /// Chaque destination referme le sommaire puis ouvre sa feuille pleine page :
-  /// la rubrique reste consultable sans empiler deux dialogues.
-  void _showHelpCenterDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        void open(Widget screen) {
-          Navigator.of(dialogContext).pop();
-          _openSheet(context, screen);
-        }
-
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.help_center, color: Color(0xFF2563EB)),
-              SizedBox(width: 8),
-              Text('Centre d\'aide'),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildHelpCenterItem(
-                  dialogContext,
-                  Icons.help_outline,
-                  'FAQ dynamique',
-                  'Questions fréquentes organisées par catégories',
-                  () => open(const FaqScreen()),
-                ),
-                _buildHelpCenterItem(
-                  dialogContext,
-                  Icons.g_translate,
-                  'Glossaire',
-                  'Définitions des termes techniques',
-                  () => open(const GlossaryScreen()),
-                ),
-                _buildHelpCenterItem(
-                  dialogContext,
-                  Icons.contact_phone,
-                  'Contact direct',
-                  'Téléphone, email, WhatsApp (+228 90 01 43 29)',
-                  () => open(
-                    DirectContactScreen(launchUri: widget.launchContactUri),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
 
 
 
-  /// Construit un élément du menu À propos
-  Widget _buildAboutItem(
-    BuildContext context,
-    IconData icon,
-    String title,
-    String subtitle,
-    VoidCallback onTap,
-  ) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Container(
-          width: 40,
-          height: 40,
-          decoration: BoxDecoration(
-            color: const Color(0xFFF3F4F6),
-            borderRadius: BorderRadius.circular(8),
-          ),
-          child: Icon(icon, color: const Color(0xFF2563EB)),
-        ),
-        title: Text(
-          title,
-          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
-        ),
-        subtitle: Text(
-          subtitle,
-          style: const TextStyle(fontSize: 14, color: Colors.grey),
-        ),
-        trailing: const Icon(Icons.chevron_right),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  /// Affiche le sommaire « À propos ».
-  ///
-  /// Chaque entrée referme le sommaire puis ouvre sa feuille pleine page.
-  void _showAboutDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        void open(Widget screen) {
-          Navigator.of(dialogContext).pop();
-          _openSheet(context, screen);
-        }
-
-        return AlertDialog(
-          title: const Row(
-            children: [
-              Icon(Icons.info_outline, color: Color(0xFF2563EB)),
-              SizedBox(width: 8),
-              Text('À propos'),
-            ],
-          ),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.business,
-                  'Informations sur l\'entreprise',
-                  'Histoire, mission, localisation et zone d\'intervention',
-                  () => open(
-                    CompanyInfoScreen(launchMaps: widget.launchGoogleMaps),
-                  ),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.group,
-                  'Notre équipe',
-                  'Photos et profils des membres de l\'équipe',
-                  () => open(const TeamScreen()),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.handshake,
-                  'Nos partenaires',
-                  'Leica, e-survey',
-                  () => open(const PartnersScreen()),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.settings,
-                  'Nos services',
-                  'Vente, Location, Formation, Réparation, Mise à jour',
-                  () => open(const ServicesScreen()),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.privacy_tip,
-                  'Politique de confidentialité',
-                  'RGPD et protection des données',
-                  () => open(const PrivacyPolicyScreen()),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.description,
-                  'Conditions d\'utilisation',
-                  'Mentions légales',
-                  () => open(const TermsOfUseScreen()),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.code,
-                  'Crédits',
-                  'Équipe de développement',
-                  () => open(const CreditsScreen()),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.download_for_offline_outlined,
-                  'Inviter à installer',
-                  AppLinks.isPublished
-                      ? 'Lien Google Play et App Store'
-                      : 'Bientôt sur Google Play et l’App Store',
-                  () => open(
-                    InviteAppScreen(openUri: widget.launchContactUri),
-                  ),
-                ),
-                _buildAboutItem(
-                  dialogContext,
-                  Icons.share,
-                  'Partager nos coordonnées',
-                  'Envoyez notre fiche à vos collègues',
-                  () => open(
-                    ShareCompanyScreen(openUri: widget.launchContactUri),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
 
 
