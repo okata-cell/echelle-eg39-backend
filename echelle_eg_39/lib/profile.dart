@@ -917,30 +917,25 @@ class _ProfilScreenState extends State<ProfilScreen> {
   }
 
   /// Construit les informations réelles renvoyées par le compte connecté.
+  ///
+  /// La fiche reprend tous les champs modifiables dans « Informations
+  /// personnelles » : nom, e-mail, rôle, entreprise, adresse, ville et pays.
   Widget _buildUserInfo() {
     final role = _roleLabel;
     final company = _profile?.company.trim() ?? '';
+    final address = _profile?.address.trim() ?? '';
     final place = _placeLabel;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Expanded(
-              child: Padding(
-                padding: const EdgeInsets.only(top: 2),
-                child: Text(
-                  _userName,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: _ProfileText.name,
-                ),
-              ),
-            ),
-            const SizedBox(width: 4),
-            _buildEditProfileButton(),
-          ],
+        Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: Text(
+            _userName,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: _ProfileText.name,
+          ),
         ),
         const SizedBox(height: 4),
         Text(
@@ -953,35 +948,34 @@ class _ProfilScreenState extends State<ProfilScreen> {
           const SizedBox(height: 10),
           Text(role, style: _ProfileText.identityStrong),
         ],
-        if (company.isNotEmpty)
-          Text(company, style: _ProfileText.identityStrong),
+        if (company.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            company,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _ProfileText.identityStrong,
+          ),
+        ],
+        if (address.isNotEmpty) ...[
+          const SizedBox(height: 2),
+          Text(
+            address,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: _ProfileText.identityMuted,
+          ),
+        ],
         if (place != null) ...[
           const SizedBox(height: 2),
-          Text(place, style: _ProfileText.identityMuted),
+          Text(
+            place,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: _ProfileText.identityMuted,
+          ),
         ],
       ],
-    );
-  }
-
-  /// Crayon d'édition des informations personnelles.
-  Widget _buildEditProfileButton() {
-    return IconButton(
-      tooltip: 'Modifier les informations personnelles',
-      onPressed: () => _openPersonalInfo(context),
-      style: IconButton.styleFrom(
-        backgroundColor: _ProfileTokens.surfaceMuted,
-        foregroundColor: _ProfileTokens.primary,
-        minimumSize: const Size(
-          _ProfileTokens.touchTarget,
-          _ProfileTokens.touchTarget,
-        ),
-        maximumSize: const Size(
-          _ProfileTokens.touchTarget,
-          _ProfileTokens.touchTarget,
-        ),
-        padding: EdgeInsets.zero,
-      ),
-      icon: const Icon(Icons.edit_outlined, size: 16),
     );
   }
 

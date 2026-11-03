@@ -125,6 +125,50 @@ void main() {
     expect(prefs.getString('userName'), 'Ama Koffi');
   });
 
+  testWidgets('la fiche du client reprend tous les champs du formulaire', (
+    tester,
+  ) async {
+    final profile = _profile(company: '', address: '', city: '', country: '');
+    final savedUpdates = <Map<String, dynamic>>[];
+    final api = _fakeProfileApi(profile: profile, savedUpdates: savedUpdates);
+    addTearDown(api.dispose);
+
+    await tester.pumpWidget(MaterialApp(home: ProfilScreen(profileApi: api)));
+    await tester.pumpAndSettle();
+
+    // Plus de crayon sur la fiche : le formulaire s’ouvre par le menu.
+    expect(find.byIcon(Icons.edit_outlined), findsNothing);
+    expect(
+      find.byTooltip('Modifier les informations personnelles'),
+      findsNothing,
+    );
+
+    await _openProfileMenu(tester, 'Informations personnelles');
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-company')),
+      'Cabinet Géo',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-address')),
+      'Rue 12, Bè',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-city')),
+      'Kara',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('profile-country')),
+      'Togo',
+    );
+    await tester.tap(find.widgetWithText(FilledButton, 'Enregistrer'));
+    await tester.pumpAndSettle();
+
+    // La fiche affiche immédiatement ce qui vient d’être enregistré.
+    expect(find.text('Cabinet Géo'), findsOneWidget);
+    expect(find.text('Rue 12, Bè'), findsOneWidget);
+    expect(find.text('Kara, Togo'), findsOneWidget);
+  });
+
   testWidgets('normalise une image au nom inconnu avant envoi de l’avatar', (
     tester,
   ) async {
