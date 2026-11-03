@@ -84,6 +84,11 @@ class _LocationScreenState extends State<LocationScreen> {
   String _searchQuery = '';
   String _selectedCategory = 'Tous';
 
+  /// Vrai tant que la première réponse du serveur n'est pas arrivée : l'écran
+  /// montre alors un chargement, jamais « aucun équipement ».
+  bool _isLoadingEquipment = true;
+  String? _equipmentError;
+
   final List<String> _categories = [
     'Tous',
     'GPS',
@@ -107,34 +112,48 @@ class _LocationScreenState extends State<LocationScreen> {
     _dataManager.addListener(_onDataManagerChanged);
   }
 
-  Future<void> _loadAppareilsFromAPI() async {
+  Future<void> _loadAppareilsFromAPI({bool showSpinner = false}) async {
+    if (showSpinner && mounted) {
+      setState(() {
+        _isLoadingEquipment = true;
+        _equipmentError = null;
+      });
+    }
+
     try {
       final appareils = await widget.loadAppareils();
-      if (mounted && appareils.isNotEmpty) {
-        setState(() {
-          _apiAppareils = appareils
-              .map(
-                (a) => Equipment(
-                  id: a['id'] as int,
-                  name: a['nom'] as String,
-                  category: a['type'] as String,
-                  price: a['prixLocation'] as int,
-                  available: a['horsService'] is bool
-                      ? !(a['horsService'] as bool)
-                      : a['disponible'] as bool? ?? true,
-                  imageUrl:
-                      a['imageUrl'] as String? ??
-                      AppareilImages.getImageUrlForType(
-                        a['type'] as String? ?? '',
-                      ),
-                  role: _getRoleDescription(a['type'] as String? ?? ''),
-                ),
-              )
-              .toList();
-        });
-      }
+      if (!mounted) return;
+      // Une réponse vide remplace la liste : le serveur reste la référence.
+      setState(() {
+        _apiAppareils = appareils
+            .map(
+              (a) => Equipment(
+                id: a['id'] as int,
+                name: a['nom'] as String,
+                category: a['type'] as String,
+                price: a['prixLocation'] as int,
+                available: a['horsService'] is bool
+                    ? !(a['horsService'] as bool)
+                    : a['disponible'] as bool? ?? true,
+                imageUrl:
+                    a['imageUrl'] as String? ??
+                    AppareilImages.getImageUrlForType(
+                      a['type'] as String? ?? '',
+                    ),
+                role: _getRoleDescription(a['type'] as String? ?? ''),
+              ),
+            )
+            .toList();
+        _equipmentError = null;
+      });
     } catch (e) {
       debugPrint('Failed to load rental equipment: $e');
+      if (!mounted) return;
+      setState(() {
+        _equipmentError = 'Impossible de charger les équipements.';
+      });
+    } finally {
+      if (mounted) setState(() => _isLoadingEquipment = false);
     }
   }
 
@@ -212,7 +231,8 @@ class _LocationScreenState extends State<LocationScreen> {
         title: Text('Location d’appareils', style: titleStyle),
         actions: [
           IconButton(
-            onPressed: _loadAppareilsFromAPI,
+            onPressed: () =>
+                _loadAppareilsFromAPI(showSpinner: _apiAppareils.isEmpty),
             tooltip: 'Actualiser',
             style: IconButton.styleFrom(
               backgroundColor: _LocationTokens.canvas,
@@ -328,47 +348,169 @@ class _LocationScreenState extends State<LocationScreen> {
               },
             ),
           ),
-          Expanded(
-            child: _filteredEquipments.isEmpty
-                ? _buildEmptyState()
-                : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
-                    itemCount: _filteredEquipments.length,
-                    separatorBuilder: (_, _) => const SizedBox(height: 14),
-                    itemBuilder: (context, index) {
-                      final equipment = _filteredEquipments[index];
-                      return _EquipmentCard(
-                        key: ValueKey('card_${equipment.id}'),
-                        equipment: equipment,
-                        checkAvailability: widget.checkAvailability,
-                        createLocation: widget.createLocation,
-                        today: widget.today,
-                        onRefresh: _loadAppareilsFromAPI,
-                      );
-                    },
-                  ),
+          Expanded(child: _buildResults()),
+        ],
+      ),
+    );
+  }
+
+  /// Trois états distincts : attente du serveur, échec réseau, résultat vide.
+  Widget _buildResults() {
+    if (_isLoadingEquipment && _apiAppareils.isEmpty) {
+      return _buildLoadingState();
+    }
+    if (_equipmentError != null && _apiAppareils.isEmpty) {
+      return _buildErrorState();
+    }
+    if (_filteredEquipments.isEmpty) {
+      return _buildEmptyState();
+    }
+
+    return ListView.separated(
+      padding: const EdgeInsets.fromLTRB(16, 12, 16, 20),
+      itemCount: _filteredEquipments.length,
+      separatorBuilder: (_, _) => const SizedBox(height: 14),
+      itemBuilder: (context, index) {
+        final equipment = _filteredEquipments[index];
+        return _EquipmentCard(
+          key: ValueKey('card_${equipment.id}'),
+          equipment: equipment,
+          checkAvailability: widget.checkAvailability,
+          createLocation: widget.createLocation,
+          today: widget.today,
+          onRefresh: _loadAppareilsFromAPI,
+        );
+      },
+    );
+  }
+
+  Widget _buildLoadingState() {
+    return Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          const SizedBox.square(
+            dimension: 28,
+            child: CircularProgressIndicator(
+              strokeWidth: 2.6,
+              color: _LocationTokens.primary,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Text(
+            'Chargement des équipements…',
+            style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+              color: _LocationTokens.muted,
+              fontSize: 14,
+              fontWeight: FontWeight.w500,
+            ),
           ),
         ],
       ),
     );
   }
 
-  Widget _buildEmptyState() {
+  Widget _buildErrorState() {
     return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          const Icon(Icons.search_off, size: 48, color: _LocationTokens.muted),
-          const SizedBox(height: 16),
-          Text(
-            'Aucun équipement trouvé',
-            style: Theme.of(context).textTheme.titleMedium?.copyWith(
-              color: _LocationTokens.body,
-              fontSize: 16,
-              fontWeight: FontWeight.w600,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const Icon(
+              Icons.wifi_off_rounded,
+              size: 44,
+              color: _LocationTokens.muted,
             ),
-          ),
-        ],
+            const SizedBox(height: 16),
+            Text(
+              _equipmentError ?? 'Impossible de charger les équipements.',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: _LocationTokens.body,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            const SizedBox(height: 16),
+            FilledButton(
+              key: const ValueKey('location-retry'),
+              onPressed: () => _loadAppareilsFromAPI(showSpinner: true),
+              style: FilledButton.styleFrom(
+                backgroundColor: _LocationTokens.primary,
+                foregroundColor: Colors.white,
+                minimumSize: const Size(0, 44),
+                padding: const EdgeInsets.symmetric(horizontal: 22),
+                textStyle: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                ),
+                shape: const StadiumBorder(),
+              ),
+              child: const Text('Réessayer'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    final isFiltered =
+        _searchQuery.trim().isNotEmpty || _selectedCategory != 'Tous';
+
+    return Center(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 32),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            Icon(
+              isFiltered ? Icons.search_off : Icons.inventory_2_outlined,
+              size: 48,
+              color: _LocationTokens.muted,
+            ),
+            const SizedBox(height: 16),
+            Text(
+              isFiltered
+                  ? 'Aucun équipement ne correspond'
+                  : 'Aucun équipement disponible',
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                color: _LocationTokens.body,
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+            if (isFiltered) ...[
+              const SizedBox(height: 4),
+              Text(
+                'Modifiez la recherche ou la catégorie.',
+                textAlign: TextAlign.center,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  color: _LocationTokens.muted,
+                  fontSize: 13,
+                ),
+              ),
+              const SizedBox(height: 8),
+              TextButton(
+                key: const ValueKey('location-clear-filters'),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searchQuery = '';
+                    _selectedCategory = 'Tous';
+                  });
+                },
+                style: TextButton.styleFrom(
+                  foregroundColor: _LocationTokens.primary,
+                  minimumSize: const Size(0, 44),
+                ),
+                child: const Text('Réinitialiser les filtres'),
+              ),
+            ],
+          ],
+        ),
       ),
     );
   }
