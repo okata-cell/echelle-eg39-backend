@@ -1,5 +1,5 @@
 import 'package:echelle_eg_39/app_links.dart';
-import 'package:echelle_eg_39/widgets/invite_app_dialog.dart';
+import 'package:echelle_eg_39/widgets/invite_app_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -7,14 +7,17 @@ const _androidUrl =
     'https://play.google.com/store/apps/details?id=com.okata.echelleeg39';
 const _iosUrl = 'https://apps.apple.com/app/id1234567890';
 
-Widget _host(Widget dialog) {
+/// L’écran est une feuille plein page : on l’ouvre par une route, comme depuis
+/// le menu « À propos ».
+Widget _host(Widget screen) {
   return MaterialApp(
     home: Scaffold(
       body: Builder(
         builder: (context) => Center(
           child: TextButton(
-            onPressed: () =>
-                showDialog<void>(context: context, builder: (_) => dialog),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => screen),
+            ),
             child: const Text('Ouvrir'),
           ),
         ),
@@ -23,8 +26,8 @@ Widget _host(Widget dialog) {
   );
 }
 
-Future<void> _open(WidgetTester tester, Widget dialog) async {
-  await tester.pumpWidget(_host(dialog));
+Future<void> _open(WidgetTester tester, Widget screen) async {
+  await tester.pumpWidget(_host(screen));
   await tester.tap(find.text('Ouvrir'));
   await tester.pumpAndSettle();
 }
@@ -33,7 +36,7 @@ void main() {
   testWidgets('avant publication, l’écran annonce honnêtement l’attente', (
     tester,
   ) async {
-    await _open(tester, const InviteAppDialog());
+    await _open(tester, const InviteAppScreen());
 
     expect(find.text('Application bientôt disponible'), findsOneWidget);
     expect(find.byKey(const ValueKey('invite-unavailable')), findsOneWidget);
@@ -51,7 +54,7 @@ void main() {
     final opened = <Uri>[];
     await _open(
       tester,
-      InviteAppDialog(
+      InviteAppScreen(
         androidUrl: _androidUrl,
         iosUrl: _iosUrl,
         openUri: (uri) async {
@@ -76,7 +79,7 @@ void main() {
     final shared = <String>[];
     await _open(
       tester,
-      InviteAppDialog(
+      InviteAppScreen(
         androidUrl: _androidUrl,
         iosUrl: _iosUrl,
         openSystemShare: (text, subject) async => shared.add(text),
@@ -95,7 +98,7 @@ void main() {
     final copied = <String>[];
     await _open(
       tester,
-      InviteAppDialog(
+      InviteAppScreen(
         androidUrl: _androidUrl,
         copyText: (text) async => copied.add(text),
       ),
@@ -116,7 +119,7 @@ void main() {
 
     await _open(
       tester,
-      const InviteAppDialog(androidUrl: _androidUrl, iosUrl: _iosUrl),
+      const InviteAppScreen(androidUrl: _androidUrl, iosUrl: _iosUrl),
     );
 
     expect(tester.takeException(), isNull);

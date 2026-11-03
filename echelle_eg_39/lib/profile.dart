@@ -6,17 +6,26 @@ import 'package:google_fonts/google_fonts.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_avatar_image.dart';
-import 'package:url_launcher/url_launcher.dart';
 
 import 'app_links.dart';
 import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
 import 'profile_api.dart';
+import 'profile_theme.dart';
 import 'support_assistant.dart';
-import 'team.dart';
-import 'widgets/invite_app_dialog.dart';
-import 'widgets/share_company_dialog.dart';
+import 'widgets/company_info_screen.dart';
+import 'widgets/credits_screen.dart';
+import 'widgets/direct_contact_screen.dart';
+import 'widgets/faq_screen.dart';
+import 'widgets/glossary_screen.dart';
+import 'widgets/invite_app_screen.dart';
+import 'widgets/partners_screen.dart';
+import 'widgets/privacy_policy_screen.dart';
+import 'widgets/services_screen.dart';
+import 'widgets/share_company_screen.dart';
+import 'widgets/team_screen.dart';
+import 'widgets/terms_of_use_screen.dart';
 
 /// Fil de messages du support, conservé localement à l’écran et transmis à l’API.
 class ChatSupportDialog extends StatefulWidget {
@@ -379,82 +388,10 @@ typedef ProfileAvatarNormalizer =
 typedef ProfileGoogleMapsLauncher = Future<bool> Function(Uri uri);
 typedef ProfileContactLauncher = Future<bool> Function(Uri uri);
 
-/// Jetons visuels de l’écran Profil.
-///
-/// Reprend le langage déjà utilisé par l’écran Location et la fiche agence :
-/// fond parchemin, cartes blanches à filet fin, un seul bleu d’action.
-class _ProfileTokens {
-  const _ProfileTokens._();
-
-  static const Color canvas = Color(0xFFF5F5F7);
-  static const Color surface = Colors.white;
-  static const Color surfaceMuted = Color(0xFFF5F7FA);
-  static const Color ink = Color(0xFF1D1D1F);
-  static const Color muted = Color(0xFF7A7A7A);
-  static const Color border = Color(0xFFE6E6E6);
-  static const Color divider = Color(0xFFF0F0F0);
-  static const Color primary = Color(0xFF0066CC);
-  static const Color chevron = Color(0xFFC7C7CC);
-  static const Color danger = Color(0xFFB42318);
-
-  static const double radiusCard = 18;
-  static const double pagePadding = 16;
-  static const double avatarSize = 64;
-  static const double touchTarget = 44;
-}
-
-/// Styles de texte de l’écran Profil (échelle 400 / 600 / 700).
-class _ProfileText {
-  const _ProfileText._();
-
-  static TextStyle _style(
-    double size,
-    FontWeight weight, {
-    Color color = _ProfileTokens.ink,
-    double? height,
-    double? letterSpacing,
-  }) {
-    return GoogleFonts.poppins(
-      fontSize: size,
-      fontWeight: weight,
-      color: color,
-      height: height,
-      letterSpacing: letterSpacing,
-    );
-  }
-
-  static TextStyle get pageTitle =>
-      _style(28, FontWeight.w700, height: 1.1, letterSpacing: -0.6);
-
-  static TextStyle get name =>
-      _style(21, FontWeight.w700, height: 1.15, letterSpacing: -0.4);
-
-  static TextStyle get email => _style(14, FontWeight.w400, color: _ProfileTokens.muted);
-
-  static TextStyle get identityStrong => _style(14, FontWeight.w600, height: 1.35);
-
-  static TextStyle get identityMuted =>
-      _style(14, FontWeight.w400, color: _ProfileTokens.muted, height: 1.35);
-
-  static TextStyle get sectionTitle =>
-      _style(17, FontWeight.w700, letterSpacing: -0.2);
-
-  static TextStyle get rowTitle =>
-      _style(16, FontWeight.w600, height: 1.2, letterSpacing: -0.2);
-
-  static TextStyle get rowSubtitle =>
-      _style(12, FontWeight.w400, color: _ProfileTokens.muted, height: 1.3);
-
-  static TextStyle get rowValue =>
-      _style(12, FontWeight.w600, height: 1.3, letterSpacing: -0.1);
-
-  static TextStyle get appName => _style(15, FontWeight.w700, letterSpacing: -0.15);
-
-  static TextStyle get appVersion =>
-      _style(13, FontWeight.w400, color: _ProfileTokens.muted);
-
-  static TextStyle get actionLabel => _style(15, FontWeight.w600);
-}
+// Jetons et échelle typographique partagés avec les feuilles de détail du
+// Profil : ils vivent dans `profile_theme.dart` pour rester une seule source.
+typedef _ProfileTokens = ProfileTokens;
+typedef _ProfileText = ProfileText;
 
 /// Filet de séparation entre deux lignes d’une même carte.
 class _ProfileRowDivider extends StatelessWidget {
@@ -1868,57 +1805,26 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// FAQ consultable : chaque question révèle sa réponse au toucher.
-  Widget _buildFAQItem(String question, String answer) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ExpansionTile(
-        title: Text(
-          question,
-          style: const TextStyle(fontWeight: FontWeight.w600),
-        ),
-        childrenPadding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-        children: [Text(answer)],
-      ),
+  /// Ouvre une feuille de détail par-dessus l’écran Profil.
+  void _openSheet(BuildContext context, Widget screen) {
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(builder: (_) => screen),
     );
   }
 
-  /// Terme de glossaire en lecture seule (pas de faux bouton d’action).
-  Widget _buildGlossaryItem(String term, String definition) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: const Icon(Icons.menu_book_outlined, color: Color(0xFF059669)),
-        title: Text(term, style: const TextStyle(fontWeight: FontWeight.bold)),
-        subtitle: Text(definition),
-      ),
-    );
-  }
-
-  /// Construit un élément de contact
-  Widget _buildContactItem(
-    IconData icon,
-    String label,
-    String value,
-    VoidCallback? onTap,
-  ) {
-    return Card(
-      margin: const EdgeInsets.only(bottom: 8),
-      child: ListTile(
-        leading: Icon(icon, color: const Color(0xFF2563EB)),
-        title: Text(label),
-        subtitle: Text(value),
-        trailing: onTap == null ? null : const Icon(Icons.open_in_new),
-        onTap: onTap,
-      ),
-    );
-  }
-
-  /// Affiche le dialog du centre d'aide
+  /// Affiche le sommaire du centre d'aide.
+  ///
+  /// Chaque destination referme le sommaire puis ouvre sa feuille pleine page :
+  /// la rubrique reste consultable sans empiler deux dialogues.
   void _showHelpCenterDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (dialogContext) {
+        void open(Widget screen) {
+          Navigator.of(dialogContext).pop();
+          _openSheet(context, screen);
+        }
+
         return AlertDialog(
           title: const Row(
             children: [
@@ -1933,41 +1839,34 @@ class _ProfilScreenState extends State<ProfilScreen> {
               shrinkWrap: true,
               children: [
                 _buildHelpCenterItem(
-                  context,
+                  dialogContext,
                   Icons.help_outline,
                   'FAQ dynamique',
                   'Questions fréquentes organisées par catégories',
-                  () {
-                    Navigator.of(context).pop();
-                    _showFAQDialog(context);
-                  },
+                  () => open(const FaqScreen()),
                 ),
                 _buildHelpCenterItem(
-                  context,
+                  dialogContext,
                   Icons.g_translate,
                   'Glossaire',
                   'Définitions des termes techniques',
-                  () {
-                    Navigator.of(context).pop();
-                    _showGlossaryDialog(context);
-                  },
+                  () => open(const GlossaryScreen()),
                 ),
                 _buildHelpCenterItem(
-                  context,
+                  dialogContext,
                   Icons.contact_phone,
                   'Contact direct',
                   'Téléphone, email, WhatsApp (+228 90 01 43 29)',
-                  () {
-                    Navigator.of(context).pop();
-                    _showDirectContactDialog(context);
-                  },
+                  () => open(
+                    DirectContactScreen(launchUri: widget.launchContactUri),
+                  ),
                 ),
               ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Fermer'),
             ),
           ],
@@ -1976,215 +1875,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Dialog FAQ dynamique
-  void _showFAQDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('FAQ Dynamique'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: ListView(
-              shrinkWrap: true,
-              children: [
-                _buildFAQItem(
-                  'Comment calibrer un GPS de précision ?',
-                  'Pour calibrer un GPS de précision, placez-vous en zone dégagée et suivez les instructions du manuel.',
-                ),
-                _buildFAQItem(
-                  'Quelle est la précision des GPS e-survey ?',
-                  'Les GPS e-survey ont une précision de 2-5mm en mode RTK.',
-                ),
-                _buildFAQItem(
-                  'Comment régler un théodolite ?',
-                  'Le réglage d\'un théodolite nécessite une mise à niveau précise avec les vis calantes.',
-                ),
-                _buildFAQItem(
-                  'Comment réserver un équipement ?',
-                  'Utilisez la section Location de l\'application pour vérifier la disponibilité et réserver.',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
-  /// Dialog Glossaire
-  void _showGlossaryDialog(BuildContext context) {
-    final searchController = TextEditingController();
 
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: Text('Glossaire'),
-          content: SizedBox(
-            width: double.maxFinite,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: searchController,
-                  decoration: InputDecoration(
-                    labelText: 'Rechercher un terme',
-                    border: OutlineInputBorder(),
-                    prefixIcon: Icon(Icons.search),
-                  ),
-                ),
-                SizedBox(height: 16),
-                SizedBox(
-                  height: 200,
-                  child: ListView(
-                    shrinkWrap: true,
-                    children: [
-                      _buildGlossaryItem(
-                        'Altimétrie',
-                        'Mesure des altitudes et des hauteurs',
-                      ),
-                      _buildGlossaryItem(
-                        'Azimut',
-                        'Angle horizontal mesuré dans le sens horaire',
-                      ),
-                      _buildGlossaryItem(
-                        'Bornage',
-                        'Délimitation d\'une propriété',
-                      ),
-                      _buildGlossaryItem(
-                        'Cadastre',
-                        'Enregistrement public des propriétés foncières',
-                      ),
-                      _buildGlossaryItem(
-                        'Gisement',
-                        'Angle horizontal mesuré à partir du nord',
-                      ),
-                      _buildGlossaryItem(
-                        'Nivellement',
-                        'Détermination des différences d\'altitude',
-                      ),
-                      _buildGlossaryItem(
-                        'Station totale',
-                        'Instrument combinant théodolite et distancemètre',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Ouvre le composeur système correspondant au lien.
-  ///
-  /// Aucun pré-contrôle `canLaunchUrl` : sur iOS il dépend de
-  /// `LSApplicationQueriesSchemes` et sur Android 11+ de `<queries>`, ce qui
-  /// faisait échouer `tel:` et `mailto:` alors que les applications existent.
-  /// Si rien ne s'ouvre (simulateur sans app Téléphone/Mail, appareil sans
-  /// client mail), la coordonnée est copiée pour rester utilisable.
-  Future<void> _launchContact(
-    Uri uri, {
-    required String copyValue,
-    required String fallbackMessage,
-  }) async {
-    var launched = false;
-    try {
-      final launcher = widget.launchContactUri;
-      launched = launcher != null
-          ? await launcher(uri)
-          : await launchUrl(uri, mode: LaunchMode.externalApplication);
-    } catch (_) {
-      launched = false;
-    }
-    if (launched || !mounted) return;
-    try {
-      await Clipboard.setData(ClipboardData(text: copyValue));
-    } catch (_) {
-      // Le presse-papiers peut être indisponible : le message reste utile.
-    }
-    if (!mounted) return;
-    _showProfileMessage(fallbackMessage);
-  }
-
-  /// Les actions ouvrent maintenant le composeur système correspondant.
-  void _showDirectContactDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) => AlertDialog(
-        title: const Text('Contact direct'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: ListView(
-            shrinkWrap: true,
-            children: [
-              _buildContactItem(
-                Icons.phone,
-                'Téléphone',
-                CompanyContact.phoneDisplay,
-                () => _launchContact(
-                  CompanyContact.phoneUri,
-                  copyValue: CompanyContact.phoneDisplay,
-                  fallbackMessage: CompanyContact.phoneFallbackMessage,
-                ),
-              ),
-              _buildContactItem(
-                Icons.email,
-                'E-mail',
-                CompanyContact.email,
-                () => _launchContact(
-                  CompanyContact.emailUri,
-                  copyValue: CompanyContact.email,
-                  fallbackMessage: CompanyContact.emailFallbackMessage,
-                ),
-              ),
-              _buildContactItem(
-                Icons.chat,
-                'WhatsApp',
-                CompanyContact.phoneDisplay,
-                () => _launchContact(
-                  CompanyContact.whatsAppUri(
-                    text:
-                        'Bonjour ${CompanyContact.name}, '
-                        'j’ai besoin d’aide.',
-                  ),
-                  copyValue: CompanyContact.phoneDisplay,
-                  fallbackMessage: CompanyContact.whatsAppFallbackMessage,
-                ),
-              ),
-              _buildContactItem(
-                Icons.schedule,
-                'Horaires',
-                CompanyContact.hours,
-                null,
-              ),
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(dialogContext).pop(),
-            child: const Text('Fermer'),
-          ),
-        ],
-      ),
-    );
-  }
 
   /// Construit un élément du menu À propos
   Widget _buildAboutItem(
@@ -2220,11 +1912,18 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Affiche le dialog principal du menu À propos
+  /// Affiche le sommaire « À propos ».
+  ///
+  /// Chaque entrée referme le sommaire puis ouvre sa feuille pleine page.
   void _showAboutDialog(BuildContext context) {
     showDialog(
       context: context,
-      builder: (BuildContext context) {
+      builder: (dialogContext) {
+        void open(Widget screen) {
+          Navigator.of(dialogContext).pop();
+          _openSheet(context, screen);
+        }
+
         return AlertDialog(
           title: const Row(
             children: [
@@ -2239,258 +1938,82 @@ class _ProfilScreenState extends State<ProfilScreen> {
               shrinkWrap: true,
               children: [
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.business,
                   'Informations sur l\'entreprise',
                   'Histoire, mission, localisation et zone d\'intervention',
-                  () {
-                    Navigator.of(context).pop();
-                    _showCompanyInfoDialog(context);
-                  },
+                  () => open(
+                    CompanyInfoScreen(launchMaps: widget.launchGoogleMaps),
+                  ),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.group,
                   'Notre équipe',
                   'Photos et profils des membres de l\'équipe',
-                  () {
-                    Navigator.of(context).pop();
-                    _showTeamDialog(context);
-                  },
+                  () => open(const TeamScreen()),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.handshake,
                   'Nos partenaires',
                   'Leica, e-survey',
-                  () {
-                    Navigator.of(context).pop();
-                    _showPartnersDialog(context);
-                  },
+                  () => open(const PartnersScreen()),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.settings,
                   'Nos services',
                   'Vente, Location, Formation, Réparation, Mise à jour',
-                  () {
-                    Navigator.of(context).pop();
-                    _showServicesDialog(context);
-                  },
+                  () => open(const ServicesScreen()),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.privacy_tip,
                   'Politique de confidentialité',
                   'RGPD et protection des données',
-                  () {
-                    Navigator.of(context).pop();
-                    _showPrivacyPolicyDialog(context);
-                  },
+                  () => open(const PrivacyPolicyScreen()),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.description,
                   'Conditions d\'utilisation',
                   'Mentions légales',
-                  () {
-                    Navigator.of(context).pop();
-                    _showTermsOfUseDialog(context);
-                  },
+                  () => open(const TermsOfUseScreen()),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.code,
                   'Crédits',
                   'Équipe de développement',
-                  () {
-                    Navigator.of(context).pop();
-                    _showCreditsDialog(context);
-                  },
+                  () => open(const CreditsScreen()),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.download_for_offline_outlined,
                   'Inviter à installer',
                   AppLinks.isPublished
                       ? 'Lien Google Play et App Store'
                       : 'Bientôt sur Google Play et l’App Store',
-                  () {
-                    Navigator.of(context).pop();
-                    _showInviteDialog(context);
-                  },
+                  () => open(
+                    InviteAppScreen(openUri: widget.launchContactUri),
+                  ),
                 ),
                 _buildAboutItem(
-                  context,
+                  dialogContext,
                   Icons.share,
                   'Partager nos coordonnées',
                   'Envoyez notre fiche à vos collègues',
-                  () {
-                    Navigator.of(context).pop();
-                    _showShareDialog(context);
-                  },
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Ouvre la position exacte fournie par l’entreprise dans Google Maps.
-  Future<void> _openGoogleMaps() async {
-    final uri = Uri.parse('https://maps.app.goo.gl/BtGKf2gwjaLpKFQN7?g_st=iw');
-
-    try {
-      final didLaunch = widget.launchGoogleMaps != null
-          ? await widget.launchGoogleMaps!(uri)
-          : await launchUrl(uri, mode: LaunchMode.externalApplication);
-      if (!didLaunch && mounted) {
-        _showProfileMessage(
-          'Impossible d’ouvrir Google Maps. Vérifiez votre connexion.',
-          isError: true,
-        );
-      }
-    } catch (_) {
-      if (mounted) {
-        _showProfileMessage(
-          'Impossible d’ouvrir Google Maps. Vérifiez votre connexion.',
-          isError: true,
-        );
-      }
-    }
-  }
-
-  /// Dialog Informations sur l'entreprise
-  void _showCompanyInfoDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Informations sur l\'entreprise'),
-          content: const SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'ÉCHELLE EG39',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: Color(0xFF2563EB),
+                  () => open(
+                    ShareCompanyScreen(openUri: widget.launchContactUri),
                   ),
                 ),
-                SizedBox(height: 16),
-                Text(
-                  'Notre Histoire',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Créée en 2019, ÉCHELLE EG39 est spécialisée dans la vente et location d\'équipements de topographie de haute précision. Nous accompagnons les professionnels du secteur dans leurs projets d\'infrastructure et de construction.',
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Notre Mission',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Fournir des équipements de topographie de qualité supérieure et un service après-vente exceptionnel pour accompagner nos clients dans la réussite de leurs projets.',
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Localisation',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(CompanyLocation.address),
-                SizedBox(height: 4),
-                Text(
-                  CompanyLocation.plusCode,
-                  style: TextStyle(fontSize: 12, color: Color(0xFF7A7A7A)),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Zone d\'intervention',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Sous-région ouest-africaine (Togo, Ghana, Bénin, Burkina Faso, Mali, etc.)',
-                ),
               ],
             ),
           ),
           actions: [
             TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                _openGoogleMaps();
-              },
-              icon: const Icon(Icons.map),
-              label: const Text('Voir sur Google Maps'),
-            ),
-          ],
-        );
-      },
-    );
-  }
-
-  /// Dialog Notre équipe.
-  ///
-  /// Les noms et fonctions viennent de `lib/team.dart` : ne les codez pas ici,
-  /// ils seraient ignorés par les autres écrans et par les tests.
-  void _showTeamDialog(BuildContext context) {
-    // Trace de diagnostic : montre dans le terminal l’équipe réellement
-    // compilée, pour distinguer un problème de données d’un problème de build.
-    assert(() {
-      debugPrint(
-        'Équipe compilée (${kTeamMembers.length}) : '
-        '${kTeamMembers.map((member) => member.firstName).join(', ')}',
-      );
-      return true;
-    }());
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Notre équipe'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                for (final member in kTeamMembers)
-                  ListTile(
-                    key: ValueKey('team-member-${member.firstName}'),
-                    leading: CircleAvatar(
-                      backgroundColor: member.color,
-                      child: Text(
-                        member.initial,
-                        style: const TextStyle(color: Colors.white),
-                      ),
-                    ),
-                    title: Text(member.firstName),
-                    subtitle: Text(member.subtitle),
-                  ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
+              onPressed: () => Navigator.of(dialogContext).pop(),
               child: const Text('Fermer'),
             ),
           ],
@@ -2499,282 +2022,11 @@ class _ProfilScreenState extends State<ProfilScreen> {
     );
   }
 
-  /// Dialog Nos partenaires
-  void _showPartnersDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Nos partenaires'),
-          content: const SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.gps_fixed, color: Color(0xFF2563EB)),
-                  title: Text('Leica'),
-                  subtitle: Text('Équipements de précision suisses'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.satellite_alt, color: Color(0xFFDC2626)),
-                  title: Text('e-survey'),
-                  subtitle: Text('GPS de nouvelle génération'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
-  /// Dialog Nos services
-  void _showServicesDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Nos services'),
-          content: const SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.shopping_cart, color: Color(0xFF2563EB)),
-                  title: Text('Vente'),
-                  subtitle: Text('Équipements neufs avec garantie 2 ans'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.access_time, color: Color(0xFF059669)),
-                  title: Text('Location'),
-                  subtitle: Text(
-                    'GPS, théodolites, niveaux et stations totales',
-                  ),
-                ),
-                ListTile(
-                  leading: Icon(Icons.school, color: Color(0xFFDC2626)),
-                  title: Text('Formation'),
-                  subtitle: Text('Initiation et perfectionnement'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.build, color: Color(0xFF7C3AED)),
-                  title: Text('Réparation'),
-                  subtitle: Text('Service après-vente et maintenance'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.update, color: Color(0xFFEA580C)),
-                  title: Text('Mise à jour des logiciels'),
-                  subtitle: Text('Logiciels de calcul et de CAO'),
-                ),
-                ListTile(
-                  leading: Icon(Icons.support, color: Color(0xFF1F2937)),
-                  title: Text('Support technique'),
-                  subtitle: Text('Assistance 24h/24 et 7j/7'),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
-  /// Dialog Politique de confidentialité
-  void _showPrivacyPolicyDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Politique de confidentialité'),
-          content: const SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Protection des données personnelles',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'En conformité avec le RGPD, nous nous engageons à protéger vos données personnelles.',
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Données collectées :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text('• Nom et coordonnées'),
-                Text('• Historique des commandes'),
-                Text('• Données de localisation'),
-                SizedBox(height: 16),
-                Text(
-                  'Utilisation :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text('• Traitement des commandes'),
-                Text('• Amélioration de nos services'),
-                Text('• Communication commerciale (avec consentement)'),
-                SizedBox(height: 16),
-                Text(
-                  'Vos droits :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text('• Accès et rectification'),
-                Text('• Effacement et portabilité'),
-                Text('• Opposition et limitation'),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
-  /// Dialog Conditions d'utilisation
-  void _showTermsOfUseDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Conditions d\'utilisation'),
-          content: const SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Mentions légales',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Éditeur de l\'application :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text('ÉCHELLE EG39\nLomé, Togo\nSIRET : 123456789'),
-                SizedBox(height: 16),
-                Text(
-                  'Responsabilité :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'L\'application est fournie "en l\'état" sans garantie. Nous nous efforçons d\'assurer l\'exactitude des informations mais ne pouvons être tenus responsables des erreurs.',
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Propriété intellectuelle :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text(
-                  'Tous les contenus de l\'application sont protégés par les droits d\'auteur.',
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
-  /// Dialog Crédits
-  void _showCreditsDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          title: const Text('Crédits'),
-          content: const SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Équipe de développement',
-                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 16),
-                Text(
-                  'Développement :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text('• Développeur Principal'),
-                Text('• Designer UI/UX'),
-                Text('• Développeur Mobile'),
-                SizedBox(height: 16),
-                Text(
-                  'Technologies utilisées :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text('• Flutter'),
-                Text('• Dart'),
-                Text('• Firebase'),
-                SizedBox(height: 16),
-                Text(
-                  'Version :',
-                  style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
-                ),
-                SizedBox(height: 8),
-                Text('1.0.0 - Mars 2024'),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(),
-              child: const Text('Fermer'),
-            ),
-          ],
-        );
-      },
-    );
-  }
 
-  /// Invite un nouvel utilisateur à installer l’application.
-  void _showInviteDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => InviteAppDialog(openUri: widget.launchContactUri),
-    );
-  }
 
-  /// Envoie la fiche de l’entreprise vers les réseaux sociaux.
-  void _showShareDialog(BuildContext context) {
-    showDialog<void>(
-      context: context,
-      builder: (_) => ShareCompanyDialog(openUri: widget.launchContactUri),
-    );
-  }
+
 }

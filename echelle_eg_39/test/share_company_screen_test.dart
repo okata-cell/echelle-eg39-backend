@@ -1,18 +1,21 @@
 import 'package:echelle_eg_39/company_contact.dart';
 import 'package:echelle_eg_39/company_location.dart';
 import 'package:echelle_eg_39/company_share.dart';
-import 'package:echelle_eg_39/widgets/share_company_dialog.dart';
+import 'package:echelle_eg_39/widgets/share_company_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-Widget _host(Widget dialog) {
+/// L’écran est une feuille plein page : on l’ouvre par une route, comme depuis
+/// le menu « À propos ».
+Widget _host(Widget screen) {
   return MaterialApp(
     home: Scaffold(
       body: Builder(
         builder: (context) => Center(
           child: TextButton(
-            onPressed: () =>
-                showDialog<void>(context: context, builder: (_) => dialog),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => screen),
+            ),
             child: const Text('Ouvrir'),
           ),
         ),
@@ -21,8 +24,8 @@ Widget _host(Widget dialog) {
   );
 }
 
-Future<void> _open(WidgetTester tester, Widget dialog) async {
-  await tester.pumpWidget(_host(dialog));
+Future<void> _open(WidgetTester tester, Widget screen) async {
+  await tester.pumpWidget(_host(screen));
   await tester.tap(find.text('Ouvrir'));
   await tester.pumpAndSettle();
 }
@@ -39,7 +42,7 @@ void main() {
   testWidgets('la feuille affiche les réseaux et la fiche à envoyer', (
     tester,
   ) async {
-    await _open(tester, const ShareCompanyDialog());
+    await _open(tester, const ShareCompanyScreen());
 
     for (final label in [
       'WhatsApp',
@@ -65,7 +68,7 @@ void main() {
     final opened = <Uri>[];
     await _open(
       tester,
-      ShareCompanyDialog(
+      ShareCompanyScreen(
         openUri: (uri) async {
           opened.add(uri);
           return true;
@@ -80,7 +83,7 @@ void main() {
       opened.single.queryParameters['text'],
       contains(CompanyLocation.mapsUrl),
     );
-    expect(find.byType(ShareCompanyDialog), findsNothing);
+    expect(find.byType(ShareCompanyScreen), findsNothing);
   });
 
   testWidgets('Instagram copie le message puis ouvre l’application', (
@@ -90,7 +93,7 @@ void main() {
     final copied = <String>[];
     await _open(
       tester,
-      ShareCompanyDialog(
+      ShareCompanyScreen(
         openUri: (uri) async {
           opened.add(uri);
           return true;
@@ -111,7 +114,7 @@ void main() {
     final copied = <String>[];
     await _open(
       tester,
-      ShareCompanyDialog(
+      ShareCompanyScreen(
         openUri: (_) async => false,
         copyText: (text) async => copied.add(text),
       ),
@@ -130,7 +133,7 @@ void main() {
     final copied = <String>[];
     await _open(
       tester,
-      ShareCompanyDialog(copyText: (text) async => copied.add(text)),
+      ShareCompanyScreen(copyText: (text) async => copied.add(text)),
     );
 
     final copyRow = find.byKey(const ValueKey('share-action-copy'));
@@ -144,7 +147,7 @@ void main() {
 
     await tester.pump(const Duration(seconds: 2));
     await tester.pumpAndSettle();
-    expect(find.byType(ShareCompanyDialog), findsNothing);
+    expect(find.byType(ShareCompanyScreen), findsNothing);
   });
 
   testWidgets('« Autres applications » lance la feuille du système', (
@@ -153,7 +156,7 @@ void main() {
     final shared = <String>[];
     await _open(
       tester,
-      ShareCompanyDialog(
+      ShareCompanyScreen(
         openSystemShare: (text, subject) async => shared.add(text),
       ),
     );
@@ -169,7 +172,7 @@ void main() {
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
 
-    await _open(tester, const ShareCompanyDialog());
+    await _open(tester, const ShareCompanyScreen());
 
     expect(tester.takeException(), isNull);
     expect(find.text('WhatsApp'), findsOneWidget);

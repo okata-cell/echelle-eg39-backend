@@ -207,7 +207,7 @@ void main() {
       await tester.ensureVisible(companyInfoItem);
       await tester.tap(companyInfoItem);
       await tester.pumpAndSettle();
-      await tester.tap(find.text('Voir sur Google Maps'));
+      await tester.tap(find.text('Itinéraire'));
       await tester.pumpAndSettle();
 
       expect(openedUrls, hasLength(1));
