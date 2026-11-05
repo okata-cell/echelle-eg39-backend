@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   test('l’équipe expose les membres avec leur initiale et leur fonction', () {
-    expect(kTeamMembers, hasLength(4));
+    expect(kTeamMembers, hasLength(7));
     expect(kTeamMembers.first.firstName, 'BADJO Gregoire');
     expect(kTeamMembers.first.initial, 'B');
     expect(kTeamMembers.first.role, 'Directeur Général');
@@ -20,6 +20,9 @@ void main() {
       'Valentin Koko',
       'Marcel',
       'Maurice',
+      'Moufid',
+      'Martial',
+      'David',
     ]);
   });
 

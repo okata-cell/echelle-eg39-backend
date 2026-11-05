@@ -93,7 +93,7 @@ void main() {
     expect(find.text('Itinéraire'), findsOneWidget);
   });
 
-  testWidgets('Équipe affiche les quatre membres partagés', (tester) async {
+  testWidgets('Équipe affiche les sept membres partagés', (tester) async {
     await _pumpPhone(tester, const TeamScreen());
 
     expect(tester.takeException(), isNull);

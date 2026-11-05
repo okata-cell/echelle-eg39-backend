@@ -5,6 +5,7 @@ import 'register.page.dart';
 import 'forgot_password.page.dart';
 import 'demo_main.dart';
 import 'api_service.dart';
+import 'password_recovery_scaffold.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
@@ -14,8 +15,7 @@ class LoginPage extends StatefulWidget {
   State<LoginPage> createState() => _LoginPageState();
 }
 
-class _LoginPageState extends State<LoginPage>
-    with SingleTickerProviderStateMixin {
+class _LoginPageState extends State<LoginPage> {
   final TextEditingController identifierController = TextEditingController();
   final TextEditingController passwordController = TextEditingController();
   final FocusNode identifierFocus = FocusNode();
@@ -23,21 +23,10 @@ class _LoginPageState extends State<LoginPage>
 
   bool isLoading = false;
   bool _obscurePassword = true;
-  late final AnimationController _fadeController;
-  late final Animation<double> _fadeAnimation;
 
   @override
   void initState() {
     super.initState();
-    _fadeController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 900),
-    );
-    _fadeAnimation = CurvedAnimation(
-      parent: _fadeController,
-      curve: Curves.easeOutCubic,
-    );
-    _fadeController.forward();
 
     // Rafraîchir le suffixIcon "clear" quand le texte change
     identifierController.addListener(_onIdentifierChanged);
@@ -54,7 +43,6 @@ class _LoginPageState extends State<LoginPage>
     passwordController.dispose();
     identifierFocus.dispose();
     passwordFocus.dispose();
-    _fadeController.dispose();
     super.dispose();
   }
 
@@ -244,559 +232,226 @@ class _LoginPageState extends State<LoginPage>
     }
   }
 
+  // ────────────────────────────────────────────────────────────────
+  //  UI — Proposition A : même design que forgot_password.page.dart
+  //  (PasswordRecoveryScaffold : fond photo + scrim, en-tête retour,
+  //   champs blancs, bouton bleu StadiumBorder). Aucune logique modifiée.
+  // ────────────────────────────────────────────────────────────────
+
+  Widget _buildFieldLabel(String label) {
+    return Text(
+      label,
+      style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+        color: Colors.white,
+        fontWeight: FontWeight.w600,
+      ),
+    );
+  }
+
+  Widget _buildIdentifierField() {
+    return TextField(
+      controller: identifierController,
+      focusNode: identifierFocus,
+      enabled: !isLoading,
+      keyboardType: TextInputType.emailAddress,
+      textInputAction: TextInputAction.next,
+      autofillHints: const [AutofillHints.username, AutofillHints.email],
+      onSubmitted: (_) => passwordFocus.requestFocus(),
+      style: const TextStyle(color: passwordRecoveryInk),
+      decoration: passwordRecoveryFieldDecoration(
+        hint: 'ex: +22890000000',
+        leading: const Icon(
+          Icons.person_outline,
+          color: Color(0xFF7A7A7A),
+          size: 20,
+        ),
+        trailing: identifierController.text.isEmpty
+            ? null
+            : IconButton(
+                tooltip: 'Effacer',
+                icon: const Icon(
+                  Icons.clear,
+                  color: Color(0xFF7A7A7A),
+                  size: 20,
+                ),
+                onPressed: () {
+                  setState(() => identifierController.clear());
+                  identifierFocus.requestFocus();
+                },
+              ),
+      ),
+    );
+  }
+
+  Widget _buildPasswordField() {
+    return TextField(
+      controller: passwordController,
+      focusNode: passwordFocus,
+      enabled: !isLoading,
+      obscureText: _obscurePassword,
+      textInputAction: TextInputAction.done,
+      autofillHints: const [AutofillHints.password],
+      onSubmitted: (_) => login(),
+      style: const TextStyle(color: passwordRecoveryInk),
+      decoration: passwordRecoveryFieldDecoration(
+        hint: '4 chiffres + 4 lettres (ex: 1234AZER)',
+        leading: const Icon(
+          Icons.lock_outline,
+          color: Color(0xFF7A7A7A),
+          size: 20,
+        ),
+        trailing: IconButton(
+          tooltip: _obscurePassword
+              ? 'Afficher le mot de passe'
+              : 'Masquer le mot de passe',
+          icon: Icon(
+            _obscurePassword ? Icons.visibility_off : Icons.visibility,
+            color: const Color(0xFF7A7A7A),
+            size: 20,
+          ),
+          onPressed: () {
+            setState(() => _obscurePassword = !_obscurePassword);
+          },
+        ),
+      ),
+    );
+  }
+
+  Widget _buildDemoButton() {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: OutlinedButton.icon(
+        onPressed: isLoading
+            ? null
+            : () {
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(builder: (_) => const DemoMainScreen()),
+                );
+              },
+        style: OutlinedButton.styleFrom(
+          foregroundColor: Colors.white,
+          disabledForegroundColor: Colors.white54,
+          side: BorderSide(color: Colors.white.withValues(alpha: 0.65)),
+          shape: const StadiumBorder(),
+        ),
+        icon: const Icon(Icons.play_circle_outline_rounded, size: 20),
+        label: const Text(
+          'Découvrir la démo',
+          style: TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSecondaryLinks() {
+    return Column(
+      children: [
+        TextButton(
+          onPressed: isLoading
+              ? null
+              : () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const ForgotPasswordPage(),
+                    ),
+                  );
+                },
+          child: Text(
+            'Mot de passe oublié ?',
+            style: TextStyle(
+              color: Colors.white.withValues(alpha: 0.84),
+              fontSize: 14,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        TextButton(
+          onPressed: isLoading
+              ? null
+              : () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const RegisterPage()),
+                  );
+                },
+          child: RichText(
+            text: TextSpan(
+              style: TextStyle(
+                color: Colors.white.withValues(alpha: 0.72),
+                fontSize: 14,
+                fontWeight: FontWeight.w500,
+              ),
+              children: const [
+                TextSpan(text: 'Nouveau ici ? '),
+                TextSpan(
+                  text: 'Créer un compte',
+                  style: TextStyle(
+                    color: Colors.white,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        const SizedBox(height: 8),
+        Divider(color: Colors.white.withValues(alpha: 0.16), height: 1),
+        const SizedBox(height: 14),
+        Text(
+          'Connexion sécurisée · ÉCHELLE EG39',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Colors.white.withValues(alpha: 0.6),
+            fontSize: 12,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: const Color(0xFF0A0E14),
-      body: Stack(
+    return PasswordRecoveryScaffold(
+      stepLabel: 'Connexion · Étape unique',
+      title: 'Connexion',
+      description: 'Ravi de vous revoir. Accédez à votre espace topographie et BTP.',
+      backTooltip: 'Quitter la connexion',
+      onBack: () => Navigator.maybePop(context),
+      content: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          // 🌄 IMAGE DE FOND (UNSPLASH)
-          Positioned.fill(
-            child: Container(
-              decoration: const BoxDecoration(
-                image: DecorationImage(
-                  image: NetworkImage(
-                    "https://aptopo40.com/wp-content/uploads/elementor/thumbs/contractor-land-surveying-the-backyard-qdxwl69w7j376x9koemaihszy48w00htwz12y59x4w.jpg",
-                  ),
-                  fit: BoxFit.cover,
-                ),
-              ),
+          _buildFieldLabel('Email ou téléphone'),
+          const SizedBox(height: 8),
+          _buildIdentifierField(),
+          const SizedBox(height: 18),
+          _buildFieldLabel('Mot de passe'),
+          const SizedBox(height: 8),
+          _buildPasswordField(),
+          const SizedBox(height: 10),
+          Text(
+            'Format : +228 suivi de 8 chiffres · mot de passe 1234AZER',
+            style: Theme.of(context).textTheme.bodySmall?.copyWith(
+              color: Colors.white.withValues(alpha: 0.72),
+              height: 1.4,
             ),
           ),
-
-          // 🖤 OVERLAY SOMBRE GRADIENT POUR MEILLEURE LISIBILITÉ
-          Positioned.fill(
-            child: Container(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  begin: Alignment.topCenter,
-                  end: Alignment.bottomCenter,
-                  colors: [
-                    const Color(0xFF0A0E14).withValues(alpha: 0.72),
-                    const Color(0xFF0A0E14).withValues(alpha: 0.55),
-                    const Color(0xFF0A0E14).withValues(alpha: 0.88),
-                  ],
-                  stops: const [0.0, 0.4, 1.0],
-                ),
-              ),
-            ),
-          ),
-
-          // 📄 CONTENU ANIMÉ
-          SafeArea(
-            child: FadeTransition(
-              opacity: _fadeAnimation,
-              child: SingleChildScrollView(
-                physics: const BouncingScrollPhysics(),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 24,
-                    vertical: 40,
-                  ),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      const SizedBox(height: 12),
-
-                      // 🔷 LOGO / MONOGRAMME
-                      Center(
-                        child: Container(
-                          width: 84,
-                          height: 84,
-                          decoration: BoxDecoration(
-                            gradient: const LinearGradient(
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
-                              colors: [Color(0xFFF5B942), Color(0xFFD98E0F)],
-                            ),
-                            shape: BoxShape.circle,
-                            boxShadow: [
-                              BoxShadow(
-                                color: const Color(0xFFF5B942).withValues(alpha: 0.4),
-                                blurRadius: 28,
-                                spreadRadius: 2,
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Text(
-                              "EG",
-                              style: TextStyle(
-                                color: Color(0xFF0A0E14),
-                                fontSize: 32,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: 1.5,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // 🏗️ TITRE PRINCIPAL
-                      const Text(
-                        "ÉCHELLE EG39",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontSize: 30,
-                          fontWeight: FontWeight.w900,
-                          letterSpacing: 3,
-                          shadows: [
-                            Shadow(
-                              color: Colors.black54,
-                              blurRadius: 12,
-                              offset: Offset(0, 3),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 10),
-
-                      // 🏬 SOUS-TITRE
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 8,
-                        ),
-                        decoration: BoxDecoration(
-                          color: const Color(0xFFF5B942).withValues(alpha: 0.18),
-                          borderRadius: BorderRadius.circular(30),
-                          border: Border.all(
-                            color: const Color(0xFFF5B942).withValues(alpha: 0.55),
-                            width: 1.2,
-                          ),
-                        ),
-                        child: const Text(
-                          "TOPOGRAPHIE  •  BTP",
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFFF5B942),
-                            fontSize: 13,
-                            fontWeight: FontWeight.w800,
-                            letterSpacing: 2.4,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 14),
-
-                      // ✨ BIENVENUE
-                      const Text(
-                        "Ravi de vous revoir 👋",
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Colors.white70,
-                          fontSize: 16,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-
-                      const SizedBox(height: 36),
-
-                      // 🃏 CARTE VERRE DÉPOLI (GLASSMORPHISM)
-                      Container(
-                        padding: const EdgeInsets.all(24),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(alpha: 0.08),
-                          borderRadius: BorderRadius.circular(24),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.18),
-                            width: 1.2,
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.35),
-                              blurRadius: 30,
-                              offset: const Offset(0, 12),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
-                          children: [
-                            // 📱 TÉLÉPHONE / EMAIL
-                            TextField(
-                              controller: identifierController,
-                              focusNode: identifierFocus,
-                              keyboardType: TextInputType.emailAddress,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: "Email ou téléphone",
-                                labelStyle: const TextStyle(
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                hintText: "ex: +22890000000",
-                                hintStyle: const TextStyle(
-                                  color: Colors.white38,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withValues(alpha: 0.10),
-                                prefixIcon: const Icon(
-                                  Icons.person_outline,
-                                  color: Color(0xFFF5B942),
-                                ),
-                                suffixIcon: identifierController.text.isNotEmpty
-                                    ? IconButton(
-                                        icon: const Icon(
-                                          Icons.clear,
-                                          color: Colors.white54,
-                                          size: 20,
-                                        ),
-                                        onPressed: () {
-                                          setState(
-                                            () => identifierController.clear(),
-                                          );
-                                          identifierFocus.requestFocus();
-                                        },
-                                      )
-                                    : null,
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFF5B942),
-                                    width: 2,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 18,
-                                  horizontal: 16,
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 18),
-
-                            // 🔑 MOT DE PASSE
-                            TextField(
-                              controller: passwordController,
-                              focusNode: passwordFocus,
-                              obscureText: _obscurePassword,
-                              style: const TextStyle(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w600,
-                                fontSize: 15,
-                              ),
-                              decoration: InputDecoration(
-                                labelText: "Mot de passe",
-                                labelStyle: const TextStyle(
-                                  color: Colors.white70,
-                                  fontWeight: FontWeight.w600,
-                                ),
-                                hintText:
-                                    "4 chiffres + 4 lettres (ex: 1234AZER)",
-                                hintStyle: const TextStyle(
-                                  color: Colors.white38,
-                                  fontWeight: FontWeight.w400,
-                                  fontSize: 13,
-                                ),
-                                filled: true,
-                                fillColor: Colors.white.withValues(alpha: 0.10),
-                                prefixIcon: const Icon(
-                                  Icons.lock_outline,
-                                  color: Color(0xFFF5B942),
-                                ),
-                                suffixIcon: IconButton(
-                                  icon: Icon(
-                                    _obscurePassword
-                                        ? Icons.visibility_off
-                                        : Icons.visibility,
-                                    color: Colors.white54,
-                                    size: 20,
-                                  ),
-                                  onPressed: () {
-                                    setState(
-                                      () =>
-                                          _obscurePassword = !_obscurePassword,
-                                    );
-                                  },
-                                ),
-                                border: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide.none,
-                                ),
-                                enabledBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.15),
-                                  ),
-                                ),
-                                focusedBorder: OutlineInputBorder(
-                                  borderRadius: BorderRadius.circular(16),
-                                  borderSide: const BorderSide(
-                                    color: Color(0xFFF5B942),
-                                    width: 2,
-                                  ),
-                                ),
-                                contentPadding: const EdgeInsets.symmetric(
-                                  vertical: 18,
-                                  horizontal: 16,
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 24),
-
-                            // 🔘 BOUTON CONNEXION
-                            SizedBox(
-                              height: 56,
-                              child: Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(16),
-                                  boxShadow: [
-                                    BoxShadow(
-                                      color: const Color(
-                                        0xFFF5B942,
-                                      ).withValues(alpha: isLoading ? 0.1 : 0.45),
-                                      blurRadius: 22,
-                                      offset: const Offset(0, 8),
-                                    ),
-                                  ],
-                                ),
-                                child: ElevatedButton(
-                                  onPressed: isLoading ? null : login,
-                                  style: ElevatedButton.styleFrom(
-                                    backgroundColor: const Color(0xFFF5B942),
-                                    foregroundColor: const Color(0xFF0A0E14),
-                                    disabledBackgroundColor: const Color(
-                                      0xFFF5B942,
-                                    ).withValues(alpha: 0.5),
-                                    shape: RoundedRectangleBorder(
-                                      borderRadius: BorderRadius.circular(16),
-                                    ),
-                                    elevation: 0,
-                                  ),
-                                  child: isLoading
-                                      ? const SizedBox(
-                                          height: 26,
-                                          width: 26,
-                                          child: CircularProgressIndicator(
-                                            color: Color(0xFF0A0E14),
-                                            strokeWidth: 3,
-                                          ),
-                                        )
-                                      : const Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Icon(Icons.login_rounded, size: 22),
-                                            SizedBox(width: 10),
-                                            Text(
-                                              "SE CONNECTER",
-                                              style: TextStyle(
-                                                fontSize: 17,
-                                                fontWeight: FontWeight.w900,
-                                                letterSpacing: 1.2,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                ),
-                              ),
-                            ),
-
-                            const SizedBox(height: 18),
-
-                            // 🔘 BOUTON DÉMO
-                            SizedBox(
-                              height: 54,
-                              child: OutlinedButton(
-                                onPressed: isLoading
-                                    ? null
-                                    : () {
-                                        Navigator.push(
-                                          context,
-                                          MaterialPageRoute(
-                                            builder: (_) =>
-                                                const DemoMainScreen(),
-                                          ),
-                                        );
-                                      },
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  side: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.55),
-                                    width: 1.5,
-                                  ),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                ),
-                                child: const Row(
-                                  mainAxisAlignment: MainAxisAlignment.center,
-                                  children: [
-                                    Icon(
-                                      Icons.play_circle_outline_rounded,
-                                      size: 22,
-                                    ),
-                                    SizedBox(width: 10),
-                                    Text(
-                                      "DÉMO",
-                                      style: TextStyle(
-                                        fontSize: 16,
-                                        fontWeight: FontWeight.w800,
-                                        letterSpacing: 1.2,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-
-                      const SizedBox(height: 28),
-
-                      // 📝 LIENS AUTH
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          TextButton(
-                            onPressed: isLoading
-                                ? null
-                                : () {
-                                    Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) => const RegisterPage(),
-                                      ),
-                                    );
-                                  },
-                            child: RichText(
-                              text: TextSpan(
-                                style: const TextStyle(
-                                  color: Colors.white70,
-                                  fontSize: 15,
-                                  fontWeight: FontWeight.w500,
-                                ),
-                                children: [
-                                  const TextSpan(text: "Nouveau ici ? "),
-                                  TextSpan(
-                                    text: "Créer un compte",
-                                    style: TextStyle(
-                                      color: const Color(0xFFF5B942),
-                                      fontWeight: FontWeight.w800,
-                                      decoration: TextDecoration.underline,
-                                      decorationColor: const Color(
-                                        0xFFF5B942,
-                                      ).withValues(alpha: 0.5),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-
-                      const SizedBox(height: 6),
-
-                      // 🔑 MOT DE PASSE OUBLIÉ
-                      TextButton(
-                        onPressed: isLoading
-                            ? null
-                            : () {
-                                Navigator.push(
-                                  context,
-                                  MaterialPageRoute(
-                                    builder: (_) => const ForgotPasswordPage(),
-                                  ),
-                                );
-                              },
-                        child: const Text(
-                          "Mot de passe oublié ?",
-                          style: TextStyle(
-                            color: Colors.white60,
-                            fontSize: 14,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ),
-
-                      const SizedBox(height: 16),
-
-                      // ℹ️ CONDITIONS DE CONNEXION
-                      Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 16,
-                          vertical: 12,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(alpha: 0.35),
-                          borderRadius: BorderRadius.circular(14),
-                          border: Border.all(
-                            color: Colors.white.withValues(alpha: 0.08),
-                          ),
-                        ),
-                        child: Column(
-                          children: [
-                            const Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.lock_outline,
-                                  color: Colors.white54,
-                                  size: 14,
-                                ),
-                                SizedBox(width: 8),
-                                Text(
-                                  "CONDITIONS DE CONNEXION",
-                                  style: TextStyle(
-                                    color: Colors.white60,
-                                    fontSize: 11,
-                                    fontWeight: FontWeight.w800,
-                                    letterSpacing: 1.4,
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 6),
-                            Text(
-                              "Téléphone au format +228 suivi de 8 chiffres • Mot de passe : 4 chiffres + 4 lettres majuscules (ex: 1234AZER)",
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Colors.white.withValues(alpha: 0.45),
-                                fontSize: 12,
-                                fontWeight: FontWeight.w500,
-                                height: 1.4,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
-          ),
-
-          // ⏳ LOADING PLEIN ÉCRAN (optionnel, gardé subtil)
-          if (isLoading)
-            Positioned.fill(
-              child: Container(color: Colors.black.withValues(alpha: 0.15)),
-            ),
         ],
       ),
+      secondaryContent: Column(
+        children: [
+          _buildDemoButton(),
+          const SizedBox(height: 6),
+          _buildSecondaryLinks(),
+        ],
+      ),
+      primaryLabel: 'Se connecter',
+      primaryLoadingLabel: 'Connexion…',
+      isLoading: isLoading,
+      onPrimary: login,
     );
   }
 }
