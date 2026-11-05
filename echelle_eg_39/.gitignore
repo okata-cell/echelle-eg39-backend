@@ -43,9 +43,17 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+/android/build/
+
+# Clé d'envoi Google Play : keystore et mots de passe restent hors du dépôt
+android/key.properties
+android/keystore/
+*.jks
+*.keystore
 
 # Kombai debugging files
 .kombai/
 .env
 backend/.env
 backend/echelle_eg_39/backend/.env
+

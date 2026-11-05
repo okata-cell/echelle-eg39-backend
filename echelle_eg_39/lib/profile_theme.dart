@@ -19,6 +19,9 @@ class ProfileTokens {
   static const Color chevron = Color(0xFFC7C7CC);
   static const Color danger = Color(0xFFB42318);
 
+  /// Fond très clair des avertissements destructifs (suppression de compte).
+  static const Color dangerSurface = Color(0xFFFDF4F2);
+
   /// Pastille neutre des initiales : l’équipe n’ajoute pas de seconde couleur.
   static const Color initials = Color(0xFFEFEFF4);
 

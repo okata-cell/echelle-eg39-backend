@@ -14,6 +14,7 @@ import 'profile_api.dart';
 import 'profile_theme.dart';
 import 'support_assistant.dart';
 import 'widgets/about_hub_screen.dart';
+import 'widgets/delete_account_screen.dart';
 import 'widgets/help_center_screen.dart';
 import 'widgets/personal_info_screen.dart';
 
@@ -1050,6 +1051,13 @@ class _ProfilScreenState extends State<ProfilScreen> {
         subtitle: 'Sécuriser l’accès au compte',
         trailing: '••••••••',
       ),
+      _buildMenuItem(
+        context,
+        Icons.person_off_outlined,
+        'Supprimer mon compte',
+        () => _openDeleteAccount(context),
+        subtitle: 'Effacer mes données et fermer le compte',
+      ),
     ]);
   }
 
@@ -1185,7 +1193,13 @@ class _ProfilScreenState extends State<ProfilScreen> {
   }
 
   /// Fonction pour se déconnecter et supprimer la session
-  Future<void> logout() async {
+  Future<void> logout() => _endSession(message: 'Déconnexion réussie !');
+
+  /// Ferme la session locale puis revient à l'écran de connexion.
+  ///
+  /// Partagé par la déconnexion et par la suppression du compte : dans les deux
+  /// cas le jeton enregistré ne doit plus être réutilisé.
+  Future<void> _endSession({required String message}) async {
     final prefs = await SharedPreferences.getInstance();
 
     // Supprimer toutes les données de session
@@ -1204,6 +1218,10 @@ class _ProfilScreenState extends State<ProfilScreen> {
 
     if (!mounted) return;
 
+    // Le messager est capturé avant la navigation : l'écran Profil est détruit
+    // par pushAndRemoveUntil, son contexte ne peut plus le retrouver ensuite.
+    final messenger = ScaffoldMessenger.of(context);
+
     // Naviguer vers la page de connexion en supprimant l'historique
     Navigator.pushAndRemoveUntil(
       context,
@@ -1211,11 +1229,8 @@ class _ProfilScreenState extends State<ProfilScreen> {
       (route) => false,
     );
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Déconnexion réussie !'),
-        backgroundColor: Colors.green,
-      ),
+    messenger.showSnackBar(
+      SnackBar(content: Text(message), backgroundColor: Colors.green),
     );
   }
 
@@ -1437,6 +1452,20 @@ class _ProfilScreenState extends State<ProfilScreen> {
         ),
       ),
     );
+  }
+
+  /// Ouvre la feuille « Supprimer mon compte ».
+  ///
+  /// La feuille renvoie `true` quand le serveur a confirmé la suppression : la
+  /// session locale n'a alors plus de titulaire, elle est donc fermée ici.
+  Future<void> _openDeleteAccount(BuildContext context) async {
+    final deleted = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(builder: (_) => const DeleteAccountScreen()),
+    );
+
+    if (deleted == true && mounted) {
+      await _endSession(message: 'Votre compte a été supprimé.');
+    }
   }
 
   Future<void> _showPhoneDialog(BuildContext context) async {

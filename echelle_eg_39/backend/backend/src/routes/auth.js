@@ -365,4 +365,111 @@ router.get('/me', authMiddleware, async (req, res) => {
   }
 });
 
+// Suppression du compte par son titulaire — exigence Google Play.
+//
+// Le compte est anonymisé plutôt que supprimé de la base : les locations et les
+// demandes restent nécessaires à la comptabilité de l'entreprise, mais plus
+// aucune donnée personnelle n'y est rattachée. Les contenus propres à
+// l'utilisateur (messages de support et leurs pièces jointes, centres
+// d'intérêt, note de l'application, adresse de facturation, codes de
+// réinitialisation) sont, eux, réellement effacés.
+router.delete('/account', authMiddleware, [
+  body('password').notEmpty().withMessage('Mot de passe requis pour confirmer'),
+], async (req, res) => {
+  if (firstValidationError(req, res)) return;
+
+  const userId = req.user.userId;
+  const password = String(req.body.password);
+
+  let client;
+  try {
+    client = await pool.connect();
+  } catch (error) {
+    return sendAuthError(res, error, '❌ Erreur connexion base (suppression)');
+  }
+
+  try {
+    await client.query('BEGIN');
+
+    const found = await client.query(
+      'SELECT id, role, password_hash FROM users WHERE id = $1 FOR UPDATE',
+      [userId],
+    );
+
+    if (found.rows.length === 0) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Compte introuvable' });
+    }
+
+    const user = found.rows[0];
+
+    // Le compte d'administration est provisionné par la migration : le
+    // supprimer depuis l'application couperait la gestion de la boutique.
+    if (user.role === 'admin') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({
+        error: 'Le compte administrateur ne peut pas être supprimé depuis l’application',
+      });
+    }
+
+    if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
+      await client.query('ROLLBACK');
+      return res.status(401).json({
+        code: 'INVALID_PASSWORD',
+        error: 'Mot de passe incorrect',
+      });
+    }
+
+    // Contenus personnels : effacement définitif.
+    await client.query('DELETE FROM profile_support_messages WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM profile_training_interests WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM profile_app_ratings WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM password_reset_codes WHERE user_id = $1', [userId]);
+    await client.query('DELETE FROM clients WHERE user_id = $1', [userId]);
+
+    // Devis : la trace commerciale demeure, les coordonnées disparaissent.
+    await client.query(
+      `UPDATE devis
+       SET nom = 'Compte supprimé', telephone = NULL, email = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE user_id = $1`,
+      [userId],
+    );
+
+    // Compte : identité remplacée par des valeurs neutres, mot de passe rendu
+    // inutilisable, e-mail et téléphone libérés pour une future inscription.
+    const neutralHash = await bcrypt.hash(crypto.randomUUID(), 10);
+    await client.query(
+      `UPDATE users
+       SET first_name = 'Compte',
+           last_name = 'supprimé',
+           email = $2,
+           phone = $3,
+           password_hash = $4,
+           is_active = FALSE,
+           avatar_data = NULL,
+           avatar_mime_type = NULL,
+           updated_at = CURRENT_TIMESTAMP
+       WHERE id = $1`,
+      [userId, `supprime+${userId}@echelle-eg39.invalid`, `+00000${userId}`, neutralHash],
+    );
+
+    await client.query('COMMIT');
+
+    return res.json({
+      success: true,
+      message: 'Votre compte a été supprimé.',
+    });
+  } catch (error) {
+    try {
+      await client.query('ROLLBACK');
+    } catch (_) {
+      // La transaction est peut-être déjà fermée : l'erreur d'origine prime.
+    }
+    return sendAuthError(res, error, '❌ Erreur suppression de compte');
+  } finally {
+    client.release();
+  }
+});
+
 module.exports = router;

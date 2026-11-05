@@ -82,6 +82,55 @@ class ApiService {
     await prefs.remove('token');
   }
 
+  /// Supprime définitivement le compte connecté.
+  ///
+  /// Le serveur anonymise le compte : la connexion devient impossible et les
+  /// données personnelles sont effacées, les pièces commerciales (locations,
+  /// devis) demeurant conservées sans identité. Le mot de passe est exigé pour
+  /// éviter une suppression déclenchée depuis un téléphone laissé ouvert.
+  static Future<void> deleteAccount(String password) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session expirée. Reconnectez-vous pour supprimer le compte.',
+      );
+    }
+
+    final response = await http
+        .delete(
+          Uri.parse('$baseUrl/auth/account'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'password': password}),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    if (response.statusCode == 200) {
+      await removeToken();
+      return;
+    }
+
+    Map<String, dynamic>? decoded;
+    try {
+      final body = jsonDecode(response.body);
+      if (body is Map<String, dynamic>) decoded = body;
+    } on FormatException {
+      decoded = null;
+    }
+
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: decoded?['error']?.toString() ??
+          'Suppression impossible pour le moment.',
+      statusCode: response.statusCode,
+    );
+  }
+
   static Future<Map<String, dynamic>> login(
     String identifier,
     String password,

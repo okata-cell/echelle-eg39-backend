@@ -314,23 +314,29 @@ class ProfilePillButton extends StatelessWidget {
     required this.onPressed,
     this.icon,
     this.busy = false,
+    this.danger = false,
   });
 
   final String label;
   final VoidCallback? onPressed;
   final IconData? icon;
 
-  /// Envoi en cours : la pilule garde sa couleur et affiche un cercle d’attente.
+  /// Envoi en cours : la pilule garde sa couleur et affiche un cercle d'attente.
   final bool busy;
+
+  /// Action destructive (suppression de compte) : la pilule passe en rouge.
+  final bool danger;
 
   @override
   Widget build(BuildContext context) {
+    final Color accent = danger ? ProfileTokens.danger : ProfileTokens.primary;
+
     return FilledButton(
       onPressed: busy ? null : onPressed,
       style: FilledButton.styleFrom(
-        backgroundColor: ProfileTokens.primary,
+        backgroundColor: accent,
         foregroundColor: Colors.white,
-        disabledBackgroundColor: ProfileTokens.primary,
+        disabledBackgroundColor: accent,
         disabledForegroundColor: Colors.white,
         minimumSize: const Size(0, 48),
         padding: const EdgeInsets.symmetric(horizontal: 20),

@@ -70,6 +70,19 @@ class AppLinks {
     ].join('\n');
   }
 
+  /// Racine des pages publiques servies par le backend.
+  ///
+  /// Ce sont les adresses à coller dans Google Play Console : politique de
+  /// confidentialité, suppression de compte et conditions d’utilisation.
+  static const String webBaseUrl =
+      'https://echelle-eg39-backend-1.onrender.com';
+
+  static const String privacyPolicyUrl = '$webBaseUrl/confidentialite';
+
+  static const String accountDeletionUrl = '$webBaseUrl/suppression-compte';
+
+  static const String termsOfUseUrl = '$webBaseUrl/conditions';
+
   /// Texte affiché quand l’application n’est encore sur aucun store.
   static const String unavailableNotice =
       'L’application ÉCHELLE EG39 n’est pas encore publiée sur Google Play ni '

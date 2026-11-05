@@ -55,6 +55,10 @@ app.get('/', (req, res) => {
   });
 });
 
+// Pages publiques exigées par les stores : politique de confidentialité,
+// suppression de compte et conditions d'utilisation.
+app.use('/', require('./routes/public_pages'));
+
 // Gestion des erreurs 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });

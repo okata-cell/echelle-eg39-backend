@@ -1,0 +1,19 @@
+# Modèle de configuration de la clé d'envoi Google Play.
+#
+# 1. Copiez ce fichier en android/key.properties.
+# 2. Renseignez les mots de passe choisis lors de la création du keystore.
+# 3. Ne versionnez jamais android/key.properties ni le keystore :
+#    les deux sont ignorés par Git (voir .gitignore).
+#
+# Le keystore se crée ainsi (remplacez les mots de passe) :
+#
+#   keytool -genkeypair -v -storetype PKCS12 \
+#     -keystore android/keystore/upload-keystore.jks \
+#     -keyalg RSA -keysize 2048 -validity 10000 \
+#     -alias upload -storepass <storePassword> -keypass <keyPassword> \
+#     -dname "CN=Echelle EG 39, OU=Mobile, O=Echelle EG 39, L=Lome, ST=Maritime, C=TG"
+
+storePassword=mot_de_passe_du_keystore
+keyPassword=mot_de_passe_de_la_cle
+keyAlias=upload
+storeFile=keystore/upload-keystore.jks
