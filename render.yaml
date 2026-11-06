@@ -1,27 +1,33 @@
+# -----------------------------------------------------------------------------
+# Déploiement Render — définition de référence du service en production.
+#
+# Le service `echelle-eg39-backend-1` exécute le backend situé dans `backend/`,
+# à la RACINE de ce dépôt. Ce n'est pas la copie rangée sous
+# `echelle_eg_39/backend/backend/`, qui n'est pas déployée.
+#
+# Comment le vérifier sur l'API en ligne :
+#   GET /api/locations/check-expired  -> 401  (route déclarée seulement dans backend/)
+#   GET /api/auth/account             -> 404  (route déclarée seulement dans l'autre copie)
+#
+# Toute correction du backend doit donc être écrite dans `backend/src/`.
+# -----------------------------------------------------------------------------
 services:
   - type: web
     name: echelle-eg39-backend-1
-    env: node
-    # Le service Render est rattaché à la racine du dépôt : le backend
-    # réellement déployé est backend/. Les copies imbriquées sous
-    # echelle_eg_39/ sont des duplications obsolètes.
+    runtime: node
     buildCommand: cd backend && npm install
     startCommand: cd backend && npm start
+    healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      # Ces variables sont configurées manuellement dans le Dashboard Render.
+      # Renseignées à la main dans le tableau de bord Render : `sync: false`
+      # empêche un déploiement de les écraser.
       - key: DATABASE_URL
         sync: false
       - key: JWT_SECRET
         sync: false
       - key: ALLOWED_ORIGINS
-        sync: false
-      - key: CLOUDINARY_CLOUD_NAME
-        sync: false
-      - key: CLOUDINARY_API_KEY
-        sync: false
-      - key: CLOUDINARY_API_SECRET
         sync: false
       - key: ADMIN_EMAIL
         sync: false
@@ -31,7 +37,27 @@ services:
         sync: false
       - key: SENDGRID_API_KEY
         sync: false
+      - key: SENDGRID_FROM_EMAIL
+        sync: false
+      - key: SUPPORT_EMAIL
+        sync: false
       - key: AT_API_KEY
         sync: false
+      - key: AFRICASTALKING_API_KEY
+        sync: false
       - key: AFRICASTALKING_USERNAME
+        sync: false
+      # Stockage des images (services/cloudinary_storage.js).
+      - key: CLOUDINARY_CLOUD_NAME
+        sync: false
+      - key: CLOUDINARY_API_KEY
+        sync: false
+      - key: CLOUDINARY_API_SECRET
+        sync: false
+      # Facultatives : sans valeur, la page /tester utilise les URL d'APK
+      # écrites en dur dans backend/src/routes/public_pages.js.
+      # PORT est fourni par Render, ne pas le déclarer.
+      - key: ANDROID_TEST_APK_URL
+        sync: false
+      - key: ANDROID_TEST_APK_ARM64_URL
         sync: false

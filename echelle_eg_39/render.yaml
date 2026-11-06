@@ -1,13 +1,27 @@
+# ⚠️⚠️  FICHIER OBSOLÈTE — NE DÉCRIT PAS LA PRODUCTION  ⚠️⚠️
+#
+# Le service Render en ligne (`echelle-eg39-backend-1`) exécute le backend
+# situé à la RACINE du dépôt : `backend/src/server.js`.
+# Ce fichier, lui, pointe vers `echelle_eg_39/backend/backend/`, une copie
+# qui n'est PAS déployée (voir echelle_eg_39/backend/backend/NON_DEPLOYE.md).
+#
+# La définition de référence est désormais `/render.yaml` à la racine du dépôt.
+# Si un jour ce fichier était appliqué comme Blueprint, il créerait un service
+# distinct au nom explicite ci-dessous plutôt que d'écraser la production.
+#
+# Preuve sur l'API en ligne :
+#   GET /api/locations/check-expired -> 401 (existe dans backend/ uniquement)
+#   GET /api/auth/account            -> 404 (existe dans la copie uniquement)
 services:
   - type: web
-    name: echelle-eg39-backend-1
+    name: echelle-eg39-backend-copie-locale-ne-pas-deployer
     env: node
     buildCommand: cd backend/backend && npm install
     startCommand: cd backend/backend && npm start
     envVars:
       - key: NODE_ENV
         value: production
-      # ⚠️ Ces variables sont configurées manuellement dans le Dashboard Render.
+      # Ces variables sont configurées à la main dans le tableau de bord Render.
       # `sync: false` indique à Render de NE PAS écraser les valeurs existantes.
       - key: DATABASE_URL
         sync: false
@@ -31,5 +45,7 @@ services:
         sync: false
       - key: AFRICASTALKING_USERNAME
         sync: false
+      # AFRICASTALKING_SENDER_ID n'est lu par aucun code du backend déployé :
+      # la variable a été retirée de la définition de référence.
       - key: AFRICASTALKING_SENDER_ID
         sync: false
