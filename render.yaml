@@ -29,6 +29,9 @@ services:
         sync: false
       - key: ALLOWED_ORIGINS
         sync: false
+      # ADMIN_PASSWORD est obligatoire à la première création du compte
+      # administrateur : aucun mot de passe par défaut n'est fourni par le
+      # code. Rotation : cd backend && npm run admin:password
       - key: ADMIN_EMAIL
         sync: false
       - key: ADMIN_PASSWORD

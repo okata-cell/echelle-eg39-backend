@@ -6,6 +6,7 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware } = require('../middleware/auth');
 const { sendVerificationCode } = require('../services/notification_service');
+const { createLoginThrottle } = require('../middleware/login_throttle');
 const {
   normalizeEmail,
   normalizePhone,
@@ -15,6 +16,7 @@ const {
 
 const router = express.Router();
 const RESET_CODE_EXPIRY_MINUTES = 15;
+const loginThrottle = createLoginThrottle();
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET?.trim();
@@ -291,6 +293,15 @@ router.post('/login', [
 ], async (req, res) => {
   if (firstValidationError(req, res)) return;
 
+  const retryAfter = loginThrottle.retryAfterSeconds(req);
+  if (retryAfter > 0) {
+    res.set('Retry-After', String(retryAfter));
+    return res.status(429).json({
+      code: 'TOO_MANY_ATTEMPTS',
+      error: 'Trop de tentatives de connexion. Réessayez dans quelques minutes.',
+    });
+  }
+
   const identifier = normalizeIdentifier(req.body.identifier);
   const password = String(req.body.password);
 
@@ -301,6 +312,7 @@ router.post('/login', [
     );
 
     if (result.rows.length === 0) {
+      loginThrottle.registerFailure(req);
       return res.status(401).json({
         code: 'IDENTIFIER_NOT_FOUND',
         error: 'Email ou téléphone introuvable',
@@ -309,11 +321,14 @@ router.post('/login', [
 
     const user = result.rows[0];
     if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
+      loginThrottle.registerFailure(req);
       return res.status(401).json({
         code: 'INVALID_PASSWORD',
         error: 'Mot de passe incorrect',
       });
     }
+
+    loginThrottle.reset(req);
 
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },

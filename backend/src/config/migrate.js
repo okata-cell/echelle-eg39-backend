@@ -1,5 +1,5 @@
 const pool = require('./database');
-const bcrypt = require('bcryptjs');
+const { ensureAdminAccount } = require('./admin_account');
 
 async function migrate() {
   const client = await pool.connect();
@@ -244,17 +244,9 @@ async function migrate() {
       'CREATE INDEX IF NOT EXISTS idx_promotions_dates ON promotions(date_debut, date_fin)',
     );
 
-    const adminEmail = process.env.ADMIN_EMAIL || 'admin@echelle-eg39.com';
-    const adminPassword = process.env.ADMIN_PASSWORD || 'Admin123!';
-    const adminPhone = process.env.ADMIN_PHONE || '+22890014329';
-    const hashedPassword = await bcrypt.hash(adminPassword, 10);
-
-    await client.query(
-      `INSERT INTO users (first_name, last_name, email, phone, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5, $6)
-       ON CONFLICT (email) DO NOTHING`,
-      ['Admin', 'ÉCHELLE EG39', adminEmail, adminPhone, hashedPassword, 'admin'],
-    );
+    // Aucun mot de passe par défaut : le compte administrateur n'est créé que
+    // si ADMIN_PASSWORD fournit une valeur propre à l'exploitant.
+    const adminAccount = await ensureAdminAccount(client);
 
     const defaultAppareils = [
       ['APP-001', 'GPS e-survey E600', 'GPS', 'https://images.unsplash.com/photo-1581092334494-8b6a8c3a52f3', 25000, 2500000],
@@ -337,7 +329,11 @@ async function migrate() {
 
     await client.query('COMMIT');
     console.log('✅ Migration réussie');
-    console.log(`📧 Compte administrateur disponible: ${adminEmail}`);
+    console.log(
+      adminAccount.created
+        ? `📧 Compte administrateur créé: ${adminAccount.email}`
+        : `📧 Compte administrateur existant: ${adminAccount.email}`,
+    );
   } catch (error) {
     await client.query('ROLLBACK');
     console.error('❌ Erreur de migration:', error);

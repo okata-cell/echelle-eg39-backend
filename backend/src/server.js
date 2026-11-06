@@ -4,15 +4,19 @@ const helmet = require('helmet');
 const morgan = require('morgan');
 require('dotenv').config();
 
+const { buildCorsOptions, securityWarnings } = require('./config/cors');
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// Render place le service derrière un proxy : sans cela, req.ip renvoie
+// l'adresse du proxy et la limitation des tentatives de connexion devient
+// inopérante.
+app.set('trust proxy', 1);
+
 // Middleware
 app.use(helmet());
-app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || '*',
-  credentials: true
-}));
+app.use(cors(buildCorsOptions()));
 app.use(express.json({ limit: '4mb' }));
 app.use(morgan('dev'));
 
@@ -72,6 +76,10 @@ app.use((err, req, res, next) => {
 
 // Démarrage du serveur uniquement lorsqu’il est lancé comme processus principal.
 if (require.main === module) {
+  for (const warning of securityWarnings()) {
+    console.warn(`⚠️  ${warning}`);
+  }
+
   app.listen(PORT, () => {
     console.log(`
   ╔═══════════════════════════════════════════════════════════╗
