@@ -34,6 +34,14 @@ const ANDROID_TEST_APK_ARM64_URL =
   process.env.ANDROID_TEST_APK_ARM64_URL ||
   'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.1/echelle-eg39-1.0.1-arm64.apk';
 
+// Contact affiché sur la page d’invitation /tester et dans les messages qui
+// l’accompagnent. Volontairement distinct du contact légal des pages Play
+// Console : une invitation doit joindre la personne qui suit les tests, alors
+// que la confidentialité et les conditions gardent l’adresse de l’entreprise.
+const TEST_CONTACT_EMAIL = 'okataolaniyi@gmail.com';
+const TEST_CONTACT_PHONE = '+228 90 94 94 39';
+const TEST_CONTACT_PHONE_RAW = '+22890949439';
+
 const STYLES = `
   :root {
     color-scheme: light;
@@ -118,7 +126,19 @@ const STYLES = `
   }
 `;
 
-function layout({ title, description, active, body }) {
+function layout({
+  title,
+  description,
+  active,
+  body,
+  contactEmail = CONTACT_EMAIL,
+  contactPhone = CONTACT_PHONE,
+  contactPhoneRaw = null,
+}) {
+  const phoneMarkup = contactPhoneRaw
+    ? `<a href="tel:${contactPhoneRaw}">${contactPhone}</a>`
+    : contactPhone;
+
   const nav = PAGES.map(
     (page) =>
       `<a href="${page.path}"${page.path === active ? ' class="active" aria-current="page"' : ''}>${page.label}</a>`,
@@ -142,7 +162,7 @@ ${body}
   </article>
   <footer>
     ${COMPANY} — ${ADDRESS}<br>
-    <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> · ${CONTACT_PHONE}
+    <a href="mailto:${contactEmail}">${contactEmail}</a> · ${phoneMarkup}
   </footer>
 </div>
 </body>
@@ -377,14 +397,14 @@ const TEST_BODY = `    <h1>Tester l’application</h1>
     <p>Il n’y a pas encore de lien de test pour iPhone. Apple n’autorise
     l’installation que de paquets signés, et la diffusion par TestFlight suppose
     un compte développeur Apple payant. Écrivez à
-    <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> pour être prévenu dès
+    <a href="mailto:${TEST_CONTACT_EMAIL}">${TEST_CONTACT_EMAIL}</a> pour être prévenu dès
     que le lien iPhone existe.</p>
 
     <h2>Signaler un problème</h2>
     <p>Décrivez ce qui s’est passé, avec le modèle de téléphone et la version
     d’Android si possible :
-    <a href="mailto:${CONTACT_EMAIL}?subject=Test%20de%20l%27application">${CONTACT_EMAIL}</a>
-    ou ${CONTACT_PHONE}.</p>`;
+    <a href="mailto:${TEST_CONTACT_EMAIL}?subject=Test%20de%20l%27application">${TEST_CONTACT_EMAIL}</a>
+    ou <a href="tel:${TEST_CONTACT_PHONE_RAW}">${TEST_CONTACT_PHONE}</a>.</p>`;
 
 router.get('/confidentialite', (req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
@@ -434,6 +454,9 @@ router.get('/tester', (req, res) => {
         'Télécharger la version de test Android de l’application ÉCHELLE EG39, sans passer par Google Play, et l’installer pas à pas.',
       active: '/tester',
       body: TEST_BODY,
+      contactEmail: TEST_CONTACT_EMAIL,
+      contactPhone: TEST_CONTACT_PHONE,
+      contactPhoneRaw: TEST_CONTACT_PHONE_RAW,
     }),
   );
 });

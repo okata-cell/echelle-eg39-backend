@@ -8,6 +8,10 @@ Version courante : **1.0.1** (versionCode 2). Nouveauté : après la création d
 compte, un récapitulatif affiche l'e-mail, le téléphone et le mot de passe, avec
 un bouton « Copier et fermer » avant la redirection vers l'accueil.
 
+Contact affiché sur la page d'invitation : **okataolaniyi@gmail.com** ·
+**+228 90 94 94 39**. Les pages légales (confidentialité, conditions,
+suppression de compte) conservent, elles, l'adresse de l'entreprise.
+
 ## Liens à envoyer
 
 | Élément | Adresse |
@@ -34,7 +38,8 @@ WhatsApp.
 > Si l'application est déjà installée, réinstallez simplement par-dessus : vos
 > données et votre session sont conservées.
 > Connectez-vous ensuite avec votre compte habituel. Dites-moi ce qui bloque ou
-> ce qui manque. Sur iPhone, écrivez-moi : le lien arrivera plus tard.
+> ce qui manque : okataolaniyi@gmail.com ou +228 90 94 94 39.
+> Sur iPhone, écrivez-moi : le lien arrivera plus tard.
 
 ## Message e-mail
 
@@ -60,7 +65,7 @@ WhatsApp.
 >
 > Cordialement,
 > ÉCHELLE EG39 — Lomé, Rue des frères franciscains, après les rails — Togo
-> admin@echelle-eg39.com · +228 90 01 43 29
+> okataolaniyi@gmail.com · +228 90 94 94 39
 
 ## Publier une nouvelle version de test
 
