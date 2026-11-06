@@ -14,7 +14,25 @@ const PAGES = [
   { path: '/confidentialite', label: 'Confidentialité' },
   { path: '/suppression-compte', label: 'Supprimer mon compte' },
   { path: '/conditions', label: 'Conditions d’utilisation' },
+  { path: '/tester', label: 'Tester l’application' },
 ];
+
+// Canal de test hors magasin. Tant que l'application n'est ni sur Google Play
+// ni sur l'App Store, cette page est le seul point d'entrée pour un testeur :
+// elle distribue l'APK signé. Les deux constantes ci-dessous se mettent à jour
+// à chaque nouvelle version de test publiée sur GitHub Releases.
+const ANDROID_TEST_VERSION = '1.0.0';
+const ANDROID_TEST_APK_SIZE = '61 Mo';
+const ANDROID_TEST_MIN_SDK = 'Android 7.0 (API 24)';
+const ANDROID_TEST_UPDATED_AT = '6 novembre 2026';
+const ANDROID_TEST_APK_URL =
+  process.env.ANDROID_TEST_APK_URL ||
+  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.0/echelle-eg39-1.0.0-android.apk';
+// Même application, compilée pour les seuls téléphones arm64 (Android récents) :
+// deux fois moins lourd à télécharger, utile en connexion mobile limitée.
+const ANDROID_TEST_APK_ARM64_URL =
+  process.env.ANDROID_TEST_APK_ARM64_URL ||
+  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.0/echelle-eg39-1.0.0-arm64.apk';
 
 const STYLES = `
   :root {
@@ -79,6 +97,19 @@ const STYLES = `
     font-size: 15px;
   }
   .danger { color: var(--danger); }
+  .download {
+    display: inline-block;
+    background: var(--brand);
+    color: #fff;
+    text-decoration: none;
+    font-weight: 600;
+    border-radius: 999px;
+    padding: 13px 24px;
+    margin: 2px 0 0;
+  }
+  .download-meta { font-size: 13px; color: var(--muted); margin: 8px 0 20px; }
+  ol.steps { padding-left: 22px; }
+  ol.steps li { margin-bottom: 10px; }
   footer { margin-top: 22px; font-size: 13px; color: var(--muted); }
   footer a { color: var(--muted); }
   @media (max-width: 520px) {
@@ -298,6 +329,59 @@ const TERMS_BODY = `    <h1>Conditions d’utilisation</h1>
     <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> afin de rechercher une
     solution amiable.</p>`;
 
+const TEST_BODY = `    <h1>Tester l’application</h1>
+    <p class="meta">Version ${ANDROID_TEST_VERSION} · ${ANDROID_TEST_UPDATED_AT}</p>
+
+    <p>L’application ${COMPANY} n’est pas encore publiée sur Google Play ni sur
+    l’App Store. Cette page distribue la version de test pour Android. Elle est
+    signée et identique à la version qui sera publiée.</p>
+
+    <a class="download" href="${ANDROID_TEST_APK_URL}">Télécharger l’application</a>
+    <p class="download-meta">Version ${ANDROID_TEST_VERSION} · ${ANDROID_TEST_APK_SIZE} · ${ANDROID_TEST_MIN_SDK} · aucun compte de magasin requis</p>
+    <p class="download-meta">Connexion mobile limitée :
+    <a href="${ANDROID_TEST_APK_ARM64_URL}">variante allégée (23 Mo)</a>, pour un
+    téléphone Android récent. Même application.</p>
+
+    <h2>Installation sur Android</h2>
+    <ol class="steps">
+      <li>Touchez <strong>Télécharger l’application</strong> ci-dessus. Le fichier
+      arrive dans les téléchargements du téléphone.</li>
+      <li>Ouvrez le fichier téléchargé. Android prévient que l’application ne vient
+      pas du Play Store : c’est attendu à ce stade.</li>
+      <li>Autorisez l’installation quand Android le demande
+      (<em>Installer des applications inconnues</em>, pour Chrome ou Fichiers).
+      L’autorisation vaut pour cette source une fois pour toutes.</li>
+      <li>Ouvrez <em>ÉCHELLE EG39</em> et connectez-vous avec votre compte.</li>
+    </ol>
+
+    <div class="callout">
+      <strong>Mise à jour</strong> : une nouvelle version se réinstalle de la même
+      façon, par-dessus l’ancienne. Vos données et votre session sont conservées.
+      Hors magasin, l’application ne se met pas à jour toute seule.
+    </div>
+
+    <h2>Ce qu’il faut</h2>
+    <table>
+      <tr><th>Élément</th><th>Valeur</th></tr>
+      <tr><td>Système</td><td>${ANDROID_TEST_MIN_SDK} ou version ultérieure</td></tr>
+      <tr><td>Taille du fichier</td><td>${ANDROID_TEST_APK_SIZE}</td></tr>
+      <tr><td>Version de test</td><td>${ANDROID_TEST_VERSION}</td></tr>
+      <tr><td>Compte</td><td>Un compte ${COMPANY} — écrivez-nous pour le créer</td></tr>
+    </table>
+
+    <h2>Sur iPhone</h2>
+    <p>Il n’y a pas encore de lien de test pour iPhone. Apple n’autorise
+    l’installation que de paquets signés, et la diffusion par TestFlight suppose
+    un compte développeur Apple payant. Écrivez à
+    <a href="mailto:${CONTACT_EMAIL}">${CONTACT_EMAIL}</a> pour être prévenu dès
+    que le lien iPhone existe.</p>
+
+    <h2>Signaler un problème</h2>
+    <p>Décrivez ce qui s’est passé, avec le modèle de téléphone et la version
+    d’Android si possible :
+    <a href="mailto:${CONTACT_EMAIL}?subject=Test%20de%20l%27application">${CONTACT_EMAIL}</a>
+    ou ${CONTACT_PHONE}.</p>`;
+
 router.get('/confidentialite', (req, res) => {
   res.set('Cache-Control', 'public, max-age=3600');
   res.type('html').send(
@@ -333,6 +417,19 @@ router.get('/conditions', (req, res) => {
         'Conditions d’utilisation de l’application ÉCHELLE EG39 : compte, devis, locations et responsabilités.',
       active: '/conditions',
       body: TERMS_BODY,
+    }),
+  );
+});
+
+router.get('/tester', (req, res) => {
+  res.set('Cache-Control', 'public, max-age=300');
+  res.type('html').send(
+    layout({
+      title: 'Tester l’application',
+      description:
+        'Télécharger la version de test Android de l’application ÉCHELLE EG39, sans passer par Google Play, et l’installer pas à pas.',
+      active: '/tester',
+      body: TEST_BODY,
     }),
   );
 });
