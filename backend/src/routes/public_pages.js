@@ -21,18 +21,18 @@ const PAGES = [
 // ni sur l'App Store, cette page est le seul point d'entrée pour un testeur :
 // elle distribue l'APK signé. Les deux constantes ci-dessous se mettent à jour
 // à chaque nouvelle version de test publiée sur GitHub Releases.
-const ANDROID_TEST_VERSION = '1.0.0';
+const ANDROID_TEST_VERSION = '1.0.1';
 const ANDROID_TEST_APK_SIZE = '61 Mo';
 const ANDROID_TEST_MIN_SDK = 'Android 7.0 (API 24)';
 const ANDROID_TEST_UPDATED_AT = '6 novembre 2026';
 const ANDROID_TEST_APK_URL =
   process.env.ANDROID_TEST_APK_URL ||
-  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.0/echelle-eg39-1.0.0-android.apk';
+  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.1/echelle-eg39-1.0.1-android.apk';
 // Même application, compilée pour les seuls téléphones arm64 (Android récents) :
 // deux fois moins lourd à télécharger, utile en connexion mobile limitée.
 const ANDROID_TEST_APK_ARM64_URL =
   process.env.ANDROID_TEST_APK_ARM64_URL ||
-  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.0/echelle-eg39-1.0.0-arm64.apk';
+  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.1/echelle-eg39-1.0.1-arm64.apk';
 
 const STYLES = `
   :root {
@@ -341,6 +341,10 @@ const TEST_BODY = `    <h1>Tester l’application</h1>
     <p class="download-meta">Connexion mobile limitée :
     <a href="${ANDROID_TEST_APK_ARM64_URL}">variante allégée (23 Mo)</a>, pour un
     téléphone Android récent. Même application.</p>
+
+    <p class="meta"><strong>Nouveautés 1.0.1 :</strong> après la création du compte,
+    un récapitulatif affiche l’e-mail, le téléphone et le mot de passe, avec un
+    bouton « Copier et fermer » avant l’accueil.</p>
 
     <h2>Installation sur Android</h2>
     <ol class="steps">
