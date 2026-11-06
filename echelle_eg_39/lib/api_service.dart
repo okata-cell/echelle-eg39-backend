@@ -18,6 +18,21 @@ enum ApiErrorType {
   serverUnavailable,
   network,
   request,
+
+  /// Le compte visé par la connexion a été supprimé : il faut en créer un autre.
+  accountDeleted,
+}
+
+/// Ce que le serveur pense du jeton enregistré sur l'appareil.
+enum SessionState {
+  /// Jeton accepté.
+  active,
+
+  /// Le serveur a fermé la session : compte supprimé ou désactivé.
+  revoked,
+
+  /// Réponse inattendue ou réseau indisponible : on ne conclut rien.
+  unknown,
 }
 
 class ApiException implements Exception {
@@ -173,6 +188,20 @@ class ApiService {
       }
 
       final serverCode = responseData['code']?.toString();
+
+      // Compte déjà supprimé : l'identifiant n'existe plus en base, mais le
+      // serveur le reconnaît grâce à une empreinte. Le message explique quoi
+      // faire, au lieu de laisser croire à une faute de frappe.
+      if (response.statusCode == 403 && serverCode == 'ACCOUNT_DELETED') {
+        throw ApiException(
+          type: ApiErrorType.accountDeleted,
+          message:
+              responseData['error']?.toString() ??
+              'Ce compte a été supprimé. Vous pouvez en créer un nouveau.',
+          statusCode: 403,
+        );
+      }
+
       if (response.statusCode == 401) {
         if (serverCode == 'INVALID_PASSWORD') {
           throw const ApiException(
@@ -336,6 +365,39 @@ class ApiService {
       message: message,
       statusCode: response.statusCode,
     );
+  }
+
+  /// Vérifie auprès du serveur que le jeton enregistré donne encore accès.
+  ///
+  /// Appelé une fois au démarrage : un compte supprimé ou désactivé ne doit pas
+  /// rouvrir l'application sur des écrans qui échoueraient à chaque requête.
+  /// Une simple coupure réseau n'est jamais interprétée comme une révocation.
+  static Future<SessionState> checkSession() async {
+    final token = await getToken();
+    if (token == null) return SessionState.unknown;
+
+    try {
+      final response = await http
+          .get(
+            Uri.parse('$baseUrl/auth/me'),
+            headers: {'Authorization': 'Bearer $token'},
+          )
+          .timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) return SessionState.active;
+
+      if (response.statusCode == 401) {
+        final body = decodeObject(response.body);
+        final serverCode = body?['code']?.toString();
+        if (serverCode == 'SESSION_REVOKED' || serverCode == 'ACCOUNT_DELETED') {
+          return SessionState.revoked;
+        }
+      }
+
+      return SessionState.unknown;
+    } catch (_) {
+      return SessionState.unknown;
+    }
   }
 
   /// Récupérer les comptes clients et leurs coordonnées (admin uniquement).

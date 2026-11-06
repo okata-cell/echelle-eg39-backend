@@ -3,12 +3,17 @@ const http = require('node:http');
 const express = require('express');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
-const { after, before, test } = require('node:test');
+const { after, before, beforeEach, test } = require('node:test');
 
 process.env.JWT_SECRET = 'test-only-delete-account-secret';
 
 const pool = require('../src/config/database');
 const authRouter = require('../src/routes/auth');
+const {
+  isSessionRevoked,
+  clearRevokedAccounts,
+} = require('../src/services/session_revocation');
+const { hashIdentifier } = require('../src/utils/identifier_hash');
 
 const app = express();
 app.use(express.json());
@@ -29,6 +34,10 @@ after(async () => {
   pool.connect = originalConnect;
   if (server) await new Promise((resolve) => server.close(resolve));
   await pool.end();
+});
+
+beforeEach(() => {
+  clearRevokedAccounts();
 });
 
 function installClient({ userRow = null } = {}) {
@@ -117,6 +126,8 @@ test('anonymise le compte et efface les contenus personnels', async () => {
       id: 7,
       role: 'client',
       password_hash: await passwordHash('1234AZER'),
+      email: 'afi@example.com',
+      phone: '+22890000000',
     },
   });
 
@@ -144,6 +155,15 @@ test('anonymise le compte et efface les contenus personnels', async () => {
   assert.equal(users.values[2], '+000007');
   assert.match(users.values[3], /^\$2[aby]\$/);
   assert.equal(await bcrypt.compare('1234AZER', users.values[3]), false);
+
+  // Les empreintes permettent de reconnaître l'ancien identifiant sans
+  // conserver l'e-mail ni le téléphone.
+  assert.equal(users.values[4], hashIdentifier('afi@example.com'));
+  assert.equal(users.values[5], hashIdentifier('+22890000000'));
+  assert.match(users.sql, /deleted_at = CURRENT_TIMESTAMP/);
+
+  // Le jeton de l'appareil ne doit plus être accepté après le COMMIT.
+  assert.equal(isSessionRevoked(7), true);
 
   assert.equal(sql.at(-1), 'COMMIT');
   assert.equal(fake.released, true);

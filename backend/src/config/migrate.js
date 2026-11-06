@@ -27,6 +27,21 @@ async function migrate() {
     await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_data BYTEA');
     await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_mime_type VARCHAR(30)');
 
+    // Suppression de compte : la ligne est conservée pour les pièces
+    // commerciales, mais l'identité est remplacée par des valeurs neutres.
+    // `deleted_at` date la suppression, les deux empreintes HMAC permettent de
+    // reconnaître la personne si elle se reconnecte avec ses anciennes
+    // coordonnées — sans conserver ces coordonnées.
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_at TIMESTAMP');
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_email_hash TEXT');
+    await client.query('ALTER TABLE users ADD COLUMN IF NOT EXISTS deleted_phone_hash TEXT');
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS users_deleted_email_hash_idx ON users (deleted_email_hash)',
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS users_deleted_phone_hash_idx ON users (deleted_phone_hash)',
+    );
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS appareils (
         id SERIAL PRIMARY KEY,

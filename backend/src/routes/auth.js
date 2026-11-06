@@ -13,6 +13,8 @@ const {
   normalizeIdentifier,
   getPhoneCandidates,
 } = require('../utils/identifiers');
+const { hashIdentifiers } = require('../utils/identifier_hash');
+const { revokeAccount } = require('../services/session_revocation');
 
 const router = express.Router();
 const RESET_CODE_EXPIRY_MINUTES = 15;
@@ -312,6 +314,36 @@ router.post('/login', [
     );
 
     if (result.rows.length === 0) {
+      // Le compte a peut-être été supprimé : ses coordonnées ont été effacées,
+      // seules leurs empreintes subsistent. On répond alors explicitement,
+      // plutôt que « identifiant introuvable », qui laisse croire à une faute de
+      // frappe le lendemain d'une suppression volontaire.
+      const deletedHashes = hashIdentifiers([
+        identifier.email,
+        ...identifier.phoneCandidates,
+      ]);
+
+      const deleted =
+        deletedHashes.length === 0
+          ? { rows: [] }
+          : await pool.query(
+              `SELECT id FROM users
+                WHERE deleted_at IS NOT NULL
+                  AND (deleted_email_hash = ANY($1::text[])
+                       OR deleted_phone_hash = ANY($1::text[]))
+                LIMIT 1`,
+              [deletedHashes],
+            );
+
+      if (deleted.rows.length > 0) {
+        // Un compte supprimé n'est pas une tentative de devinette de mot de
+        // passe : il ne consomme pas le quota de connexion.
+        return res.status(403).json({
+          code: 'ACCOUNT_DELETED',
+          error: 'Ce compte a été supprimé. Vous pouvez en créer un nouveau.',
+        });
+      }
+
       loginThrottle.registerFailure(req);
       return res.status(401).json({
         code: 'IDENTIFIER_NOT_FOUND',
@@ -320,6 +352,16 @@ router.post('/login', [
     }
 
     const user = result.rows[0];
+
+    // Filet de sécurité : un compte marqué supprimé ne doit jamais ouvrir de
+    // session, quelle que soit la façon dont il a été retrouvé.
+    if (user.deleted_at) {
+      return res.status(403).json({
+        code: 'ACCOUNT_DELETED',
+        error: 'Ce compte a été supprimé. Vous pouvez en créer un nouveau.',
+      });
+    }
+
     if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
       loginThrottle.registerFailure(req);
       return res.status(401).json({
@@ -413,8 +455,10 @@ router.delete(
     try {
       await client.query('BEGIN');
 
+      // email et phone sont lus avant neutralisation : leurs empreintes servent
+      // ensuite à reconnaître la personne si elle retente une connexion.
       const found = await client.query(
-        'SELECT id, role, password_hash FROM users WHERE id = $1 FOR UPDATE',
+        'SELECT id, role, password_hash, email, phone FROM users WHERE id = $1 FOR UPDATE',
         [userId],
       );
 
@@ -472,7 +516,10 @@ router.delete(
 
       // Compte : identité remplacée par des valeurs neutres, mot de passe rendu
       // inutilisable, e-mail et téléphone libérés pour une future inscription.
+      // Seules leurs empreintes restent, pour répondre « compte supprimé ».
       const neutralHash = await bcrypt.hash(crypto.randomUUID(), 10);
+      const deletedEmailHash = hashIdentifiers([user.email])[0] || null;
+      const deletedPhoneHash = hashIdentifiers([user.phone])[0] || null;
       await client.query(
         `UPDATE users
             SET first_name = 'Compte',
@@ -481,6 +528,9 @@ router.delete(
                 phone = $3,
                 password_hash = $4,
                 is_active = FALSE,
+                deleted_at = CURRENT_TIMESTAMP,
+                deleted_email_hash = $5,
+                deleted_phone_hash = $6,
                 avatar_data = NULL,
                 avatar_mime_type = NULL,
                 updated_at = CURRENT_TIMESTAMP
@@ -490,10 +540,16 @@ router.delete(
           `supprime+${userId}@echelle-eg39.invalid`,
           `+00000${userId}`,
           neutralHash,
+          deletedEmailHash,
+          deletedPhoneHash,
         ],
       );
 
       await client.query('COMMIT');
+
+      // Le jeton utilisé pour cette requête (et ceux des autres appareils)
+      // cesse d'être accepté dès maintenant.
+      revokeAccount(userId, 'deleted');
 
       return res.json({
         success: true,

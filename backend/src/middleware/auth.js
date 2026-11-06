@@ -1,5 +1,7 @@
 const jwt = require('jsonwebtoken');
 
+const { isSessionRevoked } = require('../services/session_revocation');
+
 const authMiddleware = (req, res, next) => {
   try {
     const secret = process.env.JWT_SECRET?.trim();
@@ -15,6 +17,17 @@ const authMiddleware = (req, res, next) => {
     }
 
     const decoded = jwt.verify(token, secret);
+
+    // Un jeton reste signé jusqu'à son expiration : la liste de révocation est
+    // ce qui coupe l'accès d'un compte supprimé ou désactivé, tout de suite.
+    if (isSessionRevoked(decoded.userId)) {
+      return res.status(401).json({
+        code: 'SESSION_REVOKED',
+        error:
+          'Session fermée : ce compte a été supprimé ou désactivé. Reconnectez-vous ou créez un nouveau compte.',
+      });
+    }
+
     req.user = decoded;
     next();
   } catch (error) {
@@ -39,7 +52,9 @@ const optionalAuthMiddleware = (req, res, next) => {
   if (!secret) return next();
 
   try {
-    req.user = jwt.verify(token, secret);
+    const decoded = jwt.verify(token, secret);
+    // Une session fermée est traitée comme une requête anonyme.
+    req.user = isSessionRevoked(decoded.userId) ? undefined : decoded;
   } catch (error) {
     // Un jeton invalide est traité comme une requête anonyme.
   }

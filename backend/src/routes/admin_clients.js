@@ -2,6 +2,10 @@ const express = require('express');
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const {
+  revokeAccount,
+  restoreAccount,
+} = require('../services/session_revocation');
 
 const router = express.Router();
 
@@ -130,6 +134,15 @@ router.patch('/:id/status', authMiddleware, adminMiddleware, async (req, res) =>
 
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Client introuvable' });
+    }
+
+    // La session du client suit immédiatement son statut : un compte désactivé
+    // perd l'accès sans attendre l'expiration de son jeton, et un compte
+    // réactivé le retrouve.
+    if (req.body.isActive) {
+      restoreAccount(userId);
+    } else {
+      revokeAccount(userId, 'disabled');
     }
 
     res.set('Cache-Control', 'no-store');

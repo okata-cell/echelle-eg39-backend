@@ -11,7 +11,11 @@ import 'password_recovery_scaffold.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage({super.key, this.noticeMessage});
+
+  /// Message affiché à l'ouverture, par exemple quand la session a été fermée
+  /// parce que le compte a été supprimé.
+  final String? noticeMessage;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -32,6 +36,14 @@ class _LoginPageState extends State<LoginPage> {
 
     // Rafraîchir le suffixIcon "clear" quand le texte change
     identifierController.addListener(_onIdentifierChanged);
+
+    final notice = widget.noticeMessage;
+    if (notice != null && notice.trim().isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _showLoginMessage(notice, backgroundColor: Colors.orange.shade800);
+      });
+    }
   }
 
   void _onIdentifierChanged() {
@@ -211,9 +223,12 @@ class _LoginPageState extends State<LoginPage> {
           isLoading = false;
         });
 
+        // Un compte supprimé n'est pas une erreur de saisie : le message
+        // informe sans accuser le client d'avoir mal tapé son mot de passe.
         final isServerIssue =
             apiError.type == ApiErrorType.serverUnavailable ||
-            apiError.type == ApiErrorType.network;
+            apiError.type == ApiErrorType.network ||
+            apiError.type == ApiErrorType.accountDeleted;
         _showLoginMessage(
           apiError.message,
           backgroundColor: isServerIssue ? Colors.orange.shade800 : Colors.red,

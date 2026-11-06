@@ -5,6 +5,7 @@ const morgan = require('morgan');
 require('dotenv').config();
 
 const { buildCorsOptions, securityWarnings } = require('./config/cors');
+const { loadRevokedAccounts } = require('./services/session_revocation');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -80,8 +81,18 @@ if (require.main === module) {
     console.warn(`⚠️  ${warning}`);
   }
 
-  app.listen(PORT, () => {
-    console.log(`
+  // La liste des comptes dont la session est fermée est tenue en mémoire : elle
+  // est reconstruite depuis la base avant d'accepter la première requête.
+  loadRevokedAccounts()
+    .catch((error) => {
+      console.warn(
+        '⚠️  Impossible de recharger les comptes supprimés ou désactivés : ' +
+          `${error.message}. Les jetons déjà émis restent acceptés.`,
+      );
+    })
+    .finally(() => {
+      app.listen(PORT, () => {
+        console.log(`
   ╔═══════════════════════════════════════════════════════════╗
   ║                                                           ║
   ║         🚀 ÉCHELLE EG39 API - DÉMARRÉ                    ║
@@ -91,8 +102,9 @@ if (require.main === module) {
   ║         📅 Date: ${new Date().toLocaleString()}          ║
   ║                                                           ║
   ╚═══════════════════════════════════════════════════════════╝
-  `);
-  });
+        `);
+      });
+    });
 }
 
 module.exports = app;

@@ -179,6 +179,35 @@ class _SplashScreenState extends State<SplashScreen> {
     if (!mounted) return;
 
     if (token != null && isLoggedIn) {
+      // Le serveur a pu fermer cette session entre-temps (compte supprimé ou
+      // désactivé). On ne rouvre pas l'application sur un accès qui n'existe
+      // plus : le client revient à la connexion avec une explication.
+      final sessionState = await ApiService.checkSession();
+      if (!mounted) return;
+
+      if (sessionState == SessionState.revoked) {
+        await ApiService.removeToken();
+        await prefs.setBool('isLoggedIn', false);
+        await prefs.remove('isAdmin');
+        await prefs.remove('userIdentifier');
+        await prefs.remove('userEmail');
+        await prefs.remove('userPhone');
+        await prefs.remove('userName');
+        print('⛔ Session fermée par le serveur : retour à la connexion');
+
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => const LoginPage(
+              noticeMessage:
+                  'Votre compte a été supprimé. Vous pouvez en créer un nouveau.',
+            ),
+          ),
+        );
+        return;
+      }
+
       // Token présent → restaurer la session automatiquement
       print('✅ Session restaurée via token JWT');
       Navigator.pushReplacement(
