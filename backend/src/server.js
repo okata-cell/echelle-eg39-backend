@@ -54,6 +54,11 @@ app.get('/', (req, res) => {
   });
 });
 
+// Pages publiques servies sans compte : politique de confidentialité,
+// suppression de compte, conditions d'utilisation (exigées par les stores) et
+// page de test qui distribue les APK Android hors magasin.
+app.use('/', require('./routes/public_pages'));
+
 // Gestion des erreurs 404
 app.use((req, res) => {
   res.status(404).json({ error: 'Route non trouvée' });
