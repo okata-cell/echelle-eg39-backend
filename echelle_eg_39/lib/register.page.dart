@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 import 'dart:async';
 
 import 'package:flutter/material.dart';
@@ -10,6 +12,7 @@ import 'main.dart';
 import 'offline_registration_store.dart';
 import 'password_recovery_scaffold.dart';
 import 'sync_service.dart';
+import 'widgets/account_credentials_dialog.dart';
 
 typedef RegisterAccountRequest =
     Future<Map<String, dynamic>> Function(
@@ -241,11 +244,14 @@ class _RegisterPageState extends State<RegisterPage>
       if (!mounted) return;
 
       setState(() => _isSubmitting = false);
-      _showMessage(
-        'Compte créé. Vous pouvez maintenant accéder à vos services.',
-        color: const Color(0xFF18794E),
+      await _showCredentialsThenContinue(
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        phone: phone,
+        password: password,
+        isPendingSync: false,
       );
-      _scheduleHomeNavigation();
     } on ApiException catch (error) {
       if (!mounted) return;
       final isOffline =
@@ -319,11 +325,14 @@ class _RegisterPageState extends State<RegisterPage>
       if (!mounted) return;
 
       setState(() => _isSubmitting = false);
-      _showMessage(
-        'Inscription enregistrée sur cet appareil. Synchronisation en attente.',
-        color: const Color(0xFF355E7D),
+      await _showCredentialsThenContinue(
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        phone: phone,
+        password: password,
+        isPendingSync: true,
       );
-      _scheduleHomeNavigation();
     } catch (_) {
       if (!mounted) return;
       setState(() {
@@ -332,6 +341,40 @@ class _RegisterPageState extends State<RegisterPage>
             'Impossible de protéger l’inscription sur cet appareil. Réessayez.';
       });
     }
+  }
+
+  /// Affiche une seule fois les coordonnées du compte, puis ouvre l’accueil.
+  ///
+  /// La boîte de dialogue ne se ferme qu’après une copie réussie : le client
+  /// garde ainsi une trace du mot de passe, qui n’est jamais stocké en clair.
+  Future<void> _showCredentialsThenContinue({
+    required String firstName,
+    required String lastName,
+    required String email,
+    required String phone,
+    required String password,
+    required bool isPendingSync,
+  }) async {
+    final copied = await showAccountCredentialsDialog(
+      context,
+      AccountCredentials(
+        firstName: firstName,
+        lastName: lastName,
+        email: email,
+        phone: phone,
+        password: password,
+        isPendingSync: isPendingSync,
+      ),
+    );
+    if (!copied || !mounted) return;
+
+    _showMessage(
+      isPendingSync
+          ? 'Coordonnées copiées. Inscription en attente de synchronisation.'
+          : 'Coordonnées copiées. Gardez-les en lieu sûr.',
+      color: isPendingSync ? const Color(0xFF355E7D) : const Color(0xFF18794E),
+    );
+    _scheduleHomeNavigation();
   }
 
   Future<void> _saveSessionDetails({
