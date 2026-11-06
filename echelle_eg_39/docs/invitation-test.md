@@ -8,7 +8,8 @@ compte développeur Apple payant (TestFlight ou Ad Hoc).
 
 | Élément | Adresse |
 | --- | --- |
-| **Page de téléchargement** (à envoyer au client) | https://echelle-eg39-backend-1.onrender.com/tester |
+| **Page de téléchargement** (à envoyer au client) | https://okata-cell.github.io/echelle-eg39-backend/ |
+| Même page côté backend (active après un déploiement Render) | https://echelle-eg39-backend-1.onrender.com/tester |
 | APK universel (toutes architectures) | https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.0/echelle-eg39-1.0.0-android.apk |
 | APK allégé (arm64, téléphones Android récents) | https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.0/echelle-eg39-1.0.0-arm64.apk |
 | Page de la release (notes, empreintes) | https://github.com/okata-cell/echelle-eg39-backend/releases/tag/android-test-1.0.0 |
@@ -23,7 +24,7 @@ WhatsApp.
 ## Message court (WhatsApp, SMS)
 
 > Bonjour, l'application ÉCHELLE EG39 est prête à être testée avant sa mise en
-> ligne. Sur Android, installez-la depuis cette page : https://echelle-eg39-backend-1.onrender.com/tester
+> ligne. Sur Android, installez-la depuis cette page : https://okata-cell.github.io/echelle-eg39-backend/
 > Android vous demandera d'autoriser l'installation « depuis cette source »
 > (c'est normal, l'application ne passe pas encore par le Play Store).
 > Connectez-vous ensuite avec votre compte habituel. Dites-moi ce qui bloque ou
@@ -39,7 +40,7 @@ WhatsApp.
 > magasins d'applications. Votre retour nous sert à corriger ce qui gêne avant
 > l'ouverture au public.
 >
-> **Sur Android** : ouvrez https://echelle-eg39-backend-1.onrender.com/tester
+> **Sur Android** : ouvrez https://okata-cell.github.io/echelle-eg39-backend/
 > puis touchez « Télécharger l'application ». Android affiche un avertissement,
 > car l'application ne vient pas encore du Play Store : autorisez l'installation
 > pour la source utilisée (Chrome ou Fichiers). Le fichier fait 61 Mo.
