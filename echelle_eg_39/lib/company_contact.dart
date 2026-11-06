@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 import 'company_location.dart';
 
 /// Coordonnées officielles de contact d’ÉCHELLE EG39.

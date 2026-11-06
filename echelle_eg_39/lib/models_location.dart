@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 class Location {
   final String id;
   final String appareilNom;

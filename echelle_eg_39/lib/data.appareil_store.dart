@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 class Appareil {
   final String id;
   final int? dbId; // ID de la base de données (pour les opérations PUT/DELETE)

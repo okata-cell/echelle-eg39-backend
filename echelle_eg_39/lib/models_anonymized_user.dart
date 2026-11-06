@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 /// Données minimales exposées par le répertoire administrateur.
 ///
 /// Cette classe ne doit jamais contenir un e-mail brut, un téléphone, un nom,

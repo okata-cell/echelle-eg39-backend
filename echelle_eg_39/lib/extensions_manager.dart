@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 // Stub classes for backward compatibility - prolongation feature removed
 // Users should contact the DG directly for extensions
 

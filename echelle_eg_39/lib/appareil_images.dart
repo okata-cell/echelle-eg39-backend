@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 // Configuration des URLs d'images par appareil
 class AppareilImages {
   // Map des URLs d'images par type d'appareil (fallback si pas d'URL personnalisée)

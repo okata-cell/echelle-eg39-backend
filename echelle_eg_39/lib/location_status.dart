@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 /// Converts backend rental statuses to the stable keys used by client history.
 /// Unknown values stay unknown instead of being misleadingly shown as pending.
 String normalizeLocationStatus(Object? value) {

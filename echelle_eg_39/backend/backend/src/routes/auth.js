@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 const express = require('express');
 const crypto = require('crypto');
 const bcrypt = require('bcryptjs');

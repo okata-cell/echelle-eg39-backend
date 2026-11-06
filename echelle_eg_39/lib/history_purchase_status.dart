@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 /// Keeps purchase request statuses distinct from rental lifecycle statuses.
 ///
 /// In particular, an approved purchase is not a rental in progress and a

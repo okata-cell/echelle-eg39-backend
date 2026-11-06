@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 function maskEmail(value) {
   const email = String(value ?? '').trim();
   const atIndex = email.lastIndexOf('@');

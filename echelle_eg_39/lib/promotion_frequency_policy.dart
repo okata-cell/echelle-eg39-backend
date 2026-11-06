@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Persists exposure independently for each promotion.

@@ -1,3 +1,5 @@
+// © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
+
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as image_lib;
 
