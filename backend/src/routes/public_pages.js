@@ -21,19 +21,19 @@ const PAGES = [
 // ni sur l'App Store, cette page est le seul point d'entrée pour un testeur :
 // elle distribue l'APK signé. Les deux constantes ci-dessous se mettent à jour
 // à chaque nouvelle version de test publiée sur GitHub Releases.
-const ANDROID_TEST_VERSION = '1.0.2';
+const ANDROID_TEST_VERSION = '1.0.3';
 const ANDROID_TEST_APK_SIZE = '64 Mo';
 const ANDROID_TEST_ARM64_SIZE = '23 Mo';
 const ANDROID_TEST_MIN_SDK = 'Android 7.0 (API 24)';
 const ANDROID_TEST_UPDATED_AT = '7 novembre 2026';
 const ANDROID_TEST_APK_URL =
   process.env.ANDROID_TEST_APK_URL ||
-  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.2/echelle-eg39-1.0.2-android.apk';
+  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.3/echelle-eg39-1.0.3-android.apk';
 // Même application, compilée pour les seuls téléphones arm64 (Android récents) :
 // deux fois moins lourd à télécharger, utile en connexion mobile limitée.
 const ANDROID_TEST_APK_ARM64_URL =
   process.env.ANDROID_TEST_APK_ARM64_URL ||
-  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.2/echelle-eg39-1.0.2-arm64.apk';
+  'https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.3/echelle-eg39-1.0.3-arm64.apk';
 
 // Contact affiché sur la page d’invitation /tester et dans les messages qui
 // l’accompagnent. Volontairement distinct du contact légal des pages Play
@@ -364,10 +364,12 @@ const TEST_BODY = `    <h1>Tester l’application</h1>
     téléphone Android récent. Même application.</p>
 
     <p class="meta"><strong>Nouveautés ${ANDROID_TEST_VERSION} :</strong> « mot de passe
-    oublié » affiche désormais un mot de passe temporaire pendant 2 minutes
-    (bouton « Copier et fermer »), puis demande d’en choisir un à la première
-    connexion. Un compte supprimé est signalé clairement, et sa session est fermée
-    immédiatement.</p>
+    oublié » ne dépend plus d’un e-mail ni d’un SMS. À la création du compte,
+    l’application affiche un <strong>code de récupération</strong>
+    (EG39-XXXX-XXXX) à conserver : il suffit de le saisir pour recevoir un mot de
+    passe temporaire, affiché 2 minutes, puis d’en choisir un à la première
+    connexion. Code perdu ? L’agence en génère un nouveau après vérification de
+    votre identité ; aucun message n’est envoyé au client.</p>
 
     <h2>Installation sur Android</h2>
     <ol class="steps">
