@@ -4,9 +4,14 @@ L'application n'est ni sur Google Play ni sur l'App Store. Android se distribue
 directement par fichier APK signé ; iPhone reste bloqué tant qu'il n'y a pas de
 compte développeur Apple payant (TestFlight ou Ad Hoc).
 
-Version courante : **1.0.1** (versionCode 2). Nouveauté : après la création du
-compte, un récapitulatif affiche l'e-mail, le téléphone et le mot de passe, avec
-un bouton « Copier et fermer » avant la redirection vers l'accueil.
+Version courante : **1.0.2** (versionCode 2003). Nouveautés : « mot de passe
+oublié » affiche un mot de passe temporaire pendant 2 minutes (copier/fermer),
+puis impose le choix d'un mot de passe définitif à la première connexion ; un
+compte supprimé reçoit un message explicite au lieu de « identifiant
+introuvable » ; un compte supprimé ou désactivé est déconnecté immédiatement.
+
+La 1.0.1 avait introduit le récapitulatif des identifiants après inscription
+(e-mail, téléphone, mot de passe, bouton « Copier et fermer »).
 
 Contact affiché sur la page d'invitation : **okataolaniyi@gmail.com** ·
 **+228 90 94 94 39**. Les pages légales (confidentialité, conditions,
@@ -17,12 +22,12 @@ suppression de compte) conservent, elles, l'adresse de l'entreprise.
 | Élément | Adresse |
 | --- | --- |
 | **Page de téléchargement** (à envoyer au client) | https://echelle-eg39-backend-1.onrender.com/tester |
-| APK universel (toutes architectures) | https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.1/echelle-eg39-1.0.1-android.apk |
-| APK allégé (arm64, téléphones Android récents) | https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.1/echelle-eg39-1.0.1-arm64.apk |
-| Page de la release (notes, empreintes) | https://github.com/okata-cell/echelle-eg39-backend/releases/tag/android-test-1.0.1 |
+| APK universel (toutes architectures) | https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.2/echelle-eg39-1.0.2-android.apk |
+| APK allégé (arm64, téléphones Android récents) | https://github.com/okata-cell/echelle-eg39-backend/releases/download/android-test-1.0.2/echelle-eg39-1.0.2-arm64.apk |
+| Page de la release (notes, empreintes) | https://github.com/okata-cell/echelle-eg39-backend/releases/tag/android-test-1.0.2 |
 
-Version 1.0.1 · Android 7.0 (API 24) et plus · 61 Mo (64 183 475 octets),
-variante allégée 23 Mo (23 246 413 octets).
+Version 1.0.2 · Android 7.0 (API 24) et plus · 64 Mo (64 199 947 octets),
+variante allégée 23 Mo (23 246 505 octets).
 
 En pratique, on n'envoie qu'**un seul lien** : celui de la page `/tester`. Elle
 explique l'installation pas à pas et évite d'envoyer un fichier lourd par
@@ -54,7 +59,7 @@ WhatsApp.
 > **Sur Android** : ouvrez https://echelle-eg39-backend-1.onrender.com/tester
 > puis touchez « Télécharger l'application ». Android affiche un avertissement,
 > car l'application ne vient pas encore du Play Store : autorisez l'installation
-> pour la source utilisée (Chrome ou Fichiers). Le fichier fait 61 Mo.
+> pour la source utilisée (Chrome ou Fichiers). Le fichier fait 64 Mo.
 >
 > **Sur iPhone** : l'installation passe obligatoirement par TestFlight, qui
 > demande un compte développeur Apple payant. Nous ouvrirons ce canal ensuite ;
