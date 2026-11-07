@@ -18,11 +18,14 @@ const DEFAULTS = {
  */
 function createLoginThrottle(options = {}) {
   const { maxAttempts, windowMs, maxKeys } = { ...DEFAULTS, ...options };
+  // Champ du corps servant de clé : `identifier` pour la connexion, `contact`
+  // pour la récupération de mot de passe.
+  const keyField = options.keyField || 'identifier';
   const now = typeof options.now === 'function' ? options.now : Date.now;
   const attempts = new Map();
 
   const keyFor = (req) => {
-    const identifier = String(req?.body?.identifier || '')
+    const identifier = String(req?.body?.[keyField] || '')
       .trim()
       .toLowerCase();
     const ip =

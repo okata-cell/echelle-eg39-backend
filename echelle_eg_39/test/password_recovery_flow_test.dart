@@ -1,7 +1,7 @@
 import 'package:echelle_eg_39/forgot_password.page.dart';
 import 'package:echelle_eg_39/password_recovery_contact_mask.dart';
 import 'package:echelle_eg_39/reset_password.page.dart';
-import 'package:echelle_eg_39/verify_code.page.dart';
+import 'package:echelle_eg_39/widgets/temporary_password_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:google_fonts/google_fonts.dart';
@@ -17,41 +17,96 @@ void main() {
   });
 
   testWidgets(
-    'conserve e-mail par défaut et affiche le champ téléphone au choix',
+    'conserve e-mail par défaut et affiche le téléphone et le code',
     (tester) async {
       await tester.pumpWidget(const MaterialApp(home: ForgotPasswordPage()));
       await tester.pump();
 
       expect(find.byKey(const ValueKey('recovery-email')), findsOneWidget);
       expect(find.text('Adresse e-mail'), findsOneWidget);
-      expect(find.text('Où recevoir votre code ?'), findsOneWidget);
+      expect(find.text('Numéro de téléphone'), findsNothing);
+      expect(find.byKey(const ValueKey('recovery-code')), findsOneWidget);
+      expect(find.text('Code de récupération'), findsOneWidget);
 
       await tester.tap(find.text('Téléphone'));
       await tester.pumpAndSettle();
 
       expect(find.byKey(const ValueKey('recovery-phone')), findsOneWidget);
-      expect(find.text('Numéro de téléphone'), findsOneWidget);
       expect(find.byKey(const ValueKey('recovery-email')), findsNothing);
+      expect(find.byKey(const ValueKey('recovery-code')), findsOneWidget);
     },
   );
 
-  testWidgets('demande le code avec le contact et le canal sélectionnés', (
+  testWidgets(
+    'transmet contact, canal et code puis affiche le mot de passe temporaire',
+    (tester) async {
+      String? sentContact;
+      String? sentType;
+      String? sentCode;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: ForgotPasswordPage(
+            requestCode: (contact, type, recoveryCode) async {
+              sentContact = contact;
+              sentType = type;
+              sentCode = recoveryCode;
+              return const {
+                'success': true,
+                'temporaryPassword': '4821KLMN',
+                'displaySeconds': 120,
+              };
+            },
+            updatePassword: (_) async => const {'success': true},
+            clearResetToken: () async {},
+          ),
+        ),
+      );
+      await tester.pump();
+
+      await tester.enterText(
+        find.byKey(const ValueKey('recovery-email')),
+        ' Afi@example.com ',
+      );
+      await tester.enterText(
+        find.byKey(const ValueKey('recovery-code')),
+        'eg39-abcd-2345',
+      );
+      await tester.ensureVisible(find.text('Obtenir mon accès'));
+      await tester.tap(find.text('Obtenir mon accès'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(sentContact, 'Afi@example.com');
+      expect(sentType, 'email');
+      expect(sentCode, 'eg39-abcd-2345');
+
+      expect(find.byType(TemporaryPasswordDialog), findsOneWidget);
+      expect(find.text('4821KLMN'), findsOneWidget);
+
+      await tester.tap(
+        find.byKey(const ValueKey('temporary-password-choose-own')),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 400));
+
+      expect(find.byType(ResetPasswordPage), findsOneWidget);
+      expect(find.text('Choisissez un nouveau mot de passe'), findsOneWidget);
+    },
+  );
+
+  testWidgets('un refus du serveur est affiché sans ouvrir de popup', (
     tester,
   ) async {
-    String? submittedContact;
-    String? submittedType;
     await tester.pumpWidget(
       MaterialApp(
         home: ForgotPasswordPage(
-          requestCode: (contact, type) async {
-            submittedContact = contact;
-            submittedType = type;
-            return const {
-              'success': true,
-              'message':
-                  'Si un compte existe avec ces informations, un code sera envoyé.',
-            };
+          requestCode: (_, _, _) async => const {
+            'success': false,
+            'code': 'RECOVERY_DENIED',
+            'error': 'Identifiant ou code de récupération incorrect.',
           },
+          clearResetToken: () async {},
         ),
       ),
     );
@@ -59,147 +114,53 @@ void main() {
 
     await tester.enterText(
       find.byKey(const ValueKey('recovery-email')),
-      ' Afi@example.com ',
+      'afi@example.com',
     );
-    await tester.ensureVisible(find.text('Envoyer le code'));
-    await tester.tap(find.text('Envoyer le code'));
-    await tester.pumpAndSettle();
-
-    expect(submittedContact, 'Afi@example.com');
-    expect(submittedType, 'email');
-    expect(find.byType(VerifyCodePage), findsOneWidget);
-    expect(find.textContaining('A•••@example.com'), findsOneWidget);
-  });
-
-  testWidgets(
-    'le renvoi OTP appelle à nouveau le backend sans montrer le code',
-    (tester) async {
-      var requestCount = 0;
-      String? lastContact;
-      String? lastType;
-      await tester.pumpWidget(
-        MaterialApp(
-          home: ForgotPasswordPage(
-            requestCode: (contact, type) async {
-              requestCount++;
-              lastContact = contact;
-              lastType = type;
-              return const {
-                'success': true,
-                'contactInfo': '+22890123456',
-                'verificationCode': '123456',
-              };
-            },
-          ),
-        ),
-      );
-      await tester.pump();
-
-      await tester.tap(find.text('Téléphone'));
-      await tester.pumpAndSettle();
-      await tester.enterText(
-        find.byKey(const ValueKey('recovery-phone')),
-        '+22890123456',
-      );
-      await tester.ensureVisible(find.text('Envoyer le code'));
-      await tester.tap(find.text('Envoyer le code'));
-      await tester.pumpAndSettle();
-      expect(requestCount, 1);
-
-      await tester.ensureVisible(
-        find.byKey(const ValueKey('recovery-resend-code')),
-      );
-      await tester.tap(find.byKey(const ValueKey('recovery-resend-code')));
-      await tester.pumpAndSettle();
-
-      expect(requestCount, 2);
-      expect(lastContact, '+22890123456');
-      expect(lastType, 'phone');
-      expect(
-        find.text(
-          'Si un compte existe avec ce contact, un nouveau code sera envoyé.',
-        ),
-        findsOneWidget,
-      );
-      expect(find.text('123456'), findsNothing);
-    },
-  );
-
-  testWidgets('un renvoi échoué n’affiche jamais une confirmation de succès', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: VerifyCodePage(
-          contactInfo: 'afi@example.com',
-          contactType: RecoveryContactType.email,
-          requestCode: (_, _) async => throw Exception('Service indisponible'),
-          verifyCode: (_, _) async => const {'success': false},
-          updatePassword: (_) async => const {'success': false},
-          clearResetToken: () async {},
-        ),
-      ),
+    await tester.enterText(
+      find.byKey(const ValueKey('recovery-code')),
+      'ABCD2345',
     );
+    await tester.ensureVisible(find.text('Obtenir mon accès'));
+    await tester.tap(find.text('Obtenir mon accès'));
     await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
 
-    await tester.tap(find.byKey(const ValueKey('recovery-resend-code')));
-    await tester.pumpAndSettle();
-
-    expect(find.text('Service indisponible'), findsOneWidget);
-    expect(find.text('Nouveau code envoyé !'), findsNothing);
+    expect(
+      find.text('Identifiant ou code de récupération incorrect.'),
+      findsOneWidget,
+    );
+    expect(find.byType(TemporaryPasswordDialog), findsNothing);
   });
 
-  testWidgets('OTP valide ouvre la réinitialisation sans perdre le contact', (
-    tester,
-  ) async {
-    String? verifiedCode;
-    String? verifiedContact;
+  testWidgets('un code incomplet est refusé avant tout appel', (tester) async {
+    var called = false;
+
     await tester.pumpWidget(
       MaterialApp(
-        home: VerifyCodePage(
-          contactInfo: 'afi@example.com',
-          contactType: RecoveryContactType.email,
-          requestCode: (_, _) async => const {'success': true},
-          verifyCode: (code, contact) async {
-            verifiedCode = code;
-            verifiedContact = contact;
-            return const {'success': true, 'tempToken': 'temporary-token'};
+        home: ForgotPasswordPage(
+          requestCode: (_, _, _) async {
+            called = true;
+            return const {'success': false};
           },
-          updatePassword: (_) async => const {'success': true},
           clearResetToken: () async {},
         ),
       ),
     );
-    await tester.pump();
 
     await tester.enterText(
-      find.byKey(const ValueKey('recovery-otp-input')),
-      '12x34567',
+      find.byKey(const ValueKey('recovery-email')),
+      'afi@example.com',
     );
+    await tester.enterText(find.byKey(const ValueKey('recovery-code')), 'AB');
+    await tester.ensureVisible(find.text('Obtenir mon accès'));
+    await tester.tap(find.text('Obtenir mon accès'));
+    await tester.pump();
+
+    expect(called, false);
     expect(
-      tester
-          .widget<TextField>(find.byKey(const ValueKey('recovery-otp-input')))
-          .controller!
-          .text,
-      '123456',
+      find.text('Le code compte 8 caractères, par exemple EG39-ABCD-EFGH.'),
+      findsOneWidget,
     );
-    await tester.ensureVisible(find.text('Vérifier le code'));
-    await tester.tap(find.text('Vérifier le code'));
-    await tester.pumpAndSettle();
-
-    expect(verifiedCode, '123456');
-    expect(verifiedContact, 'afi@example.com');
-    expect(find.byType(ResetPasswordPage), findsOneWidget);
-    expect(find.text('Choisissez un nouveau mot de passe'), findsOneWidget);
-
-    await tester.tap(find.byTooltip('Retour à la vérification du code'));
-    await tester.pumpAndSettle();
-    expect(find.text('Continuer'), findsOneWidget);
-
-    await tester.tap(find.text('Continuer'));
-    await tester.pumpAndSettle();
-    expect(find.byType(ResetPasswordPage), findsOneWidget);
-    expect(verifiedCode, '123456');
   });
 
   testWidgets('nouveau mot de passe respecte la règle du serveur', (
@@ -236,8 +197,8 @@ void main() {
     );
     expect(savedPassword, isNull);
 
-    await tester.enterText(password, 'abc123');
-    await tester.enterText(confirmation, 'abc124');
+    await tester.enterText(password, '1234AZER');
+    await tester.enterText(confirmation, '1234AZEZ');
     await tester.pumpAndSettle();
     expect(
       find.text('Les mots de passe ne correspondent pas.'),
@@ -245,11 +206,11 @@ void main() {
     );
     expect(savedPassword, isNull);
 
-    await tester.enterText(confirmation, 'abc123');
+    await tester.enterText(confirmation, '1234AZER');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mettre à jour le mot de passe'));
     await tester.pump();
-    expect(savedPassword, 'abc123');
+    expect(savedPassword, '1234AZER');
 
     await tester.pump(const Duration(milliseconds: 1500));
   });

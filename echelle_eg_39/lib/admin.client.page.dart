@@ -1,10 +1,12 @@
 // © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
 import 'admin_clients_service.dart';
+import 'api_service.dart';
 import 'login.page.dart';
 import 'models_admin_client.dart';
 import 'offline_registration_store.dart';
@@ -199,6 +201,96 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
       successMessage: activate
           ? 'Le compte client a été réactivé.'
           : 'Le compte client a été désactivé. Son historique est conservé.',
+    );
+  }
+
+  /// Génère un nouveau code de récupération pour un client qui a perdu le sien.
+  ///
+  /// L'identité doit être vérifiée par téléphone avant de transmettre le code :
+  /// c'est la seule preuve acceptée par l'application, qui n'envoie ni e-mail
+  /// ni SMS.
+  Future<void> _regenerateRecoveryCode(AdminClient client) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Générer un nouveau code ?'),
+        content: Text(
+          'L’ancien code de ${client.fullName} ne fonctionnera plus. '
+          'Vérifiez son identité par téléphone avant de lui communiquer le '
+          'nouveau code.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AdminPalette.blueprintBlue,
+              foregroundColor: Colors.white,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Générer'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+
+    setState(() => _mutatingClientIds.add(client.id));
+    try {
+      final code = await ApiService.regenerateRecoveryCode(client.id);
+      if (!mounted) return;
+      await _showRecoveryCodeDialog(client, code);
+    } catch (_) {
+      if (!mounted) return;
+      showAdminMessage(
+        context,
+        'Impossible de générer un code de récupération pour le moment.',
+        backgroundColor: AdminPalette.destructiveRed,
+      );
+    } finally {
+      if (mounted) setState(() => _mutatingClientIds.remove(client.id));
+    }
+  }
+
+  Future<void> _showRecoveryCodeDialog(AdminClient client, String code) async {
+    await showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Code de récupération'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('À communiquer à ${client.fullName} :'),
+            const SizedBox(height: 12),
+            SelectableText(
+              code,
+              style: const TextStyle(
+                fontSize: 22,
+                fontWeight: FontWeight.w800,
+                letterSpacing: 2,
+              ),
+            ),
+            const SizedBox(height: 12),
+            const Text(
+              'Il ne sera plus affiché. Il permet de retrouver l’accès si le '
+              'mot de passe est oublié.',
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: code));
+              if (dialogContext.mounted) Navigator.pop(dialogContext);
+            },
+            child: const Text('Copier et fermer'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -484,6 +576,9 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
                       onSelected: (action) {
                         if (action == _AdminClientAction.edit) {
                           _editClient(client);
+                        } else if (action ==
+                            _AdminClientAction.recoveryCode) {
+                          _regenerateRecoveryCode(client);
                         } else {
                           _changeClientStatus(client);
                         }
@@ -496,6 +591,15 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
                             contentPadding: EdgeInsets.zero,
                             leading: Icon(Icons.edit_outlined),
                             title: Text('Modifier'),
+                          ),
+                        ),
+                        const PopupMenuItem(
+                          value: _AdminClientAction.recoveryCode,
+                          child: ListTile(
+                            dense: true,
+                            contentPadding: EdgeInsets.zero,
+                            leading: Icon(Icons.vpn_key_outlined),
+                            title: Text('Code de récupération'),
                           ),
                         ),
                         PopupMenuItem(
@@ -561,7 +665,7 @@ class _AdminClientsPageState extends State<AdminClientsPage> {
   }
 }
 
-enum _AdminClientAction { edit, toggleStatus }
+enum _AdminClientAction { edit, toggleStatus, recoveryCode }
 
 class _ClientFormValues {
   const _ClientFormValues({

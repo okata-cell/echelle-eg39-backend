@@ -4,11 +4,18 @@ L'application n'est ni sur Google Play ni sur l'App Store. Android se distribue
 directement par fichier APK signé ; iPhone reste bloqué tant qu'il n'y a pas de
 compte développeur Apple payant (TestFlight ou Ad Hoc).
 
-Version courante : **1.0.2** (versionCode 2003). Nouveautés : « mot de passe
-oublié » affiche un mot de passe temporaire pendant 2 minutes (copier/fermer),
-puis impose le choix d'un mot de passe définitif à la première connexion ; un
-compte supprimé reçoit un message explicite au lieu de « identifiant
-introuvable » ; un compte supprimé ou désactivé est déconnecté immédiatement.
+Version courante : **1.0.2** (versionCode 2003). Nouveautés : la récupération
+d'accès ne dépend plus d'aucun envoi d'e-mail ni de SMS — le client saisit le
+**code de récupération** (`EG39-XXXX-XXXX`) remis à la création du compte, et
+l'application affiche un mot de passe temporaire pendant 2 minutes
+(copier/fermer), puis impose le choix d'un mot de passe définitif ; un compte
+supprimé reçoit un message explicite au lieu de « identifiant introuvable » ; un
+compte supprimé ou désactivé est déconnecté immédiatement.
+
+**Important à dire aux testeurs** : le code de récupération s'affiche une seule
+fois, en même temps que le mot de passe, juste après l'inscription. Sans lui,
+seule l'agence peut régénérer un accès (menu d'un client → « Code de
+récupération » dans le back-office).
 
 La 1.0.1 avait introduit le récapitulatif des identifiants après inscription
 (e-mail, téléphone, mot de passe, bouton « Copier et fermer »).

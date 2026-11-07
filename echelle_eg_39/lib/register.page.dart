@@ -224,8 +224,18 @@ class _RegisterPageState extends State<RegisterPage>
     });
 
     try {
-      await widget.registerAccount(firstName, lastName, email, phone, password);
+      final registration = await widget.registerAccount(
+        firstName,
+        lastName,
+        email,
+        phone,
+        password,
+      );
       if (!mounted) return;
+
+      // Le serveur renvoie le code de récupération une seule fois : c'est lui
+      // qui permettra au client de retrouver son compte sans e-mail ni SMS.
+      final recoveryCode = registration['recoveryCode']?.toString().trim();
 
       // ApiService stores the JWT on 201; only non-secret account details are
       // persisted here. Session-cache failures must not undo a server success.
@@ -250,6 +260,7 @@ class _RegisterPageState extends State<RegisterPage>
         email: email,
         phone: phone,
         password: password,
+        recoveryCode: recoveryCode,
         isPendingSync: false,
       );
     } on ApiException catch (error) {
@@ -354,6 +365,7 @@ class _RegisterPageState extends State<RegisterPage>
     required String phone,
     required String password,
     required bool isPendingSync,
+    String? recoveryCode,
   }) async {
     final copied = await showAccountCredentialsDialog(
       context,
@@ -363,6 +375,7 @@ class _RegisterPageState extends State<RegisterPage>
         email: email,
         phone: phone,
         password: password,
+        recoveryCode: recoveryCode,
         isPendingSync: isPendingSync,
       ),
     );

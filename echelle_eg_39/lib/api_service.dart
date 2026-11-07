@@ -380,6 +380,55 @@ class ApiService {
     );
   }
 
+  /// Régénère le code de récupération d'un client (administration).
+  ///
+  /// Le client a perdu son code : l'administration vérifie son identité par
+  /// téléphone, génère un nouveau code et le lui dicte. Le code en clair
+  /// n'existe que dans cette réponse.
+  static Future<String> regenerateRecoveryCode(String clientId) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session administrateur requise.',
+      );
+    }
+
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/users/clients/$clientId/recovery-code'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode(const <String, dynamic>{}),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    final body = decodeObject(response.body);
+
+    if (response.statusCode == 200) {
+      final code = body?['recoveryCode']?.toString().trim() ?? '';
+      if (code.isEmpty) {
+        throw const ApiException(
+          type: ApiErrorType.request,
+          message: 'Le serveur n’a pas renvoyé de code de récupération.',
+        );
+      }
+      return code;
+    }
+
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message:
+          body?['error']?.toString() ??
+          'Impossible de générer un code de récupération.',
+      statusCode: response.statusCode,
+    );
+  }
+
   /// Vérifie auprès du serveur que le jeton enregistré donne encore accès.
   ///
   /// Appelé une fois au démarrage : un compte supprimé ou désactivé ne doit pas
@@ -661,23 +710,40 @@ class ApiService {
     return decoded?['error']?.toString() ?? fallback;
   }
 
-  /// Demander un code de réinitialisation de mot de passe
+  /// Obtenir un mot de passe temporaire grâce au code de récupération.
+  ///
+  /// Aucun e-mail ni SMS n'est envoyé : le serveur vérifie l'identifiant et
+  /// l'empreinte du code remis à l'inscription, puis renvoie un mot de passe
+  /// temporaire que l'application affiche deux minutes.
   static Future<Map<String, dynamic>> requestPasswordReset(
     String contact,
     String contactType,
+    String recoveryCode,
   ) async {
     try {
       final response = await http
           .post(
             Uri.parse('$baseUrl/auth/forgot-password'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode({'contact': contact, 'contactType': contactType}),
+            body: jsonEncode({
+              'contact': contact,
+              'contactType': contactType,
+              'recoveryCode': recoveryCode,
+            }),
           )
           .timeout(const Duration(seconds: 15));
 
       if (response.statusCode == 200) {
         final data = decodeObject(response.body);
-        if (data != null) return data;
+        if (data != null) {
+          // Le jeton temporaire permet de choisir immédiatement son mot de
+          // passe sans repasser par l'identification.
+          final token = data['tempToken'];
+          if (token is String && token.isNotEmpty) {
+            await setTempToken(token);
+          }
+          return data;
+        }
         throw Exception('Réponse invalide du service de récupération.');
       }
       if (response.statusCode == 404) {

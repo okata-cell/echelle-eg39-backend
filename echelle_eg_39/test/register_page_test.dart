@@ -142,7 +142,12 @@ void main() {
 
     await tester.pumpWidget(
       MaterialApp(
-        home: RegisterPage(registerAccount: (_, _, _, _, _) async => {'id': 7}),
+        home: RegisterPage(
+          registerAccount: (_, _, _, _, _) async => {
+            'id': 7,
+            'recoveryCode': 'EG39-ABCD-EFGH',
+          },
+        ),
       ),
     );
     await tester.pump(const Duration(milliseconds: 600));
@@ -170,6 +175,12 @@ void main() {
       find.descendant(of: dialog, matching: find.text('1234AZER')),
       findsOneWidget,
     );
+    // Les libellés de la fiche sont affichés en capitales.
+    expect(find.text('CODE DE RÉCUPÉRATION'), findsOneWidget);
+    expect(
+      find.descendant(of: dialog, matching: find.text('EG39-ABCD-EFGH')),
+      findsOneWidget,
+    );
 
     await tester.tap(
       find.byKey(const ValueKey('account-credentials-copy-close')),
@@ -183,6 +194,7 @@ void main() {
       findsOneWidget,
     );
     expect(clipboard.value, contains('Mot de passe : 1234AZER'));
+    expect(clipboard.value, contains('Code de récupération : EG39-ABCD-EFGH'));
 
     await tester.pumpWidget(const SizedBox.shrink());
   });

@@ -49,6 +49,12 @@ async function migrate() {
       'ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE',
     );
 
+    // Code de récupération remis à l'inscription : seule son empreinte HMAC est
+    // conservée. Il remplace l'envoi du code par e-mail ou SMS.
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_code_hash TEXT',
+    );
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS appareils (
         id SERIAL PRIMARY KEY,

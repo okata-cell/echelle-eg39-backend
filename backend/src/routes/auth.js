@@ -5,8 +5,12 @@ const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware } = require('../middleware/auth');
-const { sendVerificationCode } = require('../services/notification_service');
 const { createLoginThrottle } = require('../middleware/login_throttle');
+const {
+  generateRecoveryCode,
+  hashRecoveryCode,
+  matchesRecoveryCodeHash,
+} = require('../utils/recovery_code');
 const {
   normalizeEmail,
   normalizePhone,
@@ -21,8 +25,13 @@ const {
 } = require('../utils/temporary_password');
 
 const router = express.Router();
-const RESET_CODE_EXPIRY_MINUTES = 15;
 const loginThrottle = createLoginThrottle();
+// Le code de récupération fait 8 caractères : on limite les essais pour qu'il
+// ne puisse pas être deviné par répétition.
+const recoveryThrottle = createLoginThrottle({
+  keyField: 'contact',
+  maxAttempts: 6,
+});
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET?.trim();
@@ -51,14 +60,16 @@ function firstValidationError(req, res) {
   return false;
 }
 
-function generateVerificationCode() {
-  return crypto.randomInt(100000, 1000000).toString();
-}
 
-// Demander une réinitialisation de mot de passe.
+// Récupération de mot de passe sans e-mail ni SMS.
+//
+// L'identité est prouvée par le code de récupération remis à l'inscription :
+// connaître une adresse ne suffit pas à prendre un compte. Le serveur renvoie
+// alors un mot de passe temporaire que l'application affiche deux minutes.
 router.post('/forgot-password', [
   body('contact').trim().notEmpty().withMessage('Email ou téléphone requis'),
   body('contactType').trim().notEmpty().withMessage('Type de contact requis (email ou phone)'),
+  body('recoveryCode').trim().notEmpty().withMessage('Code de récupération requis'),
 ], async (req, res) => {
   if (firstValidationError(req, res)) return;
 
@@ -67,128 +78,57 @@ router.post('/forgot-password', [
     return res.status(400).json({ error: 'Type de contact invalide (email ou phone)' });
   }
 
+  const retryAfter = recoveryThrottle.retryAfterSeconds(req);
+  if (retryAfter > 0) {
+    res.set('Retry-After', String(retryAfter));
+    return res.status(429).json({
+      code: 'TOO_MANY_ATTEMPTS',
+      error:
+        'Trop d’essais avec ce code de récupération. Réessayez dans quelques minutes.',
+    });
+  }
+
+  if (!hashRecoveryCode(req.body.recoveryCode)) {
+    return res.status(400).json({
+      code: 'RECOVERY_CODE_INVALID',
+      error: 'Code de récupération incomplet : 8 caractères attendus.',
+    });
+  }
+
   const contact = String(req.body.contact).trim();
-  const normalizedContact = contactType === 'email'
-    ? normalizeEmail(contact)
-    : normalizePhone(contact);
 
   try {
     const userResult = contactType === 'email'
       ? await pool.query(
-          'SELECT id, email, phone, first_name, last_name FROM users WHERE LOWER(email) = $1',
-          [normalizedContact],
+          'SELECT id, email, phone, recovery_code_hash FROM users WHERE LOWER(email) = $1',
+          [normalizeEmail(contact)],
         )
       : await pool.query(
-          'SELECT id, email, phone, first_name, last_name FROM users WHERE phone = ANY($1::text[])',
+          'SELECT id, email, phone, recovery_code_hash FROM users WHERE phone = ANY($1::text[])',
           [getPhoneCandidates(contact)],
         );
 
-    // Ne pas révéler si le compte existe ou non.
-    if (userResult.rows.length === 0) {
-      return res.json({
-        success: true,
-        message: 'Si un compte existe avec ces informations, un code de vérification sera envoyé.',
-      });
-    }
+    // Message unique : il ne doit révéler ni l'existence du compte, ni la
+    // validité du code.
+    const refusal = {
+      code: 'RECOVERY_DENIED',
+      error: 'Identifiant ou code de récupération incorrect.',
+    };
 
     const user = userResult.rows[0];
-    const userContact = contactType === 'email' ? user.email : user.phone;
-    const code = generateVerificationCode();
-    const expiresAt = new Date(Date.now() + RESET_CODE_EXPIRY_MINUTES * 60 * 1000);
-
-    await pool.query(
-      'DELETE FROM password_reset_codes WHERE user_id = $1 AND used = FALSE',
-      [user.id],
-    );
-    await pool.query(
-      `INSERT INTO password_reset_codes (user_id, code, contact, contact_type, expires_at)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [user.id, code, userContact, contactType, expiresAt],
-    );
-
-    let delivery;
-    try {
-      delivery = await sendVerificationCode(
-        userContact,
-        contactType,
-        code,
-        `${user.first_name || 'Client'} ${user.last_name || ''}`.trim(),
-      );
-    } catch (deliveryError) {
-      console.error('❌ Erreur envoi code:', deliveryError);
-      delivery = { success: false };
+    if (
+      !user ||
+      !matchesRecoveryCodeHash(req.body.recoveryCode, user.recovery_code_hash)
+    ) {
+      recoveryThrottle.registerFailure(req);
+      return res.status(400).json(refusal);
     }
 
-    if (!delivery.success && process.env.NODE_ENV === 'production') {
-      // Deux causes très différentes, à distinguer dans les journaux Render :
-      // le canal n'a pas de clé, ou le fournisseur a refusé l'envoi.
-      console.error(
-        `❌ Code de réinitialisation non envoyé (${contactType}) : ` +
-          (delivery.configured === false
-            ? 'canal non configuré sur le serveur'
-            : 'le fournisseur a refusé l’envoi'),
-      );
-      return res.status(503).json({
-        code: 'DELIVERY_UNAVAILABLE',
-        error: 'Service d’envoi du code indisponible',
-      });
-    }
+    recoveryThrottle.reset(req);
 
-    return res.json({
-      success: true,
-      message: 'Code de vérification envoyé avec succès',
-      ...(process.env.NODE_ENV !== 'production' && { verificationCode: code }),
-      contactInfo: userContact,
-      contactType,
-    });
-  } catch (error) {
-    return sendAuthError(res, error, '❌ Erreur forgot-password');
-  }
-});
-
-// Vérifier le code et créer un token temporaire.
-router.post('/verify-code', [
-  body('code').trim().isLength({ min: 6, max: 6 }).withMessage('Code à 6 chiffres requis'),
-  body('contact').trim().notEmpty().withMessage('Contact requis'),
-], async (req, res) => {
-  if (firstValidationError(req, res)) return;
-
-  const code = String(req.body.code).trim();
-  const identifier = normalizeIdentifier(req.body.contact);
-
-  try {
-    const result = await pool.query(
-      `SELECT prc.id, prc.user_id
-       FROM password_reset_codes prc
-       JOIN users u ON u.id = prc.user_id
-       WHERE prc.code = $1
-         AND (LOWER(u.email) = $2 OR u.phone = ANY($3::text[]))
-         AND prc.used = FALSE
-         AND prc.expires_at > NOW()
-       ORDER BY prc.created_at DESC
-       LIMIT 1`,
-      [code, identifier.email, identifier.phoneCandidates],
-    );
-
-    if (result.rows.length === 0) {
-      return res.status(400).json({ error: 'Code invalide ou expiré' });
-    }
-
-    const resetRecord = result.rows[0];
-    await pool.query(
-      'UPDATE password_reset_codes SET used = TRUE WHERE id = $1',
-      [resetRecord.id],
-    );
-
-    const tempToken = jwt.sign(
-      { userId: resetRecord.user_id, type: 'password_reset' },
-      getJwtSecret(),
-      { expiresIn: '15min' },
-    );
-
-    // Le mot de passe temporaire est créé ici, une fois l'identité vérifiée par
-    // le code : il est haché immédiatement et renvoyé une seule fois. Il reste
-    // utilisable jusqu'à ce que le client choisisse le sien.
+    // Identité prouvée par le code de récupération : aucun e-mail ni SMS n'est
+    // envoyé. Le mot de passe temporaire est haché ici et renvoyé une seule
+    // fois à l'application, qui l'affiche deux minutes.
     const temporaryPassword = generateTemporaryPassword();
     const temporaryHash = await bcrypt.hash(temporaryPassword, 10);
     await pool.query(
@@ -197,19 +137,37 @@ router.post('/verify-code', [
               must_change_password = TRUE,
               updated_at = CURRENT_TIMESTAMP
         WHERE id = $2`,
-      [temporaryHash, resetRecord.user_id],
+      [temporaryHash, user.id],
+    );
+
+    const tempToken = jwt.sign(
+      { userId: user.id, type: 'password_reset' },
+      getJwtSecret(),
+      { expiresIn: '15min' },
     );
 
     return res.json({
       success: true,
-      message: 'Code vérifié. Voici votre mot de passe temporaire.',
-      tempToken,
+      message:
+        'Code de récupération vérifié. Voici votre mot de passe temporaire.',
       temporaryPassword,
       displaySeconds: TEMPORARY_PASSWORD_DISPLAY_SECONDS,
+      tempToken,
     });
   } catch (error) {
-    return sendAuthError(res, error, '❌ Erreur verify-code');
+    return sendAuthError(res, error, '❌ Erreur forgot-password');
   }
+});
+
+// Ancienne étape « code reçu par e-mail ou SMS » : supprimée. Une application
+// encore à jour reçoit 410 et doit se mettre à jour pour utiliser le code de
+// récupération.
+router.post('/verify-code', (req, res) => {
+  res.status(410).json({
+    code: 'CODE_CHANNEL_REMOVED',
+    error:
+      'Cette étape a été remplacée : mettez l’application à jour et utilisez votre code de récupération.',
+  });
 });
 
 // Réinitialiser le mot de passe avec le token temporaire.
@@ -347,11 +305,18 @@ router.post('/register', [
     const role = 'client';
     const hashedPassword = await bcrypt.hash(password, 10);
 
+    // Code de récupération : remis une seule fois au client à la création du
+    // compte, seule son empreinte est conservée. C'est lui qui remplace l'envoi
+    // d'un code par e-mail ou SMS.
+    const recoveryCode = generateRecoveryCode();
+    const recoveryCodeHash = hashRecoveryCode(recoveryCode);
+
     const result = await pool.query(
-      `INSERT INTO users (first_name, last_name, email, phone, password_hash, role)
-       VALUES ($1, $2, $3, $4, $5, $6)
+      `INSERT INTO users
+         (first_name, last_name, email, phone, password_hash, role, recovery_code_hash)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
        RETURNING id, first_name, last_name, email, phone, role, created_at`,
-      [firstName, lastName, email, phone, hashedPassword, role],
+      [firstName, lastName, email, phone, hashedPassword, role, recoveryCodeHash],
     );
     const user = result.rows[0];
     const token = jwt.sign(
@@ -371,6 +336,9 @@ router.post('/register', [
         role: user.role,
         mustChangePassword: false,
       },
+      // Affiché une seule fois dans l'application : sans lui, pas de
+      // récupération possible sans passer par l'administration.
+      recoveryCode,
       token,
     });
   } catch (error) {

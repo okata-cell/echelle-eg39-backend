@@ -32,6 +32,7 @@ class AccountCredentials {
     required this.email,
     required this.phone,
     required this.password,
+    this.recoveryCode,
     this.isPendingSync = false,
   });
 
@@ -43,7 +44,14 @@ class AccountCredentials {
   final String phone;
   final String password;
 
-  /// `true` quand l’inscription attend encore le réseau.
+  /// Code `EG39-XXXX-XXXX` remis par le serveur à la création du compte.
+  ///
+  /// C'est la seule preuve d'identité utilisable en cas de mot de passe
+  /// oublié : sans e-mail ni SMS, il est indispensable. `null` quand
+  /// l'inscription attend encore la synchronisation.
+  final String? recoveryCode;
+
+  /// `true` quand l'inscription attend encore le réseau.
   final bool isPendingSync;
 
   String get fullName => [
@@ -60,11 +68,22 @@ class AccountCredentials {
       ..writeln('ÉCHELLE EG39 — Identifiants de compte')
       ..writeln('E-mail : $email')
       ..writeln('Téléphone : $phoneDisplay')
-      ..writeln('Mot de passe : $password')
+      ..writeln('Mot de passe : $password');
+
+    final code = recoveryCode?.trim() ?? '';
+    if (code.isNotEmpty) {
+      buffer.writeln('Code de récupération : $code');
+    }
+
+    buffer
       ..writeln()
       ..write(
-        'Gardez ces coordonnées dans un endroit sûr : elles sont nécessaires '
-        'pour vous reconnecter plus tard.',
+        code.isEmpty
+            ? 'Gardez ces coordonnées dans un endroit sûr : elles sont '
+                  'nécessaires pour vous reconnecter plus tard.'
+            : 'Gardez ces coordonnées dans un endroit sûr. Le code de '
+                  'récupération permet de retrouver l’accès si vous oubliez '
+                  'votre mot de passe.',
       );
     return buffer.toString();
   }
@@ -218,6 +237,7 @@ class _AccountCredentialsDialogState extends State<AccountCredentialsDialog> {
   @override
   Widget build(BuildContext context) {
     final credentials = widget.credentials;
+    final recoveryCode = (credentials.recoveryCode ?? '').trim();
     final subtitle = credentials.isPendingSync
         ? 'L’inscription de ${credentials.fullName} est enregistrée. '
               'Voici ce qu’il faut conserver.'
@@ -333,6 +353,19 @@ class _AccountCredentialsDialogState extends State<AccountCredentialsDialog> {
                               value: credentials.password,
                               isPassword: true,
                             ),
+                            if (recoveryCode.isNotEmpty) ...[
+                              const Divider(
+                                height: 1,
+                                thickness: 1,
+                                color: _rowDivider,
+                              ),
+                              _credentialRow(
+                                icon: Icons.pin_outlined,
+                                label: 'Code de récupération',
+                                value: recoveryCode,
+                                isPassword: true,
+                              ),
+                            ],
                           ],
                         ),
                       ),
@@ -373,9 +406,12 @@ class _AccountCredentialsDialogState extends State<AccountCredentialsDialog> {
                                   ),
                                   children: [
                                     TextSpan(
-                                      text:
-                                          'Elles sont nécessaires pour vous '
-                                          'reconnecter plus tard.',
+                                      text: recoveryCode.isEmpty
+                                          ? 'Elles sont nécessaires pour vous '
+                                                'reconnecter plus tard.'
+                                          : 'Le code de récupération permet de '
+                                                'retrouver l’accès si vous '
+                                                'oubliez votre mot de passe.',
                                       style: _text(
                                         11,
                                         FontWeight.w400,

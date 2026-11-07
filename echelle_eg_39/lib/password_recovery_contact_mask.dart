@@ -9,7 +9,11 @@ extension RecoveryContactTypeApiValue on RecoveryContactType {
 }
 
 typedef PasswordResetCodeRequester =
-    Future<Map<String, dynamic>> Function(String contact, String contactType);
+    Future<Map<String, dynamic>> Function(
+      String contact,
+      String contactType,
+      String recoveryCode,
+    );
 typedef PasswordResetCodeVerifier =
     Future<Map<String, dynamic>> Function(String code, String contact);
 typedef PasswordUpdater =

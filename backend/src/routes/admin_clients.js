@@ -6,6 +6,10 @@ const {
   revokeAccount,
   restoreAccount,
 } = require('../services/session_revocation');
+const {
+  generateRecoveryCode,
+  hashRecoveryCode,
+} = require('../utils/recovery_code');
 
 const router = express.Router();
 
@@ -152,5 +156,62 @@ router.patch('/:id/status', authMiddleware, adminMiddleware, async (req, res) =>
     return res.status(500).json({ error: 'Erreur serveur lors du changement de statut' });
   }
 });
+
+// Régénérer le code de récupération d'un client.
+//
+// Cas d'usage : le client a perdu son code. L'administration vérifie son
+// identité par téléphone, génère un nouveau code et le lui dicte. Le code en
+// clair n'existe que dans cette réponse.
+router.post(
+  '/:id/recovery-code',
+  authMiddleware,
+  adminMiddleware,
+  async (req, res) => {
+    const userId = parseClientId(req.params.id);
+    if (!userId) {
+      return res.status(400).json({ error: 'Identifiant client invalide' });
+    }
+
+    const recoveryCode = generateRecoveryCode();
+    const recoveryCodeHash = hashRecoveryCode(recoveryCode);
+    if (!recoveryCodeHash) {
+      return res
+        .status(503)
+        .json({ error: 'Service indisponible : secret serveur manquant.' });
+    }
+
+    try {
+      const result = await pool.query(
+        `UPDATE users
+            SET recovery_code_hash = $1, updated_at = CURRENT_TIMESTAMP
+          WHERE id = $2 AND role <> 'admin'
+          RETURNING id, first_name, last_name, phone, email`,
+        [recoveryCodeHash, userId],
+      );
+
+      if (result.rows.length === 0) {
+        return res.status(404).json({ error: 'Client introuvable' });
+      }
+
+      const client = result.rows[0];
+      res.set('Cache-Control', 'no-store');
+      return res.json({
+        recoveryCode,
+        client: {
+          id: client.id,
+          firstName: client.first_name,
+          lastName: client.last_name,
+          phone: client.phone,
+          email: client.email,
+        },
+      });
+    } catch (error) {
+      console.error('Erreur régénération code de récupération:', error);
+      return res
+        .status(500)
+        .json({ error: 'Impossible de générer le code de récupération' });
+    }
+  },
+);
 
 module.exports = router;

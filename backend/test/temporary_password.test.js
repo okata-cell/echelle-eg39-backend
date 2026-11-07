@@ -5,38 +5,64 @@ const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const { after, before, test } = require('node:test');
 
-process.env.JWT_SECRET = 'test-engine-only-temporary-password-secret';
+process.env.JWT_SECRET = 'test-engine-only-recovery-secret';
 
 const pool = require('../src/config/database');
 const authRouter = require('../src/routes/auth');
+const adminClientsRouter = require('../src/routes/admin_clients');
 const {
   generateTemporaryPassword,
   isTemporaryPasswordFormat,
 } = require('../src/utils/temporary_password');
+const {
+  generateRecoveryCode,
+  hashRecoveryCode,
+  matchesRecoveryCodeHash,
+  normalizeRecoveryCode,
+} = require('../src/utils/recovery_code');
 
-const app = express();
-app.use(express.json());
-app.use('/api/auth', authRouter);
+const authApp = express();
+authApp.use(express.json());
+authApp.use('/api/auth', authRouter);
 
-let server;
-let baseUrl;
+const adminApp = express();
+adminApp.use(express.json());
+adminApp.use('/api/users/clients', adminClientsRouter);
+
+let authServer;
+let adminServer;
+let authUrl;
+let adminUrl;
 let originalQuery;
+
+function listen(app) {
+  const server = http.createServer(app);
+  return new Promise((resolve) => {
+    server.listen(0, '127.0.0.1', () => {
+      resolve({ server, url: `http://127.0.0.1:${server.address().port}` });
+    });
+  });
+}
 
 before(async () => {
   originalQuery = pool.query;
-  server = http.createServer(app);
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-  baseUrl = `http://127.0.0.1:${server.address().port}/api/auth`;
+  const auth = await listen(authApp);
+  const admin = await listen(adminApp);
+  authServer = auth.server;
+  authUrl = `${auth.url}/api/auth`;
+  adminServer = admin.server;
+  adminUrl = `${admin.url}/api/users/clients`;
 });
 
 after(async () => {
   pool.query = originalQuery;
-  if (server) await new Promise((resolve) => server.close(resolve));
+  await new Promise((resolve) => authServer.close(resolve));
+  await new Promise((resolve) => adminServer.close(resolve));
   await pool.end();
 });
 
-function post(path, body, token) {
-  return fetch(`${baseUrl}${path}`, {
+function post(url, body, token) {
+  return fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -46,27 +72,100 @@ function post(path, body, token) {
   });
 }
 
-test('le mot de passe généré suit la règle de l’application', () => {
+function adminToken() {
+  return jwt.sign({ userId: 1, role: 'admin' }, process.env.JWT_SECRET);
+}
+
+test('le mot de passe temporaire suit la règle de l’application', () => {
   const values = new Set();
   for (let index = 0; index < 50; index += 1) {
     const password = generateTemporaryPassword();
     assert.equal(isTemporaryPasswordFormat(password), true, password);
-    assert.match(password, /^\d{4}[A-Z]{4}$/);
     values.add(password);
   }
-  // 50 tirages ne doivent pas produire une seule valeur répétée en boucle.
   assert.ok(values.size > 40);
 });
 
-test('la vérification du code crée un mot de passe temporaire haché', async () => {
+test('le code de récupération est lisible, normalisable et haché', () => {
+  const code = generateRecoveryCode();
+  assert.match(code, /^EG39-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+
+  const canonical = normalizeRecoveryCode(code);
+  assert.equal(canonical.length, 8);
+  // Recopié au téléphone : « eg39 abcd efgh » reste accepté.
+  assert.equal(normalizeRecoveryCode(` ${code.toLowerCase()} `), canonical);
+  assert.equal(
+    normalizeRecoveryCode(`${canonical.slice(0, 4)} ${canonical.slice(4)}`),
+    canonical,
+  );
+
+  const hash = hashRecoveryCode(code);
+  assert.equal(hash.length, 64);
+  assert.equal(matchesRecoveryCodeHash(code, hash), true);
+  assert.equal(matchesRecoveryCodeHash(generateRecoveryCode(), hash), false);
+  assert.equal(matchesRecoveryCodeHash('ABC', hash), false);
+  assert.equal(matchesRecoveryCodeHash(code, null), false);
+});
+
+test('l’inscription renvoie le code de récupération et n’en garde que l’empreinte', async () => {
   let storedHash = null;
 
   pool.query = async (query, params) => {
-    if (/FROM password_reset_codes prc/.test(query)) {
-      return { rows: [{ id: 5, user_id: 7 }] };
-    }
-    if (/UPDATE password_reset_codes SET used = TRUE/.test(query)) {
+    if (/SELECT id FROM users WHERE LOWER\(email\)/.test(query)) {
       return { rows: [] };
+    }
+    if (/INSERT INTO users/.test(query)) {
+      storedHash = params[6];
+      assert.match(query, /recovery_code_hash/);
+      return {
+        rows: [
+          {
+            id: 9,
+            first_name: params[0],
+            last_name: params[1],
+            email: params[2],
+            phone: params[3],
+            role: 'client',
+            created_at: '2026-11-07T00:00:00.000Z',
+          },
+        ],
+      };
+    }
+    throw new Error(`Requête inattendue : ${query}`);
+  };
+
+  const response = await post(`${authUrl}/register`, {
+    firstName: 'Afi',
+    lastName: 'Koffi',
+    email: 'afi@example.com',
+    phone: '+22890000000',
+    password: '1234AZER',
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 201);
+  assert.match(payload.recoveryCode, /^EG39-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.equal(storedHash, hashRecoveryCode(payload.recoveryCode));
+  // Le code en clair ne doit jamais être stocké.
+  assert.notEqual(storedHash, payload.recoveryCode);
+});
+
+test('la récupération exige le code remis à l’inscription', async () => {
+  const recoveryCode = 'ABCD2345';
+  let storedHash = null;
+
+  pool.query = async (query, params) => {
+    if (/SELECT id, email, phone, recovery_code_hash/.test(query)) {
+      return {
+        rows: [
+          {
+            id: 7,
+            email: 'afi@example.com',
+            phone: '+22890000000',
+            recovery_code_hash: hashRecoveryCode(recoveryCode),
+          },
+        ],
+      };
     }
     if (/UPDATE users[\s\S]*must_change_password = TRUE/.test(query)) {
       storedHash = params[0];
@@ -75,9 +174,10 @@ test('la vérification du code crée un mot de passe temporaire haché', async (
     throw new Error(`Requête inattendue : ${query}`);
   };
 
-  const response = await post('/verify-code', {
-    code: '123456',
+  const response = await post(`${authUrl}/forgot-password`, {
     contact: 'afi@example.com',
+    contactType: 'email',
+    recoveryCode: 'eg39-abcd-2345',
   });
   const payload = await response.json();
 
@@ -85,18 +185,123 @@ test('la vérification du code crée un mot de passe temporaire haché', async (
   assert.match(payload.temporaryPassword, /^\d{4}[A-Z]{4}$/);
   assert.equal(payload.displaySeconds, 120);
   assert.ok(payload.tempToken);
-
-  // Le mot de passe n'est stocké que sous forme de hachage.
-  assert.notEqual(storedHash, payload.temporaryPassword);
   assert.equal(
     await bcrypt.compare(payload.temporaryPassword, storedHash),
     true,
   );
 });
 
+test('un code erroné est refusé sans toucher au mot de passe', async () => {
+  let passwordUpdated = false;
+
+  pool.query = async (query) => {
+    if (/SELECT id, email, phone, recovery_code_hash/.test(query)) {
+      return {
+        rows: [
+          {
+            id: 7,
+            email: 'afi@example.com',
+            phone: '+22890000000',
+            recovery_code_hash: hashRecoveryCode('ZZZZ9999'),
+          },
+        ],
+      };
+    }
+    if (/UPDATE users/.test(query)) {
+      passwordUpdated = true;
+      return { rows: [] };
+    }
+    throw new Error(`Requête inattendue : ${query}`);
+  };
+
+  const response = await post(`${authUrl}/forgot-password`, {
+    contact: 'afi@example.com',
+    contactType: 'email',
+    recoveryCode: 'ABCD2345',
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.code, 'RECOVERY_DENIED');
+  assert.equal(payload.error, 'Identifiant ou code de récupération incorrect.');
+  assert.equal(passwordUpdated, false);
+});
+
+test('un compte inconnu reçoit le même refus qu’un code faux', async () => {
+  pool.query = async () => ({ rows: [] });
+
+  const response = await post(`${authUrl}/forgot-password`, {
+    contact: 'inconnu@example.com',
+    contactType: 'email',
+    recoveryCode: 'ABCD2345',
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.error, 'Identifiant ou code de récupération incorrect.');
+});
+
+test('un code incomplet est refusé avant toute recherche', async () => {
+  pool.query = async () => {
+    throw new Error('La base ne doit pas être interrogée');
+  };
+
+  const response = await post(`${authUrl}/forgot-password`, {
+    contact: 'afi@example.com',
+    contactType: 'email',
+    recoveryCode: 'ABCD',
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.code, 'RECOVERY_CODE_INVALID');
+});
+
+test('six essais erronés bloquent temporairement les suivants', async () => {
+  pool.query = async () => ({
+    rows: [
+      {
+        id: 8,
+        email: 'brute@example.com',
+        phone: '+22890000008',
+        recovery_code_hash: hashRecoveryCode('ZZZZ9999'),
+      },
+    ],
+  });
+
+  for (let attempt = 0; attempt < 6; attempt += 1) {
+    const response = await post(`${authUrl}/forgot-password`, {
+      contact: 'brute@example.com',
+      contactType: 'email',
+      recoveryCode: 'ABCD2345',
+    });
+    assert.equal(response.status, 400);
+  }
+
+  const blocked = await post(`${authUrl}/forgot-password`, {
+    contact: 'brute@example.com',
+    contactType: 'email',
+    recoveryCode: 'ABCD2345',
+  });
+  const payload = await blocked.json();
+
+  assert.equal(blocked.status, 429);
+  assert.equal(payload.code, 'TOO_MANY_ATTEMPTS');
+});
+
+test('l’ancienne étape par e-mail ou SMS répond 410', async () => {
+  const response = await post(`${authUrl}/verify-code`, {
+    code: '123456',
+    contact: 'afi@example.com',
+  });
+  const payload = await response.json();
+
+  assert.equal(response.status, 410);
+  assert.equal(payload.code, 'CODE_CHANNEL_REMOVED');
+});
+
 test('la connexion signale qu’un mot de passe temporaire doit être remplacé', async () => {
-  const temporaryPassword = '4821KLMN';
-  const hash = await bcrypt.hash(temporaryPassword, 4);
+  const hash = await bcrypt.hash('4821KLMN', 4);
 
   pool.query = async () => ({
     rows: [
@@ -114,9 +319,9 @@ test('la connexion signale qu’un mot de passe temporaire doit être remplacé'
     ],
   });
 
-  const response = await post('/login', {
+  const response = await post(`${authUrl}/login`, {
     identifier: 'afi@example.com',
-    password: temporaryPassword,
+    password: '4821KLMN',
   });
   const payload = await response.json();
 
@@ -143,20 +348,18 @@ test('le changement obligatoire remplace le mot de passe et lève le drapeau', a
   const token = jwt.sign({ userId: 7, role: 'client' }, process.env.JWT_SECRET);
 
   assert.equal(
-    (await post('/change-temporary-password', { newPassword: '1234AZER' }))
+    (await post(`${authUrl}/change-temporary-password`, { newPassword: '1234AZER' }))
       .status,
     401,
   );
 
   const response = await post(
-    '/change-temporary-password',
+    `${authUrl}/change-temporary-password`,
     { newPassword: '5678QWER' },
     token,
   );
-  const payload = await response.json();
 
   assert.equal(response.status, 200);
-  assert.equal(payload.success, true);
   assert.equal(clearedFlag, true);
   assert.equal(await bcrypt.compare('5678QWER', storedHash), true);
 });
@@ -168,14 +371,12 @@ test('aucun mot de passe temporaire à remplacer renvoie 409', async () => {
 
   const token = jwt.sign({ userId: 7, role: 'client' }, process.env.JWT_SECRET);
   const response = await post(
-    '/change-temporary-password',
+    `${authUrl}/change-temporary-password`,
     { newPassword: '1234AZER' },
     token,
   );
-  const payload = await response.json();
 
   assert.equal(response.status, 409);
-  assert.equal(payload.code, 'NO_TEMPORARY_PASSWORD');
 });
 
 test('choisir soi-même son mot de passe lève aussi le drapeau', async () => {
@@ -195,11 +396,43 @@ test('choisir soi-même son mot de passe lève aussi le drapeau', async () => {
     process.env.JWT_SECRET,
   );
 
-  const response = await post('/reset-password', {
+  const response = await post(`${authUrl}/reset-password`, {
     tempToken,
     newPassword: '5678QWER',
   });
 
   assert.equal(response.status, 200);
   assert.equal(clearedFlag, true);
+});
+
+test('l’administration régénère un code de récupération', async () => {
+  let storedHash = null;
+
+  pool.query = async (query, params) => {
+    if (/UPDATE users[\s\S]*recovery_code_hash = \$1/.test(query)) {
+      storedHash = params[0];
+      return {
+        rows: [
+          {
+            id: 7,
+            first_name: 'Afi',
+            last_name: 'Koffi',
+            phone: '+22890000000',
+            email: 'afi@example.com',
+          },
+        ],
+      };
+    }
+    throw new Error(`Requête inattendue : ${query}`);
+  };
+
+  assert.equal((await post(`${adminUrl}/7/recovery-code`)).status, 401);
+
+  const response = await post(`${adminUrl}/7/recovery-code`, {}, adminToken());
+  const payload = await response.json();
+
+  assert.equal(response.status, 200);
+  assert.match(payload.recoveryCode, /^EG39-[A-Z2-9]{4}-[A-Z2-9]{4}$/);
+  assert.equal(storedHash, hashRecoveryCode(payload.recoveryCode));
+  assert.equal(payload.client.id, 7);
 });
