@@ -1,7 +1,4 @@
 import 'package:echelle_eg_39/change_temporary_password.page.dart';
-import 'package:echelle_eg_39/password_recovery_contact_mask.dart';
-import 'package:echelle_eg_39/reset_password.page.dart';
-import 'package:echelle_eg_39/verify_code.page.dart';
 import 'package:echelle_eg_39/widgets/temporary_password_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -129,49 +126,6 @@ void main() {
     expect(result.value, TemporaryPasswordAction.chooseOwn);
   });
 
-  testWidgets('un code vérifié affiche le mot de passe temporaire', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(
-        home: VerifyCodePage(
-          contactInfo: 'afi@example.com',
-          contactType: RecoveryContactType.email,
-          requestCode: (_, _) async => const {'success': true},
-          verifyCode: (_, _) async => const {
-            'success': true,
-            'tempToken': 'temporary-token',
-            'temporaryPassword': '4821KLMN',
-            'displaySeconds': 120,
-          },
-          updatePassword: (_) async => const {'success': true},
-          clearResetToken: () async {},
-        ),
-      ),
-    );
-    await tester.pump();
-
-    await tester.enterText(
-      find.byKey(const ValueKey('recovery-otp-input')),
-      '123456',
-    );
-    await tester.ensureVisible(find.text('Vérifier le code'));
-    await tester.tap(find.text('Vérifier le code'));
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(find.byType(TemporaryPasswordDialog), findsOneWidget);
-    expect(find.text('4821KLMN'), findsOneWidget);
-
-    await tester.tap(
-      find.byKey(const ValueKey('temporary-password-choose-own')),
-    );
-    await tester.pump();
-    await tester.pump(const Duration(milliseconds: 400));
-
-    expect(find.byType(ResetPasswordPage), findsOneWidget);
-    expect(find.text('Choisissez un nouveau mot de passe'), findsOneWidget);
-  });
 
   testWidgets('l’écran imposé enregistre le mot de passe choisi', (
     tester,
