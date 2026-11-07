@@ -15,6 +15,10 @@ const {
 } = require('../utils/identifiers');
 const { hashIdentifiers } = require('../utils/identifier_hash');
 const { revokeAccount } = require('../services/session_revocation');
+const {
+  TEMPORARY_PASSWORD_DISPLAY_SECONDS,
+  generateTemporaryPassword,
+} = require('../utils/temporary_password');
 
 const router = express.Router();
 const RESET_CODE_EXPIRY_MINUTES = 15;
@@ -171,10 +175,26 @@ router.post('/verify-code', [
       { expiresIn: '15min' },
     );
 
+    // Le mot de passe temporaire est créé ici, une fois l'identité vérifiée par
+    // le code : il est haché immédiatement et renvoyé une seule fois. Il reste
+    // utilisable jusqu'à ce que le client choisisse le sien.
+    const temporaryPassword = generateTemporaryPassword();
+    const temporaryHash = await bcrypt.hash(temporaryPassword, 10);
+    await pool.query(
+      `UPDATE users
+          SET password_hash = $1,
+              must_change_password = TRUE,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2`,
+      [temporaryHash, resetRecord.user_id],
+    );
+
     return res.json({
       success: true,
-      message: 'Code vérifié avec succès',
+      message: 'Code vérifié. Voici votre mot de passe temporaire.',
       tempToken,
+      temporaryPassword,
+      displaySeconds: TEMPORARY_PASSWORD_DISPLAY_SECONDS,
     });
   } catch (error) {
     return sendAuthError(res, error, '❌ Erreur verify-code');
@@ -198,8 +218,14 @@ router.post('/reset-password', [
     }
 
     const hashedPassword = await bcrypt.hash(req.body.newPassword, 10);
+    // Le client choisit lui-même son mot de passe : plus rien à remplacer.
     const result = await pool.query(
-      'UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2 RETURNING id',
+      `UPDATE users
+          SET password_hash = $1,
+              must_change_password = FALSE,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2
+        RETURNING id`,
       [hashedPassword, decoded.userId],
     );
 
@@ -218,6 +244,58 @@ router.post('/reset-password', [
       return res.status(401).json({ error: 'Token expiré ou invalide' });
     }
     return sendAuthError(res, error, '❌ Erreur reset-password');
+  }
+});
+
+// Remplacer le mot de passe temporaire par un mot de passe choisi.
+//
+// La session en cours prouve que le client connaît déjà le mot de passe
+// temporaire : il n'a donc pas à le ressaisir. La route n'accepte que les
+// comptes effectivement marqués comme « mot de passe à remplacer ».
+router.post('/change-temporary-password', authMiddleware, [
+  body('newPassword')
+    .isLength({ min: 6 }).withMessage('Mot de passe minimum 6 caractères')
+    .matches(/[a-zA-Z]/).withMessage('Doit contenir des lettres')
+    .matches(/[0-9]/).withMessage('Doit contenir des chiffres'),
+], async (req, res) => {
+  if (firstValidationError(req, res)) return;
+
+  const userId = req.user.userId;
+  const newPassword = String(req.body.newPassword);
+
+  try {
+    const found = await pool.query(
+      'SELECT id, must_change_password FROM users WHERE id = $1',
+      [userId],
+    );
+
+    if (found.rows.length === 0) {
+      return res.status(404).json({ error: 'Compte introuvable' });
+    }
+
+    if (found.rows[0].must_change_password !== true) {
+      return res.status(409).json({
+        code: 'NO_TEMPORARY_PASSWORD',
+        error: 'Aucun mot de passe temporaire à remplacer sur ce compte.',
+      });
+    }
+
+    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    await pool.query(
+      `UPDATE users
+          SET password_hash = $1,
+              must_change_password = FALSE,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2`,
+      [hashedPassword, userId],
+    );
+
+    return res.json({
+      success: true,
+      message: 'Votre mot de passe est enregistré.',
+    });
+  } catch (error) {
+    return sendAuthError(res, error, '❌ Erreur changement mot de passe temporaire');
   }
 });
 
@@ -280,6 +358,7 @@ router.post('/register', [
         email: user.email,
         phone: user.phone,
         role: user.role,
+        mustChangePassword: false,
       },
       token,
     });
@@ -387,6 +466,9 @@ router.post('/login', [
         email: user.email,
         phone: user.phone,
         role: user.role,
+        // Vrai après une récupération : l'application impose alors de choisir
+        // un mot de passe définitif.
+        mustChangePassword: user.must_change_password === true,
       },
       token,
     });
@@ -399,7 +481,9 @@ router.post('/login', [
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      'SELECT id, first_name, last_name, email, phone, role, created_at FROM users WHERE id = $1',
+      `SELECT id, first_name, last_name, email, phone, role, created_at,
+              must_change_password
+         FROM users WHERE id = $1`,
       [req.user.userId],
     );
 
@@ -416,6 +500,7 @@ router.get('/me', authMiddleware, async (req, res) => {
       phone: user.phone,
       role: user.role,
       createdAt: user.created_at,
+      mustChangePassword: user.must_change_password === true,
     });
   } catch (error) {
     return sendAuthError(res, error, '❌ Erreur profil');

@@ -164,7 +164,13 @@ test('le changement de mot de passe vérifie le mot de passe actuel', async () =
   let updatedHash;
   pool.query = async (query, params) => {
     if (/SELECT password_hash/.test(query)) return { rows: [{ password_hash: passwordHash }] };
-    if (/UPDATE users SET password_hash/.test(query)) { updatedHash = params[0]; return { rows: [] }; }
+    if (/UPDATE users\s+SET password_hash/.test(query)) {
+      // Un mot de passe choisi ici remplace aussi un éventuel mot de passe
+      // temporaire : le drapeau doit être remis à faux.
+      assert.match(query, /must_change_password = FALSE/);
+      updatedHash = params[0];
+      return { rows: [] };
+    }
     throw new Error(`Requête inattendue: ${query}`);
   };
 

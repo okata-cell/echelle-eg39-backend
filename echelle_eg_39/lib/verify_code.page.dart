@@ -3,9 +3,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import 'login.page.dart';
 import 'password_recovery_contact_mask.dart';
 import 'password_recovery_scaffold.dart';
 import 'reset_password.page.dart';
+import 'widgets/temporary_password_dialog.dart';
 
 class VerifyCodePage extends StatefulWidget {
   const VerifyCodePage({
@@ -76,12 +78,36 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
       final result = await widget.verifyCode(code, widget.contactInfo);
       if (!mounted) return;
       if (result['success'] == true && result['tempToken'] != null) {
+        final temporaryPassword =
+            result['temporaryPassword']?.toString() ?? '';
         setState(() {
           _isCodeVerified = true;
-          _statusMessage =
-              'Code vérifié. Vous pouvez choisir un nouveau mot de passe.';
+          _statusMessage = temporaryPassword.isEmpty
+              ? 'Code vérifié. Vous pouvez choisir un nouveau mot de passe.'
+              : 'Code vérifié. Votre mot de passe temporaire est prêt.';
         });
-        _openPasswordReset();
+
+        // Ancien parcours (pas de mot de passe temporaire) : on enchaîne
+        // directement sur le choix du nouveau mot de passe.
+        if (temporaryPassword.isEmpty) {
+          _openPasswordReset();
+          return;
+        }
+
+        final seconds = (result['displaySeconds'] as num?)?.toInt() ?? 120;
+        final action = await showTemporaryPasswordDialog(
+          context,
+          password: temporaryPassword,
+          duration: Duration(seconds: seconds),
+        );
+        if (!mounted) return;
+
+        if (action == TemporaryPasswordAction.chooseOwn) {
+          _openPasswordReset();
+          return;
+        }
+
+        await _returnToSignInWithTemporaryPassword();
       } else {
         setState(() {
           _errorMessage =
@@ -111,6 +137,28 @@ class _VerifyCodePageState extends State<VerifyCodePage> {
           clearResetToken: widget.clearResetToken,
         ),
       ),
+    );
+  }
+
+  /// Le client garde son mot de passe temporaire : retour à la connexion avec
+  /// le rappel du changement obligatoire à la première entrée.
+  Future<void> _returnToSignInWithTemporaryPassword() async {
+    try {
+      await widget.clearResetToken();
+    } catch (_) {
+      // Un jeton orphelin ne doit pas empêcher le retour à la connexion.
+    }
+    if (!mounted) return;
+
+    Navigator.of(context).pushAndRemoveUntil(
+      MaterialPageRoute(
+        builder: (_) => const LoginPage(
+          noticeMessage:
+              'Connectez-vous avec votre mot de passe temporaire. '
+              'Vous choisirez ensuite votre mot de passe définitif.',
+        ),
+      ),
+      (route) => false,
     );
   }
 

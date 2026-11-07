@@ -42,6 +42,13 @@ async function migrate() {
       'CREATE INDEX IF NOT EXISTS users_deleted_phone_hash_idx ON users (deleted_phone_hash)',
     );
 
+    // Mot de passe temporaire de récupération : tant que ce drapeau est vrai,
+    // l'application impose de choisir un mot de passe définitif après la
+    // connexion.
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS must_change_password BOOLEAN DEFAULT FALSE',
+    );
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS appareils (
         id SERIAL PRIMARY KEY,

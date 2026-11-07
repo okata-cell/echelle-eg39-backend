@@ -3,6 +3,7 @@
 import 'package:echelle_eg_39/main.dart';
 import 'package:flutter/material.dart';
 import 'AdminDashBoard.dart';
+import 'change_temporary_password.page.dart';
 import 'register.page.dart';
 import 'forgot_password.page.dart';
 import 'demo_main.dart';
@@ -203,6 +204,21 @@ class _LoginPageState extends State<LoginPage> {
       // Sauvegarder la session
       await _saveUserSession(identifier, password, isAdmin);
       if (!mounted) return;
+
+      // Connexion avec un mot de passe temporaire (récupération de compte) :
+      // le client choisit son mot de passe définitif avant d'entrer.
+      final userPayload = result['user'];
+      final mustChangePassword =
+          userPayload is Map && userPayload['mustChangePassword'] == true;
+      if (mustChangePassword) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChangeTemporaryPasswordPage(isAdmin: isAdmin),
+          ),
+        );
+        return;
+      }
 
       if (isAdmin) {
         Navigator.pushReplacement(

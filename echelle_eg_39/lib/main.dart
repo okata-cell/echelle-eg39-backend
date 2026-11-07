@@ -14,6 +14,7 @@ import 'profile.dart';
 import 'home_page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'AdminDashBoard.dart';
+import 'change_temporary_password.page.dart';
 import 'sync_service.dart';
 import 'api_service.dart';
 
@@ -182,10 +183,10 @@ class _SplashScreenState extends State<SplashScreen> {
       // Le serveur a pu fermer cette session entre-temps (compte supprimé ou
       // désactivé). On ne rouvre pas l'application sur un accès qui n'existe
       // plus : le client revient à la connexion avec une explication.
-      final sessionState = await ApiService.checkSession();
+      final sessionCheck = await ApiService.checkSession();
       if (!mounted) return;
 
-      if (sessionState == SessionState.revoked) {
+      if (sessionCheck.isRevoked) {
         await ApiService.removeToken();
         await prefs.setBool('isLoggedIn', false);
         await prefs.remove('isAdmin');
@@ -203,6 +204,18 @@ class _SplashScreenState extends State<SplashScreen> {
               noticeMessage:
                   'Votre compte a été supprimé. Vous pouvez en créer un nouveau.',
             ),
+          ),
+        );
+        return;
+      }
+
+      // Mot de passe temporaire encore en place : le client choisit le sien
+      // avant d'entrer dans l'application.
+      if (sessionCheck.mustChangePassword) {
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChangeTemporaryPasswordPage(isAdmin: isAdmin),
           ),
         );
         return;

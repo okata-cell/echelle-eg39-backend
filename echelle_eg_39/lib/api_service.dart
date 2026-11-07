@@ -35,6 +35,18 @@ enum SessionState {
   unknown,
 }
 
+/// Résultat d'un contrôle de session auprès du serveur.
+class SessionCheck {
+  const SessionCheck(this.state, {this.mustChangePassword = false});
+
+  final SessionState state;
+
+  /// Le compte se connecte avec un mot de passe temporaire.
+  final bool mustChangePassword;
+
+  bool get isRevoked => state == SessionState.revoked;
+}
+
 class ApiException implements Exception {
   const ApiException({
     required this.type,
@@ -372,9 +384,9 @@ class ApiService {
   /// Appelé une fois au démarrage : un compte supprimé ou désactivé ne doit pas
   /// rouvrir l'application sur des écrans qui échoueraient à chaque requête.
   /// Une simple coupure réseau n'est jamais interprétée comme une révocation.
-  static Future<SessionState> checkSession() async {
+  static Future<SessionCheck> checkSession() async {
     final token = await getToken();
-    if (token == null) return SessionState.unknown;
+    if (token == null) return const SessionCheck(SessionState.unknown);
 
     try {
       final response = await http
@@ -384,20 +396,65 @@ class ApiService {
           )
           .timeout(const Duration(seconds: 5));
 
-      if (response.statusCode == 200) return SessionState.active;
+      if (response.statusCode == 200) {
+        final body = decodeObject(response.body);
+        return SessionCheck(
+          SessionState.active,
+          mustChangePassword: body?['mustChangePassword'] == true,
+        );
+      }
 
       if (response.statusCode == 401) {
         final body = decodeObject(response.body);
         final serverCode = body?['code']?.toString();
         if (serverCode == 'SESSION_REVOKED' || serverCode == 'ACCOUNT_DELETED') {
-          return SessionState.revoked;
+          return const SessionCheck(SessionState.revoked);
         }
       }
 
-      return SessionState.unknown;
+      return const SessionCheck(SessionState.unknown);
     } catch (_) {
-      return SessionState.unknown;
+      return const SessionCheck(SessionState.unknown);
     }
+  }
+
+  /// Remplace le mot de passe temporaire par un mot de passe choisi.
+  ///
+  /// Le jeton de session suffit : le client vient de prouver qu'il connaît le
+  /// mot de passe temporaire en se connectant avec.
+  static Future<void> changeTemporaryPassword(String newPassword) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message:
+            'Session expirée. Reconnectez-vous pour choisir votre mot de passe.',
+      );
+    }
+
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/auth/change-temporary-password'),
+          headers: {
+            'Authorization': 'Bearer $token',
+            'Content-Type': 'application/json',
+          },
+          body: jsonEncode({'newPassword': newPassword}),
+        )
+        .timeout(const Duration(seconds: 20));
+
+    if (response.statusCode == 200) return;
+
+    final body = decodeObject(response.body);
+    throw ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message:
+          body?['error']?.toString() ??
+          'Impossible d’enregistrer votre mot de passe.',
+      statusCode: response.statusCode,
+    );
   }
 
   /// Récupérer les comptes clients et leurs coordonnées (admin uniquement).

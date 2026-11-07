@@ -237,7 +237,16 @@ router.post('/password', authMiddleware, accountTokenRequired, [
       return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
     }
     const passwordHash = await bcrypt.hash(String(req.body.newPassword), 10);
-    await pool.query('UPDATE users SET password_hash = $1, updated_at = CURRENT_TIMESTAMP WHERE id = $2', [passwordHash, Number(req.user.userId)]);
+    // Le client choisit son mot de passe ici aussi : le drapeau de mot de passe
+    // temporaire n'a plus lieu d'être.
+    await pool.query(
+      `UPDATE users
+          SET password_hash = $1,
+              must_change_password = FALSE,
+              updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2`,
+      [passwordHash, Number(req.user.userId)],
+    );
     return res.json({ message: 'Mot de passe mis à jour.' });
   } catch (error) {
     console.error('Erreur changement mot de passe:', error);
