@@ -120,7 +120,18 @@ router.post('/forgot-password', [
     }
 
     if (!delivery.success && process.env.NODE_ENV === 'production') {
-      return res.status(503).json({ error: 'Service d’envoi du code indisponible' });
+      // Deux causes très différentes, à distinguer dans les journaux Render :
+      // le canal n'a pas de clé, ou le fournisseur a refusé l'envoi.
+      console.error(
+        `❌ Code de réinitialisation non envoyé (${contactType}) : ` +
+          (delivery.configured === false
+            ? 'canal non configuré sur le serveur'
+            : 'le fournisseur a refusé l’envoi'),
+      );
+      return res.status(503).json({
+        code: 'DELIVERY_UNAVAILABLE',
+        error: 'Service d’envoi du code indisponible',
+      });
     }
 
     return res.json({

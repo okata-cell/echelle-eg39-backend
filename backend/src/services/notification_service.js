@@ -90,4 +90,72 @@ async function sendVerificationCode(contact, contactType, code, userName) {
   return sendSmsCode(contact, code);
 }
 
-module.exports = { sendVerificationCode };
+/**
+ * État des canaux d'envoi, sans jamais révéler de secret.
+ *
+ * Une variable déclarée dans `render.yaml` sans valeur dans le tableau de bord
+ * reste vide : c'est la cause la plus fréquente du message « service d'envoi
+ * indisponible ». Ce résumé permet de le voir d'un coup d'œil.
+ */
+function describeDeliveryChannels(env = process.env) {
+  const sendgridKey = Boolean(String(env.SENDGRID_API_KEY || '').trim());
+  const sendgridFrom = String(
+    env.SENDGRID_FROM_EMAIL || env.ADMIN_EMAIL || '',
+  ).trim();
+  const atKey = Boolean(
+    String(env.AT_API_KEY || env.AFRICASTALKING_API_KEY || '').trim(),
+  );
+  const atUsername = String(env.AFRICASTALKING_USERNAME || '').trim();
+
+  return {
+    email: {
+      provider: 'sendgrid',
+      configured: sendgridKey && Boolean(sendgridFrom),
+      problem: !sendgridKey
+        ? 'SENDGRID_API_KEY manquante'
+        : !sendgridFrom
+          ? 'SENDGRID_FROM_EMAIL manquant'
+          : null,
+      sender: sendgridFrom || null,
+    },
+    sms: {
+      provider: 'africastalking',
+      configured: atKey && Boolean(atUsername),
+      problem: !atKey
+        ? 'AT_API_KEY (ou AFRICASTALKING_API_KEY) manquante'
+        : !atUsername
+          ? 'AFRICASTALKING_USERNAME manquant'
+          : null,
+      username: atUsername || null,
+    },
+  };
+}
+
+/** Avertissements affichés au démarrage du serveur. */
+function deliveryWarnings(env = process.env) {
+  if (env.NODE_ENV !== 'production') return [];
+
+  const channels = describeDeliveryChannels(env);
+  const warnings = [];
+
+  if (!channels.email.configured) {
+    warnings.push(
+      'Envoi e-mail non configuré : les demandes de code par e-mail seront ' +
+        `refusées. Renseignez SENDGRID_API_KEY et SENDGRID_FROM_EMAIL dans Render (${channels.email.provider}).`,
+    );
+  }
+  if (!channels.sms.configured) {
+    warnings.push(
+      'Envoi SMS non configuré : les demandes de code par téléphone seront ' +
+        `refusées. Renseignez AFRICASTALKING_USERNAME et AT_API_KEY dans Render (${channels.sms.provider}).`,
+    );
+  }
+
+  return warnings;
+}
+
+module.exports = {
+  sendVerificationCode,
+  describeDeliveryChannels,
+  deliveryWarnings,
+};

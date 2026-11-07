@@ -6,6 +6,10 @@ require('dotenv').config();
 
 const { buildCorsOptions, securityWarnings } = require('./config/cors');
 const { loadRevokedAccounts } = require('./services/session_revocation');
+const {
+  describeDeliveryChannels,
+  deliveryWarnings,
+} = require('./services/notification_service');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -36,8 +40,14 @@ app.use('/api/users/clients', require('./routes/admin_clients'));
 app.use('/api/users', require('./routes/users'));
 
 // Route de santé
+// `/health` sert aussi de diagnostic : les canaux d'envoi (e-mail, SMS) sont
+// annoncés configurés ou non, sans jamais exposer de clé.
 app.get('/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date().toISOString() });
+  res.json({
+    status: 'OK',
+    timestamp: new Date().toISOString(),
+    delivery: describeDeliveryChannels(),
+  });
 });
 
 // Route racine
@@ -78,6 +88,10 @@ app.use((err, req, res, next) => {
 // Démarrage du serveur uniquement lorsqu’il est lancé comme processus principal.
 if (require.main === module) {
   for (const warning of securityWarnings()) {
+    console.warn(`⚠️  ${warning}`);
+  }
+
+  for (const warning of deliveryWarnings()) {
     console.warn(`⚠️  ${warning}`);
   }
 
