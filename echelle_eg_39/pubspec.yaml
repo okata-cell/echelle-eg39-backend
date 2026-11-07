@@ -16,7 +16,11 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.2+3
+# 2004 et non 4 : `flutter build apk --split-per-abi` ajoute 2000 au versionCode
+# de la variante arm64. La 1.0.2 allégée est donc en 2003, l'universelle en 3 :
+# partir de 2004 permet aux deux variantes de la 1.0.3 de s'installer par-dessus
+# n'importe quelle 1.0.2 (voir docs/invitation-test.md).
+version: 1.0.3+2004
 
 environment:
   sdk: ^3.12.0

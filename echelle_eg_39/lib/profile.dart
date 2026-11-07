@@ -9,6 +9,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'profile_avatar_image.dart';
 
+import 'app_version.dart';
 import 'company_contact.dart';
 import 'company_location.dart';
 import 'login.page.dart';
@@ -1153,7 +1154,7 @@ class _ProfilScreenState extends State<ProfilScreen> {
             children: [
               Text('ÉCHELLE EG39', style: _ProfileText.appName),
               const SizedBox(height: 2),
-              Text('Version 1.0.0', style: _ProfileText.appVersion),
+              Text('Version $kAppVersion', style: _ProfileText.appVersion),
             ],
           ),
         ],
