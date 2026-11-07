@@ -4,6 +4,7 @@ const { test } = require('node:test');
 const {
   describeDeliveryChannels,
   deliveryWarnings,
+  resolveMessagingEndpoint,
 } = require('../src/services/notification_service');
 
 const COMPLETE_ENV = {
@@ -68,6 +69,24 @@ test('aucun secret ne sort du diagnostic', () => {
   assert.equal(serialized.includes('sg-key'), false);
   assert.equal(serialized.includes('at-key'), false);
   assert.match(serialized, /no-reply@echelle-eg39\.com/);
+});
+
+test('le compte sandbox d’Africa’s Talking utilise son propre hôte', () => {
+  assert.equal(
+    resolveMessagingEndpoint({ AFRICASTALKING_USERNAME: 'sandbox' }),
+    'https://api.sandbox.africastalking.com/version1/messaging',
+  );
+  assert.equal(
+    resolveMessagingEndpoint({ AFRICASTALKING_USERNAME: 'echelle-eg39' }),
+    'https://api.africastalking.com/version1/messaging',
+  );
+  assert.equal(
+    resolveMessagingEndpoint({
+      AFRICASTALKING_USERNAME: 'sandbox',
+      AFRICASTALKING_BASE_URL: 'https://proxy.example/messaging',
+    }),
+    'https://proxy.example/messaging',
+  );
 });
 
 test('les avertissements ne concernent que la production', () => {

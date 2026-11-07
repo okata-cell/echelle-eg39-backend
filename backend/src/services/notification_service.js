@@ -52,6 +52,24 @@ async function sendEmailCode(email, code, userName) {
   return { success: true };
 }
 
+/**
+ * Point d'entrée Africa's Talking.
+ *
+ * Un compte « sandbox » n'utilise pas le même hôte que la production : appeler
+ * l'hôte de production avec le nom d'utilisateur `sandbox` est refusé, ce qui
+ * produisait un « service d'envoi indisponible » alors que les clés existaient.
+ */
+function resolveMessagingEndpoint(env = process.env) {
+  const override = String(env.AFRICASTALKING_BASE_URL || '').trim();
+  if (override) return override;
+
+  const username = String(env.AFRICASTALKING_USERNAME || '').trim();
+  if (username === 'sandbox') {
+    return 'https://api.sandbox.africastalking.com/version1/messaging';
+  }
+  return 'https://api.africastalking.com/version1/messaging';
+}
+
 async function sendSmsCode(phone, code) {
   const apiKey = process.env.AT_API_KEY || process.env.AFRICASTALKING_API_KEY;
   const username = process.env.AFRICASTALKING_USERNAME;
@@ -60,7 +78,7 @@ async function sendSmsCode(phone, code) {
     return simulationResult('SMS', phone, code);
   }
 
-  const response = await fetch('https://api.africastalking.com/version1/messaging', {
+  const response = await fetch(resolveMessagingEndpoint(), {
     method: 'POST',
     headers: {
       apiKey,
@@ -158,4 +176,5 @@ module.exports = {
   sendVerificationCode,
   describeDeliveryChannels,
   deliveryWarnings,
+  resolveMessagingEndpoint,
 };

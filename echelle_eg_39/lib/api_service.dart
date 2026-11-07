@@ -8,6 +8,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'company_contact.dart';
 import 'models_admin_client.dart';
 import 'models_anonymized_user.dart';
 
@@ -681,6 +682,14 @@ class ApiService {
       }
       if (response.statusCode == 404) {
         throw Exception('Route non trouvée. Vérifiez la connexion au serveur.');
+      }
+      // Le serveur n'a pas pu envoyer le code (canal e-mail ou SMS non
+      // configuré, fournisseur en échec) : le message doit dire quoi faire.
+      if (response.statusCode == 503) {
+        throw Exception(
+          'L’envoi du code est momentanément indisponible. Réessayez dans '
+          'quelques minutes ou écrivez à ${CompanyContact.email}.',
+        );
       }
       throw Exception(
         _passwordRecoveryErrorMessage(
