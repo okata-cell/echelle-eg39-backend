@@ -69,18 +69,23 @@ class ActualitesRepository {
   Future<ActualitesSnapshot> refresh({int? limit}) async {
     final payload = await _fetchPublished(limit: limit ?? listLimit);
     final items = Actualite.listFrom(payload);
-    if (items.isNotEmpty) {
-      await _writeCache(items);
-    }
+    // La liste vide est écrite aussi : sans cela, une actualité dépubliée ou
+    // supprimée resterait affichée sur l'accueil à partir du cache.
+    await _writeCache(items);
     return ActualitesSnapshot(items: items);
   }
 
   Future<void> _writeCache(List<Actualite> items) async {
     try {
       final prefs = await _openPreferences();
+      if (items.isEmpty) {
+        await prefs.remove(cacheKey);
+        return;
+      }
+
       await prefs.setString(
         cacheKey,
-        jsonEncode(items.map((actualite) => actualite.toPayload()).toList()),
+        jsonEncode(items.map((actualite) => actualite.toCacheJson()).toList()),
       );
     } catch (_) {
       // Le cache est un confort : son échec ne remonte pas à l'écran.

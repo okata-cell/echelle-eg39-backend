@@ -118,7 +118,9 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
         ..addListener(_onTextChanged);
 
   late DateTime _datePublication = widget.initial?.datePublication ?? _today;
-  late bool _publiee = widget.initial?.publiee ?? false;
+  // Une actualité rédigée par l'administrateur est destinée à être vue : elle
+  // part publiée, et le brouillon reste un choix explicite.
+  late bool _publiee = widget.initial?.publiee ?? true;
   late bool _epingle = widget.initial?.epingle ?? false;
 
   final ImagePicker _picker = ImagePicker();

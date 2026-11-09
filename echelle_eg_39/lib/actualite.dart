@@ -95,6 +95,23 @@ class Actualite {
     return DateTime(parsed.year, parsed.month, parsed.day);
   }
 
+  /// Représentation stockée sur l'appareil : contrairement à la charge utile
+  /// envoyée à l'API, elle conserve l'identifiant, sans quoi le cache serait
+  /// impossible à relire.
+  Map<String, dynamic> toCacheJson() {
+    return <String, dynamic>{
+      'id': id,
+      'titre': titre,
+      'description': description,
+      'corps': corps,
+      'image_url': imageUrl,
+      'image_storage_path': imageStoragePath,
+      'date_publication': formatIsoDate(datePublication),
+      'statut': publiee ? 'publiee' : 'brouillon',
+      'epingle': epingle,
+    };
+  }
+
   /// Charge utile JSON envoyée à l'API admin.
   Map<String, dynamic> toPayload() {
     return <String, dynamic>{

@@ -57,7 +57,7 @@ void main() {
       'Trois modèles en stock à l’agence.',
     );
     await tapKey(tester, 'actualite-editor-pin');
-    await tapKey(tester, 'actualite-editor-publish');
+    // La publication est active par défaut pour une nouvelle actualité.
     await tapKey(tester, 'actualite-editor-submit');
 
     expect(submitted, isNotNull);

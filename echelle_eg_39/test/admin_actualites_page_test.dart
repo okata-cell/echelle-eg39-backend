@@ -104,13 +104,8 @@ void main() {
       find.byKey(const ValueKey('actualite-editor-description')),
       'Commande contrôlée le 3 novembre.',
     );
-    final publishSwitch = find.byKey(
-      const ValueKey('actualite-editor-publish'),
-    );
-    await tester.ensureVisible(publishSwitch);
-    await tester.pumpAndSettle();
-    await tester.tap(publishSwitch);
-    await tester.pumpAndSettle();
+    // La publication est active par défaut : l'actualité doit apparaître
+    // sur l'accueil dès l'enregistrement.
     final submitButton = find.byKey(const ValueKey('actualite-editor-submit'));
     await tester.ensureVisible(submitButton);
     await tester.pumpAndSettle();
