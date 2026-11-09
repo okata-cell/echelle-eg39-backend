@@ -87,149 +87,158 @@ class PasswordRecoveryScaffold extends StatelessWidget {
         children: [
           const PasswordRecoveryPhotoBackdrop(),
           SafeArea(
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                return SingleChildScrollView(
-                  keyboardDismissBehavior:
-                      ScrollViewKeyboardDismissBehavior.onDrag,
-                  padding: const EdgeInsets.fromLTRB(24, 12, 24, 28),
-                  child: Center(
-                    child: ConstrainedBox(
-                      constraints: BoxConstraints(
-                        maxWidth: 480,
-                        minHeight: constraints.maxHeight - 40,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            children: [
-                              IconButton(
-                                tooltip: backTooltip,
-                                onPressed: onBack,
-                                style: IconButton.styleFrom(
-                                  foregroundColor: Colors.white,
-                                  backgroundColor: Colors.white.withValues(
-                                    alpha: 0.14,
-                                  ),
-                                  side: BorderSide(
-                                    color: Colors.white.withValues(alpha: 0.24),
-                                  ),
-                                  minimumSize: const Size(44, 44),
-                                ),
-                                icon: const Icon(Icons.arrow_back_rounded),
-                              ),
-                              const SizedBox(width: 8),
-                              Text(
-                                'ÉCHELLE EG39',
-                                style: Theme.of(context).textTheme.titleSmall
-                                    ?.copyWith(
-                                      color: Colors.white,
-                                      fontWeight: FontWeight.w700,
-                                      letterSpacing: -0.1,
+            child: Center(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 480),
+                child: Column(
+                  children: [
+                    Expanded(
+                      // Seuls les champs défilent : l'action principale reste
+                      // collée juste au-dessus du clavier. Avant, elle vivait
+                      // dans la zone défilante et disparaissait sous le clavier
+                      // dès qu'un champ prenait le focus.
+                      child: SingleChildScrollView(
+                        keyboardDismissBehavior:
+                            ScrollViewKeyboardDismissBehavior.onDrag,
+                        padding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              children: [
+                                IconButton(
+                                  tooltip: backTooltip,
+                                  onPressed: onBack,
+                                  style: IconButton.styleFrom(
+                                    foregroundColor: Colors.white,
+                                    backgroundColor: Colors.white.withValues(
+                                      alpha: 0.14,
                                     ),
+                                    side: BorderSide(
+                                      color: Colors.white.withValues(
+                                        alpha: 0.24,
+                                      ),
+                                    ),
+                                    minimumSize: const Size(44, 44),
+                                  ),
+                                  icon: const Icon(Icons.arrow_back_rounded),
+                                ),
+                                const SizedBox(width: 8),
+                                Text(
+                                  'ÉCHELLE EG39',
+                                  style: Theme.of(context).textTheme.titleSmall
+                                      ?.copyWith(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.w700,
+                                        letterSpacing: -0.1,
+                                      ),
+                                ),
+                              ],
+                            ),
+                            const SizedBox(height: 30),
+                            Text(
+                              stepLabel,
+                              style: Theme.of(context).textTheme.bodyMedium
+                                  ?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.88),
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                            ),
+                            if (contextStatus != null) ...[
+                              const SizedBox(height: 16),
+                              contextStatus!,
+                            ],
+                            const SizedBox(height: 14),
+                            Text(
+                              title,
+                              style: Theme.of(context).textTheme.headlineMedium
+                                  ?.copyWith(
+                                    color: Colors.white,
+                                    fontWeight: FontWeight.w700,
+                                    height: 1.12,
+                                    letterSpacing: -0.7,
+                                  ),
+                            ),
+                            const SizedBox(height: 12),
+                            Text(
+                              description,
+                              style: Theme.of(context).textTheme.bodyLarge
+                                  ?.copyWith(
+                                    color: Colors.white.withValues(alpha: 0.9),
+                                    height: 1.45,
+                                  ),
+                            ),
+                            const SizedBox(height: 28),
+                            content,
+                            if (errorMessage != null) ...[
+                              const SizedBox(height: 16),
+                              Semantics(
+                                liveRegion: true,
+                                child: Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(12),
+                                  decoration: BoxDecoration(
+                                    color: const Color(0xFFFBEEEB),
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
+                                  child: Text(
+                                    errorMessage!,
+                                    style: Theme.of(context)
+                                        .textTheme
+                                        .bodyMedium
+                                        ?.copyWith(
+                                          color: const Color(0xFF8A3324),
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                  ),
+                                ),
                               ),
                             ],
-                          ),
-                          const SizedBox(height: 30),
-                          Text(
-                            stepLabel,
-                            style: Theme.of(context).textTheme.bodyMedium
-                                ?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.88),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                          ),
-                          if (contextStatus != null) ...[
-                            const SizedBox(height: 16),
-                            contextStatus!,
+                            if (secondaryContent != null) ...[
+                              const SizedBox(height: 12),
+                              secondaryContent!,
+                            ],
                           ],
-                          const SizedBox(height: 14),
-                          Text(
-                            title,
-                            style: Theme.of(context).textTheme.headlineMedium
-                                ?.copyWith(
-                                  color: Colors.white,
-                                  fontWeight: FontWeight.w700,
-                                  height: 1.12,
-                                  letterSpacing: -0.7,
-                                ),
-                          ),
-                          const SizedBox(height: 12),
-                          Text(
-                            description,
-                            style: Theme.of(context).textTheme.bodyLarge
-                                ?.copyWith(
-                                  color: Colors.white.withValues(alpha: 0.9),
-                                  height: 1.45,
-                                ),
-                          ),
-                          const SizedBox(height: 28),
-                          content,
-                          if (errorMessage != null) ...[
-                            const SizedBox(height: 16),
-                            Semantics(
-                              liveRegion: true,
-                              child: Container(
-                                width: double.infinity,
-                                padding: const EdgeInsets.all(12),
-                                decoration: BoxDecoration(
-                                  color: const Color(0xFFFBEEEB),
-                                  borderRadius: BorderRadius.circular(8),
-                                ),
-                                child: Text(
-                                  errorMessage!,
-                                  style: Theme.of(context).textTheme.bodyMedium
-                                      ?.copyWith(
-                                        color: const Color(0xFF8A3324),
-                                        fontWeight: FontWeight.w600,
-                                      ),
-                                ),
-                              ),
-                            ),
-                          ],
-                          if (secondaryContent != null) ...[
-                            const SizedBox(height: 12),
-                            secondaryContent!,
-                          ],
-                          const SizedBox(height: 28),
-                          SizedBox(
-                            width: double.infinity,
-                            height: 54,
-                            child: FilledButton.icon(
-                              onPressed: isLoading ? null : onPrimary,
-                              style: FilledButton.styleFrom(
-                                backgroundColor: _recoveryActionBlue,
-                                foregroundColor: Colors.white,
-                                disabledBackgroundColor: _recoveryActionBlue
-                                    .withValues(alpha: 0.65),
-                                shape: const StadiumBorder(),
-                              ),
-                              icon: isLoading
-                                  ? const SizedBox.square(
-                                      dimension: 18,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 2,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Icon(Icons.arrow_forward_rounded),
-                              label: Text(
-                                isLoading
-                                    ? (primaryLoadingLabel ?? 'Patientez…')
-                                    : primaryLabel,
-                                style: const TextStyle(
-                                  fontWeight: FontWeight.w700,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ),
-                  ),
-                );
-              },
+                    // Pied de page fixe : le bouton reste visible et cliquable
+                    // pendant toute la saisie, clavier ouvert compris.
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(24, 8, 24, 20),
+                      child: SizedBox(
+                        width: double.infinity,
+                        height: 54,
+                        child: FilledButton.icon(
+                          onPressed: isLoading ? null : onPrimary,
+                          style: FilledButton.styleFrom(
+                            backgroundColor: _recoveryActionBlue,
+                            foregroundColor: Colors.white,
+                            disabledBackgroundColor: _recoveryActionBlue
+                                .withValues(alpha: 0.65),
+                            shape: const StadiumBorder(),
+                          ),
+                          icon: isLoading
+                              ? const SizedBox.square(
+                                  dimension: 18,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Colors.white,
+                                  ),
+                                )
+                              : const Icon(Icons.arrow_forward_rounded),
+                          label: Text(
+                            isLoading
+                                ? (primaryLoadingLabel ?? 'Patientez…')
+                                : primaryLabel,
+                            style: const TextStyle(fontWeight: FontWeight.w700),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ),
         ],
