@@ -14,6 +14,7 @@ class Actualite {
     required this.titre,
     required this.description,
     required this.datePublication,
+    this.dateFin,
     this.corps,
     this.imageUrl,
     this.imageStoragePath,
@@ -28,13 +29,58 @@ class Actualite {
   final String? imageUrl;
   final String? imageStoragePath;
   final DateTime datePublication;
+
+  /// Dernier jour où l'actualité reste affichée. `null` = sans échéance.
+  final DateTime? dateFin;
   final bool publiee;
   final bool epingle;
 
   bool get hasImage => (imageUrl ?? '').trim().isNotEmpty;
 
-  /// Date au format des cartes : « 06 nov. 2026 ».
+  /// Date de début au format des cartes : « 06 nov. 2026 ».
   String get dateLabel => formatActualiteDate(datePublication);
+
+  /// Fenêtre de publication : « Du 06 au 30 nov. 2026 ».
+  String get periodeLabel => formatActualitePeriode(datePublication, dateFin);
+
+  /// Vrai le jour donné lorsque la fenêtre de publication le contient.
+  bool estEnLigneLe(DateTime jour) {
+    final reference = DateTime(jour.year, jour.month, jour.day);
+    final debut = DateTime(
+      datePublication.year,
+      datePublication.month,
+      datePublication.day,
+    );
+    if (reference.isBefore(debut)) return false;
+
+    final fin = dateFin;
+    if (fin == null) return true;
+    return !reference.isAfter(DateTime(fin.year, fin.month, fin.day));
+  }
+
+  bool get estEnLigne => estEnLigneLe(DateTime.now());
+
+  /// Publiée, mais dont la date de début est encore à venir.
+  bool get estProgrammee {
+    if (!publiee) return false;
+    final now = DateTime.now();
+    final aujourdhui = DateTime(now.year, now.month, now.day);
+    final debut = DateTime(
+      datePublication.year,
+      datePublication.month,
+      datePublication.day,
+    );
+    return debut.isAfter(aujourdhui);
+  }
+
+  /// Publiée, mais dont la date de fin est passée.
+  bool get estTerminee {
+    final fin = dateFin;
+    if (fin == null || !publiee) return false;
+    final now = DateTime.now();
+    final aujourdhui = DateTime(now.year, now.month, now.day);
+    return aujourdhui.isAfter(DateTime(fin.year, fin.month, fin.day));
+  }
 
   /// Lit une actualité renvoyée par l'API, en tolérant les champs manquants.
   static Actualite? tryParse(Object? raw) {
@@ -55,6 +101,7 @@ class Actualite {
       imageUrl: _nullable(map['image_url'] ?? map['imageUrl']),
       imageStoragePath: _nullable(map['image_storage_path']),
       datePublication: parseDateOnly(map['date_publication']) ?? DateTime.now(),
+      dateFin: parseDateOnly(map['date_fin']),
       publiee: statut == null || statut == 'publiee',
       epingle: map['epingle'] == true,
     );
@@ -107,6 +154,7 @@ class Actualite {
       'image_url': imageUrl,
       'image_storage_path': imageStoragePath,
       'date_publication': formatIsoDate(datePublication),
+      'date_fin': dateFin == null ? null : formatIsoDate(dateFin!),
       'statut': publiee ? 'publiee' : 'brouillon',
       'epingle': epingle,
     };
@@ -119,6 +167,7 @@ class Actualite {
       'description': description,
       if (corps != null) 'corps': corps,
       'date_publication': formatIsoDate(datePublication),
+      'date_fin': dateFin == null ? null : formatIsoDate(dateFin!),
       'statut': publiee ? 'publiee' : 'brouillon',
       'epingle': epingle,
       'image_url': imageUrl,
@@ -132,24 +181,45 @@ class Actualite {
   }
 }
 
+const List<String> _moisAbreges = <String>[
+  'janv.',
+  'févr.',
+  'mars',
+  'avr.',
+  'mai',
+  'juin',
+  'juil.',
+  'août',
+  'sept.',
+  'oct.',
+  'nov.',
+  'déc.',
+];
+
 /// « 06 nov. 2026 » : la forme utilisée par les cartes et l'admin.
 String formatActualiteDate(DateTime date) {
-  const mois = <String>[
-    'janv.',
-    'févr.',
-    'mars',
-    'avr.',
-    'mai',
-    'juin',
-    'juil.',
-    'août',
-    'sept.',
-    'oct.',
-    'nov.',
-    'déc.',
-  ];
   final jour = date.day.toString().padLeft(2, '0');
-  return '$jour ${mois[date.month - 1]} ${date.year}';
+  return '$jour ${_moisAbreges[date.month - 1]} ${date.year}';
+}
+
+/// Fenêtre de publication, la plus compacte possible :
+/// « Du 06 au 30 nov. 2026 », « Du 06 nov. au 12 déc. 2026 », ou « 06 nov. 2026 »
+/// quand aucune date de fin n'est fixée.
+String formatActualitePeriode(DateTime debut, DateTime? fin) {
+  if (fin == null) return formatActualiteDate(debut);
+
+  final jourDebut = debut.day.toString().padLeft(2, '0');
+  final jourFin = fin.day.toString().padLeft(2, '0');
+  final memeAnnee = fin.year == debut.year;
+
+  if (memeAnnee && fin.month == debut.month) {
+    return 'Du $jourDebut au $jourFin ${_moisAbreges[fin.month - 1]} ${fin.year}';
+  }
+  if (memeAnnee) {
+    return 'Du $jourDebut ${_moisAbreges[debut.month - 1]} '
+        'au $jourFin ${_moisAbreges[fin.month - 1]} ${fin.year}';
+  }
+  return 'Du ${formatActualiteDate(debut)} au ${formatActualiteDate(fin)}';
 }
 
 /// `AAAA-MM-JJ`, le seul format de date accepté par l'API.

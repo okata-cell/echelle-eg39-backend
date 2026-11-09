@@ -66,6 +66,11 @@ void main() {
     expect(submitted!.epingle, isTrue);
     expect(submitted!.publiee, isTrue);
     expect(submitted!.image, isNull);
+    // Trente jours de diffusion par défaut, modifiables par l'administrateur.
+    expect(
+      submitted!.dateFin.difference(submitted!.datePublication).inDays,
+      30,
+    );
   });
 
   testWidgets('refuse un formulaire vide et affiche une erreur', (

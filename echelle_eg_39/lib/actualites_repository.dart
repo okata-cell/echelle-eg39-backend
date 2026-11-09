@@ -53,7 +53,11 @@ class ActualitesRepository {
       final decoded = jsonDecode(raw);
       if (decoded is! List) return ActualitesSnapshot.empty;
 
-      final items = Actualite.listFrom(decoded);
+      // Une actualité sortie de sa fenêtre de publication ne doit pas
+      // réapparaître depuis le cache.
+      final items = Actualite.listFrom(
+        decoded,
+      ).where((actualite) => actualite.estEnLigne).toList(growable: false);
       return ActualitesSnapshot(
         items: limit == null
             ? items

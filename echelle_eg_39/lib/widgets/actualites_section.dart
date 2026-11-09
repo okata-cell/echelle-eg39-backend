@@ -123,7 +123,8 @@ class ActualiteHeroCard extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: 'Actualité épinglée : ${actualite.titre}, ${actualite.dateLabel}',
+      label:
+          'Actualité épinglée : ${actualite.titre}, ${actualite.periodeLabel}',
       child: AspectRatio(
         aspectRatio: 4 / 3,
         child: Stack(
@@ -173,7 +174,7 @@ class ActualiteHeroCard extends StatelessWidget {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    actualite.dateLabel,
+                    actualite.periodeLabel,
                     style: ProfileText.footNote.copyWith(
                       color: Colors.white.withValues(alpha: 0.86),
                       fontFeatures: const [FontFeature.tabularFigures()],
@@ -202,7 +203,7 @@ class ActualiteTile extends StatelessWidget {
 
     return Semantics(
       container: true,
-      label: 'Actualité : ${actualite.titre}, ${actualite.dateLabel}',
+      label: 'Actualité : ${actualite.titre}, ${actualite.periodeLabel}',
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -247,7 +248,7 @@ class ActualiteTile extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           Text(
-            actualite.dateLabel,
+            actualite.periodeLabel,
             style: ProfileText.footNote.copyWith(
               fontFeatures: const [FontFeature.tabularFigures()],
             ),

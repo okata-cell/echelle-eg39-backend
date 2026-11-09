@@ -8,6 +8,7 @@ Map<String, dynamic> _row({
   required int id,
   required String titre,
   String date = '2026-11-06',
+  String? dateFin,
   bool epingle = false,
 }) {
   return <String, dynamic>{
@@ -15,6 +16,7 @@ Map<String, dynamic> _row({
     'titre': titre,
     'description': 'Description de $titre.',
     'date_publication': date,
+    'date_fin': dateFin,
     'statut': 'publiee',
     'epingle': epingle,
     'image_url': null,
@@ -64,6 +66,45 @@ void main() {
       'Récente',
       'Ancienne',
     ]);
+  });
+
+  test(
+    'ignore une actualité dont la fenêtre de publication est passée',
+    () async {
+      SharedPreferences.setMockInitialValues(<String, Object>{});
+      final repository = ActualitesRepository(
+        fetchPublished: ({int limit = 20}) async => [
+          _row(
+            id: 9,
+            titre: 'Annonce périmée',
+            date: '2020-01-01',
+            dateFin: '2020-01-31',
+          ),
+        ],
+      );
+
+      await repository.refresh();
+      expect((await repository.readCache()).items, isEmpty);
+    },
+  );
+
+  test('formate la fenêtre de publication', () {
+    final memeMois = Actualite.tryParse(
+      _row(id: 1, titre: 'Même mois', dateFin: '2026-11-30'),
+    )!;
+    expect(memeMois.periodeLabel, 'Du 06 au 30 nov. 2026');
+    expect(memeMois.estEnLigneLe(DateTime(2026, 11, 20)), isTrue);
+    expect(memeMois.estEnLigneLe(DateTime(2026, 12, 1)), isFalse);
+    expect(memeMois.estEnLigneLe(DateTime(2026, 11, 5)), isFalse);
+
+    final autreMois = Actualite.tryParse(
+      _row(id: 2, titre: 'Autre mois', dateFin: '2026-12-12'),
+    )!;
+    expect(autreMois.periodeLabel, 'Du 06 nov. au 12 déc. 2026');
+
+    final sansFin = Actualite.tryParse(_row(id: 3, titre: 'Sans fin'))!;
+    expect(sansFin.periodeLabel, '06 nov. 2026');
+    expect(sansFin.estEnLigneLe(DateTime(2030, 1, 1)), isTrue);
   });
 
   test('lit le cache et respecte la limite de l’accueil', () async {

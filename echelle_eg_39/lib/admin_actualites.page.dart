@@ -109,10 +109,14 @@ class _AdminActualitesPageState extends State<AdminActualitesPage> {
 
   bool _matchesFilter(Actualite actualite, String filter) {
     switch (filter) {
-      case 'publiees':
-        return actualite.publiee;
+      case 'en_ligne':
+        return actualite.publiee && actualite.estEnLigne;
       case 'brouillons':
         return !actualite.publiee;
+      case 'terminees':
+        return actualite.publiee && actualite.estTerminee;
+      case 'programmees':
+        return actualite.publiee && actualite.estProgrammee;
       default:
         return true;
     }
@@ -175,6 +179,7 @@ class _AdminActualitesPageState extends State<AdminActualitesPage> {
         'titre': draft.titre,
         'description': draft.description,
         'date_publication': formatIsoDate(draft.datePublication),
+        'date_fin': formatIsoDate(draft.dateFin),
         'statut': draft.publiee ? 'publiee' : 'brouillon',
         'epingle': draft.epingle,
         'image_url': imageUrl,
@@ -220,6 +225,7 @@ class _AdminActualitesPageState extends State<AdminActualitesPage> {
         'titre': draft.titre,
         'description': draft.description,
         'date_publication': formatIsoDate(draft.datePublication),
+        'date_fin': formatIsoDate(draft.dateFin),
         'statut': draft.publiee ? 'publiee' : 'brouillon',
         'epingle': draft.epingle,
         'image_url': imageUrl,
@@ -310,11 +316,26 @@ class _AdminActualitesPageState extends State<AdminActualitesPage> {
     return '$jour/$mois/${date.year}';
   }
 
+  /// Statut réellement perçu par le client : un brouillon, une actualité
+  /// programmée (début à venir), en ligne, ou terminée (fin dépassée).
+  String _statutCarte(Actualite actualite) {
+    if (!actualite.publiee) return 'brouillon';
+    if (actualite.estTerminee) return 'terminee';
+    if (actualite.estProgrammee) return 'programmee';
+    return 'publiee';
+  }
+
+  String _metaCarte(Actualite actualite) {
+    final debut = _dateLabel(actualite.datePublication);
+    final fin = actualite.dateFin;
+    final periode = fin == null
+        ? 'Depuis le $debut'
+        : 'Du $debut au ${_dateLabel(fin)}';
+    return actualite.epingle ? '$periode  ·  Épinglée' : periode;
+  }
+
   Widget _buildActualiteCard(Actualite actualite) {
     final isBusy = _isBusy(actualite.id);
-    final meta = actualite.epingle
-        ? '${_dateLabel(actualite.datePublication)}  ·  Épinglée'
-        : _dateLabel(actualite.datePublication);
 
     return AdminWorkItemCard(
       leading: ServiceImageThumbnail(
@@ -324,11 +345,11 @@ class _AdminActualitesPageState extends State<AdminActualitesPage> {
         height: 52,
         borderRadius: AdminRadii.field,
       ),
-      status: actualite.publiee ? 'publiee' : 'brouillon',
+      status: _statutCarte(actualite),
       reference: 'ACT-${actualite.id}',
       title: actualite.titre,
       requester: actualite.description,
-      meta: meta,
+      meta: _metaCarte(actualite),
       onTap: isBusy ? null : () => _openEditor(initial: actualite),
       footer: Row(
         children: [
@@ -438,8 +459,8 @@ class _AdminActualitesPageState extends State<AdminActualitesPage> {
           SliverToBoxAdapter(
             child: AdminMetricCluster(
               primary: AdminMetric(
-                label: 'Publiées',
-                value: _countFor('publiees'),
+                label: 'En ligne',
+                value: _countFor('en_ligne'),
                 icon: Icons.public,
               ),
               secondary: [
@@ -467,14 +488,19 @@ class _AdminActualitesPageState extends State<AdminActualitesPage> {
                   count: _countFor('tous'),
                 ),
                 AdminFilterOption(
-                  value: 'publiees',
-                  label: 'Publiées',
-                  count: _countFor('publiees'),
+                  value: 'en_ligne',
+                  label: 'En ligne',
+                  count: _countFor('en_ligne'),
                 ),
                 AdminFilterOption(
                   value: 'brouillons',
                   label: 'Brouillons',
                   count: _countFor('brouillons'),
+                ),
+                AdminFilterOption(
+                  value: 'terminees',
+                  label: 'Terminées',
+                  count: _countFor('terminees'),
                 ),
               ],
             ),

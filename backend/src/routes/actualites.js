@@ -22,7 +22,7 @@ const upload = multer({
 
 const COLONNES = `
   id, titre, description, corps, image_url, image_storage_path,
-  date_publication, statut, epingle, auteur, created_at, updated_at
+  date_publication, date_fin, statut, epingle, auteur, created_at, updated_at
 `;
 
 function parseActualiteImage(req, res, next) {
@@ -90,6 +90,7 @@ function lirePayload(body) {
   const date = body.date_publication == null
     ? businessToday()
     : texte(body.date_publication);
+  const dateFin = texte(body.date_fin);
   const epingle = body.epingle == null ? false : body.epingle;
 
   if (!titre) return { error: 'Le titre est requis.' };
@@ -112,6 +113,16 @@ function lirePayload(body) {
   if (!isIsoDate(date)) {
     return { error: 'La date de publication est invalide.' };
   }
+  if (dateFin) {
+    if (!isIsoDate(dateFin)) {
+      return { error: 'La date de fin de publication est invalide.' };
+    }
+    if (dateFin < date) {
+      return {
+        error: 'La date de fin doit être postérieure à la date de publication.',
+      };
+    }
+  }
 
   return {
     titre,
@@ -119,6 +130,7 @@ function lirePayload(body) {
     corps: corps || null,
     statut,
     date,
+    dateFin: dateFin || null,
     epingle,
   };
 }
@@ -133,13 +145,18 @@ router.get('/', async (req, res) => {
     const offsetDemande = Number.parseInt(req.query.offset, 10);
     const offset = Number.isInteger(offsetDemande) && offsetDemande > 0 ? offsetDemande : 0;
 
+    // Seules les actualités dont la fenêtre de publication contient le jour
+    // courant sont visibles ; une date de fin vide signifie « sans échéance ».
+    const aujourdhui = businessToday();
     const result = await pool.query(
       `SELECT ${COLONNES}
        FROM actualites
        WHERE statut = 'publiee'
+         AND date_publication <= $1
+         AND (date_fin IS NULL OR date_fin >= $1)
        ORDER BY epingle DESC, date_publication DESC, id DESC
-       LIMIT $1 OFFSET $2`,
-      [limite, offset],
+       LIMIT $2 OFFSET $3`,
+      [aujourdhui, limite, offset],
     );
 
     return res.json({ actualites: result.rows });
@@ -217,9 +234,10 @@ router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
     const result = await pool.query(
       `INSERT INTO actualites (
          titre, description, corps, image_url, image_storage_path,
-         date_publication, statut, epingle, auteur, created_at, updated_at
+         date_publication, date_fin, statut, epingle, auteur,
+         created_at, updated_at
        )
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
        RETURNING ${COLONNES}`,
       [
         payload.titre,
@@ -228,6 +246,7 @@ router.post('/', authMiddleware, adminMiddleware, async (req, res) => {
         texte(req.body.image_url) || null,
         texte(req.body.image_storage_path) || null,
         payload.date,
+        payload.dateFin,
         payload.statut,
         payload.epingle,
         texte(req.body.auteur) || null,
@@ -280,10 +299,11 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
            image_url = $4,
            image_storage_path = $5,
            date_publication = $6,
-           statut = $7,
-           epingle = $8,
+           date_fin = $7,
+           statut = $8,
+           epingle = $9,
            updated_at = CURRENT_TIMESTAMP
-       WHERE id = $9
+       WHERE id = $10
        RETURNING ${COLONNES}`,
       [
         payload.titre,
@@ -292,6 +312,7 @@ router.put('/:id', authMiddleware, adminMiddleware, async (req, res) => {
         imageUrl,
         storagePath,
         payload.date,
+        payload.dateFin,
         payload.statut,
         payload.epingle,
         id,

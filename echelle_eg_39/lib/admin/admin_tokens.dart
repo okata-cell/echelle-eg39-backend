@@ -96,6 +96,13 @@ String adminStatusKey(Object? value) {
     case 'brouillon':
     case 'draft':
       return 'brouillon';
+    case 'programmee':
+    case 'programme':
+    case 'scheduled':
+      return 'programmee';
+    case 'terminee':
+    case 'expired':
+      return 'terminee';
     default:
       return raw;
   }
@@ -129,6 +136,10 @@ String adminStatusLabel(Object? value) {
       return 'Publiée';
     case 'brouillon':
       return 'Brouillon';
+    case 'programmee':
+      return 'Programmée';
+    case 'terminee':
+      return 'Terminée';
     default:
       final raw = value?.toString().trim() ?? '';
       return raw.isEmpty ? 'Inconnu' : raw.replaceAll('_', ' ');
@@ -159,6 +170,10 @@ Color adminStatusColor(Object? value) {
       return AdminPalette.approvalGreen;
     case 'brouillon':
       return AdminPalette.safetyAmber;
+    case 'programmee':
+      return AdminPalette.blueprintBlue;
+    case 'terminee':
+      return AdminPalette.secondaryText;
     default:
       return AdminPalette.secondaryText;
   }

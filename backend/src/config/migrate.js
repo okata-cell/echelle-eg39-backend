@@ -265,6 +265,7 @@ async function migrate() {
         image_url TEXT,
         image_storage_path TEXT,
         date_publication DATE NOT NULL DEFAULT CURRENT_DATE,
+        date_fin DATE,
         statut VARCHAR(12) NOT NULL DEFAULT 'brouillon'
           CHECK (statut IN ('brouillon', 'publiee')),
         epingle BOOLEAN NOT NULL DEFAULT FALSE,
@@ -278,6 +279,11 @@ async function migrate() {
     );
     await client.query(
       'ALTER TABLE actualites ADD COLUMN IF NOT EXISTS image_storage_path TEXT',
+    );
+    // Fin de la fenêtre de publication : l'actualité disparaît de l'accueil
+    // le lendemain de cette date, sans intervention de l'administrateur.
+    await client.query(
+      'ALTER TABLE actualites ADD COLUMN IF NOT EXISTS date_fin DATE',
     );
 
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');

@@ -9,12 +9,14 @@ Map<String, dynamic> _actualite({
   required String statut,
   bool epingle = false,
   String date = '2026-11-06',
+  String? dateFin,
 }) {
   return <String, dynamic>{
     'id': id,
     'titre': titre,
     'description': 'Description de $titre.',
     'date_publication': date,
+    'date_fin': dateFin,
     'statut': statut,
     'epingle': epingle,
     'image_url': null,
@@ -116,5 +118,8 @@ void main() {
     expect(created.single['titre'], 'Douze niveaux automatiques livrés');
     expect(created.single['statut'], 'publiee');
     expect(created.single['epingle'], isFalse);
+    // La fenêtre de publication part avec les deux bornes.
+    expect(created.single['date_publication'], isNotNull);
+    expect(created.single['date_fin'], isNotNull);
   });
 }

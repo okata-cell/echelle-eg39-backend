@@ -20,6 +20,7 @@ class ActualiteDraft {
     required this.titre,
     required this.description,
     required this.datePublication,
+    required this.dateFin,
     required this.publiee,
     required this.epingle,
     this.image,
@@ -30,6 +31,9 @@ class ActualiteDraft {
   final String titre;
   final String description;
   final DateTime datePublication;
+
+  /// Dernier jour de diffusion de l'actualité sur l'accueil.
+  final DateTime dateFin;
   final bool publiee;
   final bool epingle;
 
@@ -118,6 +122,9 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
         ..addListener(_onTextChanged);
 
   late DateTime _datePublication = widget.initial?.datePublication ?? _today;
+  // Trente jours par défaut : une annonce a une échéance, quitte à l'allonger.
+  late DateTime _dateFin =
+      widget.initial?.dateFin ?? _datePublication.add(const Duration(days: 30));
   // Une actualité rédigée par l'administrateur est destinée à être vue : elle
   // part publiée, et le brouillon reste un choix explicite.
   late bool _publiee = widget.initial?.publiee ?? true;
@@ -274,7 +281,7 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
     });
   }
 
-  Future<void> _selectDate() async {
+  Future<void> _selectDatePublication() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _datePublication,
@@ -284,6 +291,23 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
     if (picked == null || !mounted) return;
     setState(() {
       _datePublication = DateTime(picked.year, picked.month, picked.day);
+      if (_dateFin.isBefore(_datePublication)) {
+        _dateFin = _datePublication.add(const Duration(days: 30));
+      }
+      _error = null;
+    });
+  }
+
+  Future<void> _selectDateFin() async {
+    final picked = await showDatePicker(
+      context: context,
+      initialDate: _dateFin,
+      firstDate: _datePublication,
+      lastDate: _datePublication.add(const Duration(days: 730)),
+    );
+    if (picked == null || !mounted) return;
+    setState(() {
+      _dateFin = DateTime(picked.year, picked.month, picked.day);
       _error = null;
     });
   }
@@ -304,6 +328,13 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
       setState(() => _error = 'La description est trop longue.');
       return;
     }
+    if (_dateFin.isBefore(_datePublication)) {
+      setState(
+        () =>
+            _error = 'La date de fin doit être postérieure à la date de début.',
+      );
+      return;
+    }
 
     setState(() {
       _isSubmitting = true;
@@ -314,6 +345,7 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
       titre: titre,
       description: description,
       datePublication: _datePublication,
+      dateFin: _dateFin,
       publiee: _publiee,
       epingle: _epingle,
       image: _image,
@@ -430,7 +462,19 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
                     const SizedBox(height: AdminSpacing.md),
                     _buildPhotoRow(),
                     const SizedBox(height: AdminSpacing.md),
-                    _buildDateField(),
+                    _buildDateField(
+                      label: 'Début de publication',
+                      value: _datePublication,
+                      fieldKey: const ValueKey('actualite-editor-date-debut'),
+                      onTap: _selectDatePublication,
+                    ),
+                    const SizedBox(height: AdminSpacing.md),
+                    _buildDateField(
+                      label: 'Fin de publication',
+                      value: _dateFin,
+                      fieldKey: const ValueKey('actualite-editor-date-fin'),
+                      onTap: _selectDateFin,
+                    ),
                     const SizedBox(height: AdminSpacing.sm),
                     _buildSwitchRow(
                       key: const ValueKey('actualite-editor-pin-row'),
@@ -545,7 +589,10 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
                               borderRadius: BorderRadius.circular(6),
                             ),
                             child: Text(
-                              formatActualiteDate(_datePublication),
+                              formatActualitePeriode(
+                                _datePublication,
+                                _dateFin,
+                              ),
                               style: const TextStyle(
                                 color: Color(0xFF1D1D1F),
                                 fontSize: 10,
@@ -726,13 +773,18 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
     );
   }
 
-  Widget _buildDateField() {
+  Widget _buildDateField({
+    required String label,
+    required DateTime value,
+    required Key fieldKey,
+    required VoidCallback onTap,
+  }) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text(
-          'Date de publication',
-          style: TextStyle(
+        Text(
+          label,
+          style: const TextStyle(
             color: AdminPalette.primaryText,
             fontSize: 12,
             fontWeight: FontWeight.w700,
@@ -740,8 +792,8 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
         ),
         const SizedBox(height: 5),
         InkWell(
-          key: const ValueKey('actualite-editor-date'),
-          onTap: _isBusy ? null : _selectDate,
+          key: fieldKey,
+          onTap: _isBusy ? null : onTap,
           borderRadius: BorderRadius.circular(AdminRadii.field),
           child: Container(
             height: 46,
@@ -753,7 +805,7 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
             child: Row(
               children: [
                 Text(
-                  formatActualiteDate(_datePublication),
+                  formatActualiteDate(value),
                   style: const TextStyle(
                     color: AdminPalette.primaryText,
                     fontSize: 14,
