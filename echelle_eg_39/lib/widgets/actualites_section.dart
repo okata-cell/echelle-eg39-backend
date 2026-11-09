@@ -124,7 +124,9 @@ class ActualiteHeroCard extends StatelessWidget {
     return Semantics(
       container: true,
       label:
-          'Actualité épinglée : ${actualite.titre}, ${actualite.periodeLabel}',
+          '${actualite.epingle ? 'Actualité épinglée' : 'À la une'} : '
+          '${actualite.titre}. ${actualite.description}. '
+          '${actualite.periodeLabel}',
       child: AspectRatio(
         aspectRatio: 4 / 3,
         child: Stack(
@@ -147,11 +149,18 @@ class ActualiteHeroCard extends StatelessWidget {
             if (hasImage)
               const DecoratedBox(
                 decoration: BoxDecoration(
+                  // La légende occupe désormais trois lignes de texte : le
+                  // voile descend plus haut pour que la description reste
+                  // lisible sur une photo claire.
                   gradient: LinearGradient(
                     begin: Alignment.topCenter,
                     end: Alignment.bottomCenter,
-                    colors: [Color(0x00000000), Color(0xB3000000)],
-                    stops: [0.35, 1],
+                    colors: [
+                      Color(0x00000000),
+                      Color(0x73000000),
+                      Color(0xCC000000),
+                    ],
+                    stops: [0.2, 0.58, 1],
                   ),
                 ),
               ),
@@ -170,6 +179,20 @@ class ActualiteHeroCard extends StatelessWidget {
                     style: ProfileText.sheetTitle.copyWith(
                       color: Colors.white,
                       height: 1.19,
+                    ),
+                  ),
+                  const SizedBox(height: 6),
+                  // L'annonce mise en avant se lit comme les autres : sans sa
+                  // description, l'épinglée serait la seule carte muette de la
+                  // section, sur l'accueil comme dans « Toutes les actualités ».
+                  Text(
+                    actualite.description,
+                    maxLines: 4,
+                    overflow: TextOverflow.ellipsis,
+                    style: ProfileText.rowSubtitle.copyWith(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 13,
+                      height: 1.38,
                     ),
                   ),
                   const SizedBox(height: 8),
