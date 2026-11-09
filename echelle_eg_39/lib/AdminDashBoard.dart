@@ -5,6 +5,7 @@ import 'admin.client.page.dart';
 import 'appareils.page.dart';
 import 'LocationsMenu.dart';
 import 'admin_ventes_page.dart';
+import 'admin_actualites.page.dart';
 import 'admin_devis.page.dart';
 import 'admin_promotions.page.dart';
 import 'admin/admin_shell.dart';
@@ -34,6 +35,7 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
     const LocationPage(), // ADMIN LOCATIONS ✅
     const AdminVentesPageFixed(),
     const AdminDevisPage(),
+    const AdminActualitesPage(),
     const AdminPromotionsPage(),
   ];
 

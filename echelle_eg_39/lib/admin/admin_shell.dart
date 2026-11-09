@@ -24,6 +24,7 @@ class AdminShell extends StatelessWidget {
     _AdminModule('Locations', Icons.assignment_outlined),
     _AdminModule('Ventes', Icons.shopping_cart_outlined),
     _AdminModule('Devis', Icons.request_quote_outlined),
+    _AdminModule('Actualités', Icons.newspaper_outlined),
     _AdminModule('Promotions', Icons.campaign_outlined),
   ];
 

@@ -2248,4 +2248,370 @@ class ApiService {
       return null;
     }
   }
+
+  // ============================================
+  // FONCTIONS: Actualités (accueil + admin)
+  // ============================================
+
+  /// Liste publique des actualités publiées, l'épinglée en tête.
+  static Future<List<Map<String, dynamic>>> getActualites({
+    int limit = 20,
+  }) async {
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/actualites?limit=$limit'))
+          .timeout(const Duration(seconds: 10));
+
+      final data = decodeObject(response.body);
+      final actualites = data?['actualites'];
+      if (response.statusCode == 200 && actualites is List) {
+        return actualites
+            .whereType<Map>()
+            .map((actualite) => Map<String, dynamic>.from(actualite))
+            .toList(growable: false);
+      }
+
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message:
+            data?['error']?.toString() ??
+            'Erreur lors de la récupération des actualités.',
+        statusCode: response.statusCode,
+      );
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message:
+            'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
+    }
+  }
+
+  /// Liste complète, brouillons compris (admin).
+  static Future<List<Map<String, dynamic>>> getAdminActualites() async {
+    final headers = await _adminJsonHeaders();
+
+    try {
+      final response = await http
+          .get(Uri.parse('$baseUrl/actualites/admin'), headers: headers)
+          .timeout(const Duration(seconds: 15));
+
+      final data = decodeObject(response.body);
+      final actualites = data?['actualites'];
+      if (response.statusCode == 200 && actualites is List) {
+        return actualites
+            .whereType<Map>()
+            .map((actualite) => Map<String, dynamic>.from(actualite))
+            .toList(growable: false);
+      }
+
+      throw _actualiteError(
+        response,
+        'Erreur lors de la récupération des actualités.',
+      );
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message:
+            'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
+    }
+  }
+
+  /// Créer une actualité (admin).
+  static Future<Map<String, dynamic>> createActualite(
+    Map<String, dynamic> actualite,
+  ) async {
+    final headers = await _adminJsonHeaders();
+    return _sendActualite(
+      () => http
+          .post(
+            Uri.parse('$baseUrl/actualites'),
+            headers: headers,
+            body: jsonEncode(actualite),
+          )
+          .timeout(const Duration(seconds: 20)),
+      successCodes: const [201],
+      fallback: 'Erreur lors de la création de l’actualité.',
+    );
+  }
+
+  /// Modifier une actualité (admin).
+  static Future<Map<String, dynamic>> updateActualite(
+    int actualiteId,
+    Map<String, dynamic> actualite,
+  ) async {
+    final headers = await _adminJsonHeaders();
+    return _sendActualite(
+      () => http
+          .put(
+            Uri.parse('$baseUrl/actualites/$actualiteId'),
+            headers: headers,
+            body: jsonEncode(actualite),
+          )
+          .timeout(const Duration(seconds: 20)),
+      successCodes: const [200],
+      fallback: 'Erreur lors de la mise à jour de l’actualité.',
+    );
+  }
+
+  /// Publier une actualité ou la repasser en brouillon (admin).
+  static Future<Map<String, dynamic>> setActualiteStatut(
+    int actualiteId,
+    String statut,
+  ) async {
+    final headers = await _adminJsonHeaders();
+    return _sendActualite(
+      () => http
+          .patch(
+            Uri.parse('$baseUrl/actualites/$actualiteId/statut'),
+            headers: headers,
+            body: jsonEncode({'statut': statut}),
+          )
+          .timeout(const Duration(seconds: 20)),
+      successCodes: const [200],
+      fallback: 'Erreur lors du changement de statut.',
+    );
+  }
+
+  /// Épingler ou désépingler l'actualité mise en avant (admin).
+  static Future<Map<String, dynamic>> setActualiteEpingle(
+    int actualiteId,
+    bool epingle,
+  ) async {
+    final headers = await _adminJsonHeaders();
+    return _sendActualite(
+      () => http
+          .patch(
+            Uri.parse('$baseUrl/actualites/$actualiteId/epingle'),
+            headers: headers,
+            body: jsonEncode({'epingle': epingle}),
+          )
+          .timeout(const Duration(seconds: 20)),
+      successCodes: const [200],
+      fallback: 'Erreur lors de l’épinglage.',
+    );
+  }
+
+  /// Supprimer une actualité (admin).
+  static Future<void> deleteActualite(int actualiteId) async {
+    final headers = await _adminJsonHeaders();
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/actualites/$actualiteId'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200 || response.statusCode == 204) return;
+
+      throw _actualiteError(response, 'Erreur lors de la suppression.');
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message: 'Le serveur ne répond pas pour le moment. Réessayez.',
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
+      );
+    }
+  }
+
+  /// Téléverser la photo d'une actualité (admin).
+  static Future<Map<String, dynamic>> uploadActualiteImage(XFile image) {
+    return _uploadImage(image, '/actualites/image');
+  }
+
+  /// Nettoyer une photo si l'enregistrement de l'actualité échoue (admin).
+  static Future<void> deleteActualiteImage(String storagePath) async {
+    final headers = await _adminJsonHeaders();
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/actualites/image'),
+            headers: headers,
+            body: jsonEncode({'storagePath': storagePath}),
+          )
+          .timeout(const Duration(seconds: 20));
+      if (response.statusCode == 200 || response.statusCode == 204) return;
+
+      throw _actualiteError(response, 'Impossible de supprimer l’image.');
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message: 'La suppression de l’image a pris trop de temps.',
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible de supprimer l’image. Vérifiez votre connexion.',
+      );
+    }
+  }
+
+  static Future<Map<String, String>> _adminJsonHeaders() async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session requise. Veuillez vous reconnecter.',
+      );
+    }
+
+    return <String, String>{
+      'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+  }
+
+  static ApiException _actualiteError(
+    http.Response response,
+    String fallback,
+  ) {
+    final data = decodeObject(response.body);
+    final message = switch (response.statusCode) {
+      401 => 'Votre session a expiré. Reconnectez-vous puis réessayez.',
+      403 => 'Un compte administrateur est requis pour gérer les actualités.',
+      _ => data?['error']?.toString() ?? fallback,
+    };
+
+    return ApiException(
+      type: response.statusCode >= 500
+          ? ApiErrorType.serverUnavailable
+          : ApiErrorType.request,
+      message: message,
+      statusCode: response.statusCode,
+    );
+  }
+
+  static Future<Map<String, dynamic>> _sendActualite(
+    Future<http.Response> Function() send, {
+    required List<int> successCodes,
+    required String fallback,
+  }) async {
+    try {
+      final response = await send();
+      if (successCodes.contains(response.statusCode)) {
+        final data = decodeObject(response.body);
+        if (data != null) return data;
+      }
+
+      throw _actualiteError(response, fallback);
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message:
+            'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
+    }
+  }
+
+  /// Téléversement multipart partagé par les visuels d'actualité.
+  static Future<Map<String, dynamic>> _uploadImage(
+    XFile image,
+    String path,
+  ) async {
+    final token = await ensureAuthenticated();
+    if (token == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Session administrateur requise.',
+      );
+    }
+
+    final extension = image.name.split('.').last.toLowerCase();
+    final extensionSubtype = switch (extension) {
+      'jpg' || 'jpeg' => 'jpeg',
+      'png' => 'png',
+      'webp' => 'webp',
+      _ => null,
+    };
+    final mimeSubtype = switch (image.mimeType?.toLowerCase()) {
+      'image/jpeg' => 'jpeg',
+      'image/png' => 'png',
+      'image/webp' => 'webp',
+      _ => null,
+    };
+    final subtype = extensionSubtype ?? mimeSubtype;
+    if (subtype == null) {
+      throw const ApiException(
+        type: ApiErrorType.request,
+        message: 'Choisissez une image JPEG, PNG ou WebP.',
+      );
+    }
+
+    try {
+      final request = http.MultipartRequest('POST', Uri.parse('$baseUrl$path'))
+        ..headers['Authorization'] = 'Bearer $token'
+        ..files.add(
+          http.MultipartFile.fromBytes(
+            'image',
+            await image.readAsBytes(),
+            filename: image.name,
+            contentType: MediaType('image', subtype),
+          ),
+        );
+
+      final streamedResponse = await request.send().timeout(
+        const Duration(seconds: 60),
+      );
+      final response = await http.Response.fromStream(streamedResponse);
+      final decoded = decodeObject(response.body);
+      if (response.statusCode == 201 && decoded != null) return decoded;
+
+      throw ApiException(
+        type: response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message: decoded?['error']?.toString() ?? 'Impossible d’envoyer l’image.',
+        statusCode: response.statusCode,
+      );
+    } on ApiException {
+      rethrow;
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message: 'Le téléversement a pris trop de temps. Réessayez.',
+      );
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message: 'Impossible d’envoyer l’image. Vérifiez votre connexion.',
+      );
+    }
+  }
 }

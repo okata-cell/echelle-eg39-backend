@@ -10,6 +10,10 @@ import 'location.dart';
 import 'profile.dart';
 import 'promotion_popup.dart';
 import 'offline_registration_banner.dart';
+import 'actualite.dart';
+import 'actualites_repository.dart';
+import 'actualites_screen.dart';
+import 'widgets/actualites_section.dart';
 
 class ModernHomePage extends StatefulWidget {
   const ModernHomePage({super.key});
@@ -25,32 +29,16 @@ class _ModernHomePageState extends State<ModernHomePage> {
   int _currentCarouselIndex = 0;
   Timer? _carouselTimer;
 
-  // Actualités statiques pour la démo
-  final List<Map<String, dynamic>> _actualites = [
-    {
-      'titre': 'Nouveaux GPS RTK disponibles',
-      'description': 'Découvrez notre nouvelle gamme de GPS e-survey E800 avec précision centimétrique.',
-      'date': '12 Août 2026',
-      'imageUrl': 'https://images.unsplash.com/photo-1578662996442-48f60103fc96?w=400',
-    },
-    {
-      'titre': 'Formation sur les stations totales',
-      'description': 'Inscrivez-vous à notre prochaine session de formation sur les stations totales Leica.',
-      'date': '10 Août 2026',
-      'imageUrl': 'https://images.unsplash.com/photo-1503387762-592deb58ef4e?w=400',
-    },
-    {
-      'titre': 'Promotion sur les niveaux',
-      'description': 'Profitez de -20% sur tous les niveaux automatiques jusqu\'à la fin du mois.',
-      'date': '08 Août 2026',
-      'imageUrl': 'https://images.unsplash.com/photo-1558618666-fcd25c85cd64?w=400',
-    },
-  ];
+  // Actualités publiées par l'administrateur : cache local puis réseau.
+  final ActualitesRepository _actualitesRepository = ActualitesRepository();
+  List<Actualite> _actualites = const <Actualite>[];
+  bool _isLoadingActualites = true;
 
   @override
   void initState() {
     super.initState();
     _loadAppareils();
+    _loadActualites();
     _startCarouselAutoScroll();
     // Vérifier et afficher la promotion après un court délai
     Future.delayed(const Duration(seconds: 2), () {
@@ -95,13 +83,60 @@ class _ModernHomePageState extends State<ModernHomePage> {
     }
   }
 
+  Future<void> _loadActualites({bool force = false}) async {
+    // Le cache s'affiche d'abord : la section ne clignote pas au lancement.
+    if (!force && _actualites.isEmpty) {
+      final cached = await _actualitesRepository.readCache(
+        limit: ActualitesRepository.homeLimit,
+      );
+      if (cached.items.isNotEmpty && mounted) {
+        setState(() {
+          _actualites = cached.items;
+          _isLoadingActualites = false;
+        });
+      }
+    }
+
+    try {
+      final snapshot = await _actualitesRepository.refresh(
+        limit: ActualitesRepository.homeLimit,
+      );
+      if (!mounted) return;
+      setState(() {
+        _actualites = snapshot.items;
+        _isLoadingActualites = false;
+      });
+    } catch (error) {
+      // Sans contenu en cache, la section disparaît de l'accueil : un bloc
+      // d'erreur permanent n'apporte rien au client.
+      debugPrint('Actualités indisponibles : $error');
+      if (!mounted) return;
+      setState(() => _isLoadingActualites = false);
+    }
+  }
+
+  /// Le tirer-pour-rafraîchir recharge les appareils et les actualités.
+  Future<void> _refreshHome() async {
+    await Future.wait([_loadAppareils(), _loadActualites(force: true)]);
+  }
+
+  void _openActualites() {
+    Navigator.of(context)
+        .push(
+          MaterialPageRoute<void>(
+            builder: (_) => ActualitesScreen(initialItems: _actualites),
+          ),
+        )
+        .then((_) => _loadActualites(force: true));
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF9FAFB),
       body: SafeArea(
         child: RefreshIndicator(
-          onRefresh: _loadAppareils,
+          onRefresh: _refreshHome,
           child: CustomScrollView(
             slivers: [
               // ── Header avec gradient ─────────────────────────────────────
@@ -273,20 +308,20 @@ class _ModernHomePageState extends State<ModernHomePage> {
                           ),
                         )
                       : _appareils.isEmpty
-                          ? _buildEmptyAppareils()
-                          : PageView.builder(
-                              controller: _pageController,
-                              itemCount: _appareils.length,
-                              onPageChanged: (index) {
-                                setState(() {
-                                  _currentCarouselIndex = index;
-                                });
-                              },
-                              itemBuilder: (context, index) {
-                                final appareil = _appareils[index];
-                                return _buildAppareilCard(appareil, index);
-                              },
-                            ),
+                      ? _buildEmptyAppareils()
+                      : PageView.builder(
+                          controller: _pageController,
+                          itemCount: _appareils.length,
+                          onPageChanged: (index) {
+                            setState(() {
+                              _currentCarouselIndex = index;
+                            });
+                          },
+                          itemBuilder: (context, index) {
+                            final appareil = _appareils[index];
+                            return _buildAppareilCard(appareil, index);
+                          },
+                        ),
                 ),
               ),
 
@@ -372,34 +407,12 @@ class _ModernHomePageState extends State<ModernHomePage> {
                 ),
               ),
 
-              // ── Section: Dernières actualités ───────────────────────────
+              // ── Section: Dernières actualités (rédigées par l'admin) ────
               SliverToBoxAdapter(
-                child: Padding(
-                  padding: const EdgeInsets.fromLTRB(20, 24, 20, 8),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Dernières actualités',
-                        style: GoogleFonts.poppins(
-                          fontSize: 20,
-                          fontWeight: FontWeight.w700,
-                          color: const Color(0xFF111827),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-
-              // ── Liste des actualités ────────────────────────────────────
-              SliverList(
-                delegate: SliverChildBuilderDelegate(
-                  (context, index) {
-                    final actualite = _actualites[index];
-                    return _buildActualiteCard(actualite);
-                  },
-                  childCount: _actualites.length,
+                child: ActualitesSection(
+                  items: _actualites,
+                  isLoading: _isLoadingActualites,
+                  onSeeAll: _openActualites,
                 ),
               ),
 
@@ -742,103 +755,6 @@ class _ModernHomePageState extends State<ModernHomePage> {
                   overflow: TextOverflow.ellipsis,
                 ),
               ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildActualiteCard(Map<String, dynamic> actualite) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 6),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, 2),
-          ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // Image
-          ClipRRect(
-            borderRadius: const BorderRadius.only(
-              topLeft: Radius.circular(16),
-              bottomLeft: Radius.circular(16),
-            ),
-            child: Image.network(
-              actualite['imageUrl'],
-              width: 100,
-              height: 100,
-              fit: BoxFit.cover,
-              errorBuilder: (context, error, stackTrace) {
-                return Container(
-                  width: 100,
-                  height: 100,
-                  color: const Color(0xFFF3F4F6),
-                  child: Icon(
-                    Icons.article,
-                    size: 32,
-                    color: Colors.grey[400],
-                  ),
-                );
-              },
-            ),
-          ),
-          // Contenu
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.all(14),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    actualite['titre'],
-                    style: GoogleFonts.poppins(
-                      fontSize: 14,
-                      fontWeight: FontWeight.w700,
-                      color: const Color(0xFF111827),
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 6),
-                  Text(
-                    actualite['description'],
-                    style: GoogleFonts.poppins(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w400,
-                      color: const Color(0xFF6B7280),
-                    ),
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: [
-                      Icon(
-                        Icons.calendar_today,
-                        size: 12,
-                        color: Colors.grey[500],
-                      ),
-                      const SizedBox(width: 4),
-                      Text(
-                        actualite['date'],
-                        style: GoogleFonts.poppins(
-                          fontSize: 11,
-                          fontWeight: FontWeight.w500,
-                          color: const Color(0xFF9CA3AF),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
             ),
           ),
         ],

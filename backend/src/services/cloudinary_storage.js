@@ -35,14 +35,18 @@ function getCloudinary() {
   return cloudinary;
 }
 
-async function uploadPromotionImage(buffer, contentType) {
+// Dossier Cloudinary où sont rangés les visuels, un par grand type de contenu.
+const FOLDER_PROMOTIONS = 'promotions';
+const FOLDER_ACTUALITES = 'actualites';
+
+async function uploadImage(buffer, contentType, folder) {
   const extension = extensionByMimeType.get(contentType);
   if (!extension) {
     throw new TypeError('Format d’image non autorisé.');
   }
 
   const client = getCloudinary();
-  const publicId = `promotions/${randomUUID()}`;
+  const publicId = `${folder}/${randomUUID()}`;
 
   return new Promise((resolve, reject) => {
     const upload = client.uploader.upload_stream(
@@ -71,9 +75,9 @@ async function uploadPromotionImage(buffer, contentType) {
   });
 }
 
-async function deletePromotionImage(storagePath) {
+async function deleteImage(storagePath, folder) {
   if (!storagePath) return;
-  if (!storagePath.startsWith('promotions/')) {
+  if (!storagePath.startsWith(`${folder}/`)) {
     throw new TypeError('Chemin de l’image invalide.');
   }
 
@@ -84,8 +88,26 @@ async function deletePromotionImage(storagePath) {
   });
 }
 
+function uploadPromotionImage(buffer, contentType) {
+  return uploadImage(buffer, contentType, FOLDER_PROMOTIONS);
+}
+
+function deletePromotionImage(storagePath) {
+  return deleteImage(storagePath, FOLDER_PROMOTIONS);
+}
+
+function uploadActualiteImage(buffer, contentType) {
+  return uploadImage(buffer, contentType, FOLDER_ACTUALITES);
+}
+
+function deleteActualiteImage(storagePath) {
+  return deleteImage(storagePath, FOLDER_ACTUALITES);
+}
+
 module.exports = {
   CloudinaryStorageConfigurationError,
+  deleteActualiteImage,
   deletePromotionImage,
+  uploadActualiteImage,
   uploadPromotionImage,
 };

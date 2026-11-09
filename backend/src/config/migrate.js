@@ -253,6 +253,33 @@ async function migrate() {
       'ALTER TABLE promotions ADD COLUMN IF NOT EXISTS image_storage_path TEXT',
     );
 
+    // Actualités de l'accueil : rédigées par l'administrateur, publiées ou non.
+    // `corps` est prévu dès maintenant pour permettre un écran de détail futur
+    // sans nouvelle migration ; il n'est pas affiché sur la carte d'accueil.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS actualites (
+        id SERIAL PRIMARY KEY,
+        titre VARCHAR(80) NOT NULL,
+        description VARCHAR(240) NOT NULL,
+        corps TEXT,
+        image_url TEXT,
+        image_storage_path TEXT,
+        date_publication DATE NOT NULL DEFAULT CURRENT_DATE,
+        statut VARCHAR(12) NOT NULL DEFAULT 'brouillon'
+          CHECK (statut IN ('brouillon', 'publiee')),
+        epingle BOOLEAN NOT NULL DEFAULT FALSE,
+        auteur VARCHAR(120),
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+      )
+    `);
+    await client.query(
+      'ALTER TABLE actualites ADD COLUMN IF NOT EXISTS corps TEXT',
+    );
+    await client.query(
+      'ALTER TABLE actualites ADD COLUMN IF NOT EXISTS image_storage_path TEXT',
+    );
+
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_users_phone ON users(phone)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_profile_support_status_created ON profile_support_messages(status, created_at DESC)');
@@ -270,6 +297,9 @@ async function migrate() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_promotions_actif ON promotions(actif)');
     await client.query(
       'CREATE INDEX IF NOT EXISTS idx_promotions_dates ON promotions(date_debut, date_fin)',
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS idx_actualites_publication ON actualites(statut, epingle DESC, date_publication DESC)',
     );
 
     // Aucun mot de passe par défaut : le compte administrateur n'est créé que

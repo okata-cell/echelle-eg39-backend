@@ -34,6 +34,7 @@ app.use('/api/devis', require('./routes/devis'));
 app.use('/api/locations', require('./routes/locations'));
 app.use('/api/prolongations', require('./routes/prolongations'));
 app.use('/api/promotions', require('./routes/promotions'));
+app.use('/api/actualites', require('./routes/actualites'));
 // La gestion des comptes clients (édition, activation) doit être déclarée
 // avant le routeur /api/users pour que ses PATCH ne soient pas masqués.
 app.use('/api/users/clients', require('./routes/admin_clients'));
@@ -63,6 +64,7 @@ app.get('/', (req, res) => {
       devis: '/api/devis',
       locations: '/api/locations',
       prolongations: '/api/prolongations',
+      actualites: '/api/actualites',
       users: '/api/users',
       clients: '/api/users/clients'
     }
