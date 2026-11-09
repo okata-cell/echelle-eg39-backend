@@ -89,13 +89,23 @@ class AppareilEditorSheet extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => FractionallySizedBox(
-        heightFactor: 0.94,
-        child: AppareilEditorSheet(
-          initial: initial,
-          onSubmit: onSubmit,
-          pickImage: pickImage,
-          uploadImage: uploadImage,
+      // Même précaution que la feuille des actualités : la modale ne se
+      // décale pas seule, donc on réserve la hauteur du clavier pour que le
+      // bouton d'enregistrement reste atteignable.
+      builder: (sheetContext) => AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: FractionallySizedBox(
+          heightFactor: 0.94,
+          child: AppareilEditorSheet(
+            initial: initial,
+            onSubmit: onSubmit,
+            pickImage: pickImage,
+            uploadImage: uploadImage,
+          ),
         ),
       ),
     );
@@ -298,11 +308,11 @@ class _AppareilEditorSheetState extends State<AppareilEditorSheet> {
             _buildHeader(isEditing),
             Expanded(
               child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
+                padding: const EdgeInsets.fromLTRB(
                   AdminSpacing.lg,
                   AdminSpacing.md,
                   AdminSpacing.lg,
-                  MediaQuery.viewInsetsOf(context).bottom + AdminSpacing.lg,
+                  AdminSpacing.lg,
                 ),
                 child: Form(
                   key: _formKey,

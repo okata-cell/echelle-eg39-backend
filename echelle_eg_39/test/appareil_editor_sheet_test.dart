@@ -41,6 +41,42 @@ void main() {
     );
   }
 
+  testWidgets('le bouton d’enregistrement reste au-dessus du clavier', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1290, 2796);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () => AppareilEditorSheet.show(
+                  context,
+                  onSubmit: (draft) async {},
+                ),
+                child: const Text('ouvrir'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('ouvrir'));
+    await tester.pumpAndSettle();
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 900);
+    await tester.pumpAndSettle();
+
+    final bouton = tester.getRect(
+      find.byKey(const ValueKey('appareil-editor-submit')),
+    );
+    expect(bouton.bottom, lessThanOrEqualTo(2796 / 3 - 900 / 3));
+  });
+
   testWidgets('prépare un appareil avec les champs attendus par l’API', (
     tester,
   ) async {

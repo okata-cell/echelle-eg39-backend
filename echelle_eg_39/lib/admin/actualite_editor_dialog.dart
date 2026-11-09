@@ -96,14 +96,24 @@ class ActualiteEditorSheet extends StatefulWidget {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (sheetContext) => FractionallySizedBox(
-        heightFactor: 0.94,
-        child: ActualiteEditorSheet(
-          initial: initial,
-          initialImageStoragePath: initialImageStoragePath,
-          onSubmit: onSubmit,
-          onDelete: onDelete,
-          pickImage: pickImage,
+      // Une feuille modale ne remonte pas d'elle-même au-dessus du clavier :
+      // sans cette marge, le pied de feuille et son bouton Enregistrer
+      // restent cachés dès que le clavier s'ouvre.
+      builder: (sheetContext) => AnimatedPadding(
+        duration: const Duration(milliseconds: 180),
+        curve: Curves.easeOut,
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.viewInsetsOf(sheetContext).bottom,
+        ),
+        child: FractionallySizedBox(
+          heightFactor: 0.94,
+          child: ActualiteEditorSheet(
+            initial: initial,
+            initialImageStoragePath: initialImageStoragePath,
+            onSubmit: onSubmit,
+            onDelete: onDelete,
+            pickImage: pickImage,
+          ),
         ),
       ),
     );
@@ -462,11 +472,13 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
             _buildHeader(isEditing),
             Expanded(
               child: SingleChildScrollView(
-                padding: EdgeInsets.fromLTRB(
+                // Le clavier est déjà absorbé par la feuille : seuls les
+                // champs défilent, le pied de feuille reste visible.
+                padding: const EdgeInsets.fromLTRB(
                   AdminSpacing.lg,
                   AdminSpacing.md,
                   AdminSpacing.lg,
-                  MediaQuery.viewInsetsOf(context).bottom + AdminSpacing.lg,
+                  AdminSpacing.lg,
                 ),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.stretch,

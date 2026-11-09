@@ -36,6 +36,43 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  testWidgets('le bouton Enregistrer reste au-dessus du clavier', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1290, 2796);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => Center(
+              child: ElevatedButton(
+                onPressed: () => ActualiteEditorSheet.show(
+                  context,
+                  onSubmit: (draft) async {},
+                ),
+                child: const Text('ouvrir'),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text('ouvrir'));
+    await tester.pumpAndSettle();
+
+    // Clavier ouvert : 300 points logiques de haut sur un écran de 932.
+    tester.view.viewInsets = const FakeViewPadding(bottom: 900);
+    await tester.pumpAndSettle();
+
+    final bouton = tester.getRect(
+      find.byKey(const ValueKey('actualite-editor-submit')),
+    );
+    expect(bouton.bottom, lessThanOrEqualTo(2796 / 3 - 900 / 3));
+  });
+
   testWidgets('renvoie le titre, la description et les deux interrupteurs', (
     tester,
   ) async {
