@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 import 'admin/admin_components.dart';
 import 'admin/admin_tokens.dart';
+import 'admin/appareil_editor_sheet.dart';
 import 'data_manager.dart';
 import 'api_service.dart';
 import 'appareil_images.dart';
@@ -14,9 +15,16 @@ class AdminAppareilsPage extends StatefulWidget {
   const AdminAppareilsPage({
     super.key,
     this.loadAppareils = ApiService.getAppareils,
+    this.pickImage,
+    this.uploadImage,
   });
 
   final AppareilsLoader loadAppareils;
+
+  /// Points d'injection réservés aux tests : appareil photo / galerie et
+  /// téléversement du visuel.
+  final AppareilImagePicker? pickImage;
+  final AppareilImageUploader? uploadImage;
 
   @override
   State<AdminAppareilsPage> createState() => _AdminAppareilsPageState();
@@ -95,347 +103,27 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
   final String defaultImageUrl =
       'https://dodacvienthong.com/site/pictures/content/may-dinh-vi-ve-tinh-2-tan-so-gps-rtk-e-survey-e300-pro-imu.jpg';
 
-  // Fonction pour obtenir l'URL d'image selon l'ID de l'appareil (prioritaire)
-  String _getImageUrlForAppareilId(String appareilId) {
-    return AppareilImages.getImageUrlForAppareilId(appareilId);
-  }
-
   // Fonction pour obtenir l'URL d'image selon le type d'appareil
   String _getImageUrlForType(String type) {
     return AppareilImages.getImageUrlForType(type);
   }
 
-  // Fonction de validation pour les champs numériques
-  String? _validateNumericValue(String? value, String fieldName) {
-    if (value == null || value.trim().isEmpty) {
-      return 'Le $fieldName est requis';
-    }
-
-    // Supprimer les espaces
-    final cleanValue = value.trim();
-
-    // Vérifier si c'est un nombre valide
-    final numericRegex = RegExp(r'^[0-9]+$');
-    if (!numericRegex.hasMatch(cleanValue)) {
-      return 'Le $fieldName doit contenir uniquement des chiffres';
-    }
-
-    // Vérifier si la valeur est positive
-    final number = int.tryParse(cleanValue);
-    if (number == null) {
-      return 'Le $fieldName n\'est pas valide';
-    }
-
-    if (number <= 0) {
-      return 'Le $fieldName doit être supérieur à 0';
-    }
-
-    // Vérifier si la valeur n'est pas trop grande
-    if (number > 999999999) {
-      return 'Le $fieldName est trop élevé';
-    }
-
-    return null; // Validation réussie
-  }
-
   // FORMULAIRE D'AJOUT D'APPAREIL
-  void _ouvrirFormulaireAjout(BuildContext context) {
-    final nomCtrl = TextEditingController();
-    final typeCtrl = TextEditingController();
-    final prixLocCtrl = TextEditingController();
-    final prixVenteCtrl = TextEditingController();
-    final imageUrlCtrl = TextEditingController();
-
-    final formKey = GlobalKey<FormState>();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            "Ajouter un appareil",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nomCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "Nom de l'appareil",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.devices),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Le nom de l\'appareil est requis';
-                      }
-                      if (value.trim().length < 2) {
-                        return 'Le nom doit contenir au moins 2 caractères';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-
-                  TextFormField(
-                    controller: typeCtrl,
-                    decoration: const InputDecoration(
-                      labelText:
-                          "Type (GPS, Niveau, Station Totale, Trepied, Mire...)",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.category),
-                    ),
-                    onChanged: (value) {
-                      // Actualiser la prévisualisation d'image quand le type change
-                      setState(() {});
-                    },
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Le type d\'appareil est requis';
-                      }
-                      if (value.trim().length < 2) {
-                        return 'Le type doit contenir au moins 2 caractères';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: imageUrlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "URL de l'image (optionnel)",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.link),
-                      helperText:
-                          "Laissez vide pour utiliser l'image par défaut selon le type",
-                    ),
-                    onChanged: (value) {
-                      setState(() {});
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  // Prévisualisation de l'image selon le type ou URL personnalisée
-                  Container(
-                    height: 120,
-                    width: double.infinity,
-                    decoration: BoxDecoration(
-                      color: Colors.grey.shade100,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
-                    ),
-                    child:
-                        (typeCtrl.text.trim().isNotEmpty ||
-                            imageUrlCtrl.text.trim().isNotEmpty)
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: Stack(
-                              children: [
-                                Image.network(
-                                  imageUrlCtrl.text.trim().isNotEmpty
-                                      ? imageUrlCtrl.text.trim()
-                                      : _getImageUrlForType(
-                                          typeCtrl.text.trim(),
-                                        ),
-                                  width: double.infinity,
-                                  height: double.infinity,
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (context, error, stackTrace) {
-                                    return Container(
-                                      width: double.infinity,
-                                      height: double.infinity,
-                                      decoration: BoxDecoration(
-                                        color: Colors.grey.shade200,
-                                        borderRadius: BorderRadius.circular(12),
-                                      ),
-                                      child: Center(
-                                        child: Column(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.center,
-                                          children: [
-                                            Icon(
-                                              Icons.image_not_supported,
-                                              size: 32,
-                                              color: Colors.grey.shade400,
-                                            ),
-                                            const SizedBox(height: 4),
-                                            Text(
-                                              'Image non disponible',
-                                              style: TextStyle(
-                                                color: Colors.grey.shade600,
-                                                fontSize: 10,
-                                              ),
-                                            ),
-                                          ],
-                                        ),
-                                      ),
-                                    );
-                                  },
-                                ),
-                                // Overlay avec le nom du type ou URL personnalisée
-                                Positioned(
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  child: Container(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 8,
-                                      vertical: 4,
-                                    ),
-                                    decoration: BoxDecoration(
-                                      color: Colors.black.withValues(
-                                        alpha: 0.7,
-                                      ),
-                                      borderRadius: const BorderRadius.only(
-                                        bottomLeft: Radius.circular(12),
-                                        bottomRight: Radius.circular(12),
-                                      ),
-                                    ),
-                                    child: Text(
-                                      imageUrlCtrl.text.trim().isNotEmpty
-                                          ? 'Image personnalisée'
-                                          : 'Image pour: ${typeCtrl.text.trim()}',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontSize: 12,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                      textAlign: TextAlign.center,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          )
-                        : Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.preview,
-                                  size: 32,
-                                  color: Colors.grey.shade400,
-                                ),
-                                const SizedBox(height: 8),
-                                Text(
-                                  'Prévisualisation de l\'image',
-                                  style: TextStyle(
-                                    color: Colors.grey.shade600,
-                                    fontSize: 12,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'L\'image sera automatiquement sélectionnée selon le type d\'appareil',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: Colors.grey.shade600,
-                      fontStyle: FontStyle.italic,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: prixLocCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Prix location / jour (FCFA)",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.access_time),
-                      helperText: "Veuillez saisir uniquement des chiffres",
-                    ),
-                    validator: (value) =>
-                        _validateNumericValue(value, "prix de location"),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: prixVenteCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Prix de vente (FCFA)",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.sell),
-                      helperText: "Veuillez saisir uniquement des chiffres",
-                    ),
-                    validator: (value) =>
-                        _validateNumericValue(value, "prix de vente"),
-                  ),
-                  const SizedBox(height: 8),
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: Colors.blue.shade50,
-                      borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: Colors.blue.shade200),
-                    ),
-                    child: const Row(
-                      children: [
-                        Icon(Icons.info_outline, color: Colors.blue, size: 20),
-                        SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            "Les prix doivent être exprimés en FCFA et ne contenir que des chiffres.",
-                            style: TextStyle(fontSize: 12, color: Colors.blue),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Annuler"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  _ajouterAppareil(
-                    nom: nomCtrl.text.trim(),
-                    type: typeCtrl.text.trim(),
-                    prixLoc: int.parse(prixLocCtrl.text.trim()),
-                    prixVente: int.parse(prixVenteCtrl.text.trim()),
-                    imageUrl: imageUrlCtrl.text.trim().isNotEmpty
-                        ? imageUrlCtrl.text.trim()
-                        : null,
-                  );
-                  Navigator.pop(context);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Appareil ajouté avec succès!'),
-                      backgroundColor: Colors.green,
-                      duration: Duration(seconds: 3),
-                    ),
-                  );
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade600,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(8),
-                ),
-              ),
-              child: const Text("Ajouter"),
-            ),
-          ],
-        );
-      },
+  //
+  // Habillage aligné sur la feuille « Nouvelle actualité ». Le contrat avec
+  // l'API ne change pas : mêmes champs, même appel `createAppareil`.
+  Future<void> _ouvrirFormulaireAjout(BuildContext context) async {
+    await AppareilEditorSheet.show(
+      context,
+      pickImage: widget.pickImage,
+      uploadImage: widget.uploadImage,
+      onSubmit: (draft) => _ajouterAppareil(
+        nom: draft.nom,
+        type: draft.type,
+        prixLoc: draft.prixLocation,
+        prixVente: draft.prixVente,
+        imageUrl: draft.imageUrl,
+      ),
     );
   }
 
@@ -507,139 +195,25 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
     }
   }
 
-  void _ouvrirFormulaireModification(BuildContext context, int index) {
+  // FORMULAIRE DE MODIFICATION D'APPAREIL
+  Future<void> _ouvrirFormulaireModification(
+    BuildContext context,
+    int index,
+  ) async {
     final appareil = _dataManager.appareils[index];
-    final nomCtrl = TextEditingController(text: appareil.nom);
-    final typeCtrl = TextEditingController(text: appareil.type);
-    final prixLocCtrl = TextEditingController(
-      text: appareil.prixLocation.toString(),
-    );
-    final prixVenteCtrl = TextEditingController(
-      text: appareil.prixVente.toString(),
-    );
-    final imageUrlCtrl = TextEditingController(text: appareil.imageUrl);
-
-    final formKey = GlobalKey<FormState>();
-
-    showDialog(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(16),
-          ),
-          title: const Text(
-            "Modifier l'appareil",
-            style: TextStyle(
-              fontWeight: FontWeight.bold,
-              color: Color(0xFF1E293B),
-            ),
-          ),
-          content: SingleChildScrollView(
-            child: Form(
-              key: formKey,
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  TextFormField(
-                    controller: nomCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "Nom de l'appareil",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.devices),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Le nom de l\'appareil est requis';
-                      }
-                      if (value.trim().length < 2) {
-                        return 'Le nom doit contenir au moins 2 caractères';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: typeCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "Type",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.category),
-                    ),
-                    validator: (value) {
-                      if (value == null || value.trim().isEmpty) {
-                        return 'Le type d\'appareil est requis';
-                      }
-                      return null;
-                    },
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: imageUrlCtrl,
-                    decoration: const InputDecoration(
-                      labelText: "URL image",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.image),
-                      hintText: "https://...jpg",
-                    ),
-                    keyboardType: TextInputType.url,
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: prixLocCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Prix location / jour (FCFA)",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.access_time),
-                    ),
-                    validator: (value) =>
-                        _validateNumericValue(value, "prix de location"),
-                  ),
-                  const SizedBox(height: 16),
-                  TextFormField(
-                    controller: prixVenteCtrl,
-                    keyboardType: TextInputType.number,
-                    decoration: const InputDecoration(
-                      labelText: "Prix de vente (FCFA)",
-                      border: OutlineInputBorder(),
-                      prefixIcon: Icon(Icons.sell),
-                    ),
-                    validator: (value) =>
-                        _validateNumericValue(value, "prix de vente"),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text("Annuler"),
-            ),
-            ElevatedButton(
-              onPressed: () {
-                if (formKey.currentState!.validate()) {
-                  _modifierAppareil(
-                    index: index,
-                    nom: nomCtrl.text.trim(),
-                    type: typeCtrl.text.trim(),
-                    prixLoc: int.parse(prixLocCtrl.text.trim()),
-                    prixVente: int.parse(prixVenteCtrl.text.trim()),
-                    imageUrl: imageUrlCtrl.text.trim(),
-                  );
-                  Navigator.pop(context);
-                }
-              },
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.blue.shade600,
-                foregroundColor: Colors.white,
-              ),
-              child: const Text("Enregistrer"),
-            ),
-          ],
-        );
-      },
+    await AppareilEditorSheet.show(
+      context,
+      initial: appareil,
+      pickImage: widget.pickImage,
+      uploadImage: widget.uploadImage,
+      onSubmit: (draft) => _modifierAppareil(
+        index: index,
+        nom: draft.nom,
+        type: draft.type,
+        prixLoc: draft.prixLocation,
+        prixVente: draft.prixVente,
+        imageUrl: draft.imageUrl ?? appareil.imageUrl,
+      ),
     );
   }
 
@@ -655,7 +229,7 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
       final appareil = _dataManager.appareils[index];
       // Utiliser dbId (ID de la base de données) au lieu d'extraire l'ID du code
       final id = appareil.dbId ?? 0;
-      final result = await ApiService.updateAppareil(
+      await ApiService.updateAppareil(
         id: id,
         nom: nom,
         type: type,
