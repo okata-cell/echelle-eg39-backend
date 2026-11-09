@@ -124,7 +124,7 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
   late DateTime _datePublication = widget.initial?.datePublication ?? _today;
   // Trente jours par défaut : une annonce a une échéance, quitte à l'allonger.
   late DateTime _dateFin =
-      widget.initial?.dateFin ?? _datePublication.add(const Duration(days: 30));
+      widget.initial?.dateFin ?? actualiteFinParDefaut(_datePublication);
   // Une actualité rédigée par l'administrateur est destinée à être vue : elle
   // part publiée, et le brouillon reste un choix explicite.
   late bool _publiee = widget.initial?.publiee ?? true;
@@ -281,29 +281,46 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
     });
   }
 
+  bool get _fenetreIncoherente => _dateFin.isBefore(_datePublication);
+
   Future<void> _selectDatePublication() async {
     final picked = await showDatePicker(
       context: context,
       initialDate: _datePublication,
       firstDate: DateTime(2020),
       lastDate: _today.add(const Duration(days: 730)),
+      helpText: 'Début de publication',
     );
     if (picked == null || !mounted) return;
+
+    final debut = DateTime(picked.year, picked.month, picked.day);
     setState(() {
-      _datePublication = DateTime(picked.year, picked.month, picked.day);
-      if (_dateFin.isBefore(_datePublication)) {
-        _dateFin = _datePublication.add(const Duration(days: 30));
-      }
+      // La fin se compte à compter du début : déplacer le début décale la fin
+      // d'autant, la durée de diffusion reste celle choisie par l'admin.
+      _dateFin = actualiteFinApresDeplacement(
+        ancienDebut: _datePublication,
+        ancienneFin: _dateFin,
+        nouveauDebut: debut,
+      );
+      _datePublication = debut;
       _error = null;
     });
   }
 
   Future<void> _selectDateFin() async {
+    // La fin ne peut être choisie qu'à compter de la date de début.
+    final premierJour = _datePublication;
+    final dernierJour = _datePublication.add(const Duration(days: 730));
+    final ouverture = _dateFin.isBefore(premierJour)
+        ? premierJour
+        : (_dateFin.isAfter(dernierJour) ? dernierJour : _dateFin);
+
     final picked = await showDatePicker(
       context: context,
-      initialDate: _dateFin,
-      firstDate: _datePublication,
-      lastDate: _datePublication.add(const Duration(days: 730)),
+      initialDate: ouverture,
+      firstDate: premierJour,
+      lastDate: dernierJour,
+      helpText: 'Fin de publication',
     );
     if (picked == null || !mounted) return;
     setState(() {
@@ -328,10 +345,10 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
       setState(() => _error = 'La description est trop longue.');
       return;
     }
-    if (_dateFin.isBefore(_datePublication)) {
+    if (_fenetreIncoherente) {
       setState(
-        () =>
-            _error = 'La date de fin doit être postérieure à la date de début.',
+        () => _error =
+            'La date de fin doit se situer à partir de la date de début.',
       );
       return;
     }
@@ -475,6 +492,8 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
                       fieldKey: const ValueKey('actualite-editor-date-fin'),
                       onTap: _selectDateFin,
                     ),
+                    const SizedBox(height: AdminSpacing.sm),
+                    _buildDiffusionResume(),
                     const SizedBox(height: AdminSpacing.sm),
                     _buildSwitchRow(
                       key: const ValueKey('actualite-editor-pin-row'),
@@ -819,6 +838,47 @@ class _ActualiteEditorSheetState extends State<ActualiteEditorSheet> {
                   color: AdminPalette.secondaryText,
                 ),
               ],
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// Rappelle la règle de la fenêtre : la fin se compte à compter du début.
+  Widget _buildDiffusionResume() {
+    final incoherente = _fenetreIncoherente;
+    final jours = actualiteJoursDiffusion(_datePublication, _dateFin);
+    final texte = incoherente
+        ? 'La fin doit se situer à partir du ${formatActualiteDate(_datePublication)}.'
+        : jours <= 1
+        ? 'Diffusion sur la seule journée du ${formatActualiteDate(_datePublication)}.'
+        : '$jours jours de diffusion, à compter du ${formatActualiteDate(_datePublication)}.';
+
+    return Row(
+      key: const ValueKey('actualite-editor-diffusion'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Padding(
+          padding: const EdgeInsets.only(top: 1),
+          child: Icon(
+            incoherente ? Icons.error_outline : Icons.date_range_outlined,
+            size: 15,
+            color: incoherente
+                ? AdminPalette.destructiveRed
+                : AdminPalette.secondaryText,
+          ),
+        ),
+        const SizedBox(width: 6),
+        Expanded(
+          child: Text(
+            texte,
+            style: TextStyle(
+              color: incoherente
+                  ? AdminPalette.destructiveRed
+                  : AdminPalette.secondaryText,
+              fontSize: 11,
+              height: 1.35,
             ),
           ),
         ),

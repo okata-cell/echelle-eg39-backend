@@ -92,6 +92,58 @@ void main() {
     );
   });
 
+  testWidgets('la date de fin se choisit à compter de la date de début', (
+    tester,
+  ) async {
+    ActualiteDraft? submitted;
+
+    await openSheet(
+      tester,
+      ActualiteEditorSheet(onSubmit: (draft) async => submitted = draft),
+    );
+
+    // Le début est déplacé au 20 du mois courant.
+    await tapKey(tester, 'actualite-editor-date-debut');
+    final calendrier = find.byType(DatePickerDialog);
+    await tester.tap(
+      find.descendant(of: calendrier, matching: find.text('20')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('OK'));
+    await tester.pumpAndSettle();
+
+    // Le calendrier de fin s'ouvre borné par ce début.
+    await tapKey(tester, 'actualite-editor-date-fin');
+    expect(
+      find.descendant(
+        of: find.byType(DatePickerDialog),
+        matching: find.text('Fin de publication'),
+      ),
+      findsOneWidget,
+    );
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    await tester.enterText(
+      find.byKey(const ValueKey('actualite-editor-titre')),
+      'Nouvelle gamme de stations totales E800',
+    );
+    await tester.enterText(
+      find.byKey(const ValueKey('actualite-editor-description')),
+      'Trois modèles en stock à l’agence.',
+    );
+    await tapKey(tester, 'actualite-editor-submit');
+
+    expect(submitted, isNotNull);
+    expect(submitted!.datePublication.day, 20);
+    // La durée de diffusion ne bouge pas : la fin suit le début.
+    expect(
+      submitted!.dateFin.difference(submitted!.datePublication).inDays,
+      30,
+    );
+    expect(submitted!.dateFin.isBefore(submitted!.datePublication), isFalse);
+  });
+
   testWidgets('préremplit et supprime une actualité existante', (tester) async {
     var deleted = false;
     final actualite = Actualite(

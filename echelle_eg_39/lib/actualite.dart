@@ -228,3 +228,29 @@ String formatIsoDate(DateTime date) {
   final jour = date.day.toString().padLeft(2, '0');
   return '${date.year}-$mois-$jour';
 }
+
+/// Durée de diffusion proposée à la rédaction d'une actualité, en jours.
+const int actualiteDureeDiffusionDefaut = 30;
+
+/// Fin de publication proposée : elle se compte à compter du début.
+DateTime actualiteFinParDefaut(DateTime debut) =>
+    debut.add(const Duration(days: actualiteDureeDiffusionDefaut));
+
+/// Nombre de jours affichés, bornes comprises : du 6 au 30 novembre = 25 jours.
+int actualiteJoursDiffusion(DateTime debut, DateTime? fin) {
+  if (fin == null) return 0;
+  final jours = fin.difference(debut).inDays;
+  return jours < 0 ? 0 : jours + 1;
+}
+
+/// Déplace la fenêtre de publication en gardant la même durée de diffusion :
+/// la date de fin se recompte toujours à compter de la date de début.
+DateTime actualiteFinApresDeplacement({
+  required DateTime ancienDebut,
+  required DateTime ancienneFin,
+  required DateTime nouveauDebut,
+}) {
+  final duree = ancienneFin.difference(ancienDebut);
+  if (duree.isNegative) return actualiteFinParDefaut(nouveauDebut);
+  return nouveauDebut.add(duree);
+}

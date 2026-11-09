@@ -117,9 +117,11 @@ function lirePayload(body) {
     if (!isIsoDate(dateFin)) {
       return { error: 'La date de fin de publication est invalide.' };
     }
+    // La fin se choisit à compter du début : le jour même est accepté, ce qui
+    // correspond à une diffusion sur une seule journée.
     if (dateFin < date) {
       return {
-        error: 'La date de fin doit être postérieure à la date de publication.',
+        error: 'La date de fin doit se situer à partir de la date de publication.',
       };
     }
   }
