@@ -90,6 +90,8 @@ test('refuse une demande client sans session avant tout accès à la base', asyn
 test('le bouton Envoyer crée une demande rattachée au client connecté', async () => {
   let capturedParams;
   pool.query = async (query, params) => {
+    // La vérification « une seule demande vivante » précède l'écriture.
+    if (/SELECT id, statut, created_at/.test(query)) return { rows: [] };
     assert.match(query, /INSERT INTO devis/);
     capturedParams = params;
     return { rows: [devisRow()] };
@@ -106,6 +108,75 @@ test('le bouton Envoyer crée une demande rattachée au client connecté', async
   assert.equal(body.lieAuCompte, true);
   assert.equal(capturedParams[0], 42);
   assert.equal(body.devis.statut, 'en_attente');
+});
+
+test('une seconde demande est refusée tant que la première attend une réponse', async () => {
+  let insertAttempted = false;
+  pool.query = async (query) => {
+    if (/INSERT INTO devis/.test(query)) {
+      insertAttempted = true;
+      return { rows: [devisRow()] };
+    }
+    assert.match(query, /statut = ANY/);
+    return { rows: [{ id: 5, statut: 'en_attente' }] };
+  };
+
+  const response = await request('', {
+    method: 'POST',
+    token: tokenFor('client', 42),
+    body: requestBody,
+  });
+  const body = await response.json();
+
+  assert.equal(response.status, 409);
+  assert.equal(body.code, 'DEVIS_EN_ATTENTE');
+  assert.match(body.error, /déjà une demande/);
+  assert.equal(body.devisId, 5);
+  assert.equal(insertAttempted, false);
+  assert.equal(response.headers.get('cache-control'), 'private, no-store');
+});
+
+test('après une décision de l’admin, la prestation accepte une nouvelle demande', async () => {
+  let filtreStatuts;
+  pool.query = async (query, params) => {
+    if (/SELECT id, statut, created_at/.test(query)) {
+      // Les demandes approuvées ou rejetées sortent du filtre : la base répond vide.
+      filtreStatuts = params[2];
+      return { rows: [] };
+    }
+    return { rows: [devisRow({ id: 11 })] };
+  };
+
+  const response = await request('', {
+    method: 'POST',
+    token: tokenFor('client', 42),
+    body: requestBody,
+  });
+
+  assert.equal(response.status, 201);
+  assert.deepEqual(filtreStatuts, ['en_attente', 'en_traitement']);
+});
+
+test('une demande sans service identifié ne déclenche pas la vérification', async () => {
+  const queries = [];
+  pool.query = async (query) => {
+    queries.push(query);
+    return { rows: [devisRow({ service_id: null })] };
+  };
+
+  const { serviceId, ...sansService } = requestBody;
+  const response = await request('', {
+    method: 'POST',
+    token: tokenFor('client', 42),
+    body: sansService,
+  });
+
+  assert.equal(response.status, 201);
+  assert.equal(
+    queries.some((query) => /SELECT id, statut, created_at/.test(query)),
+    false,
+  );
+  assert.ok(queries.some((query) => /INSERT INTO devis/.test(query)));
 });
 
 test('un administrateur ne peut pas créer une demande client', async () => {

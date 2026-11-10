@@ -44,6 +44,15 @@ function deleteDemande(id, token) {
 test('la création d’une demande inclut l’image de l’appareil', async () => {
   const queries = [];
   pool.query = async (query, params) => {
+    // Journal d'activité admin : écrit après la réponse et sans effet sur la
+    // demande elle-même, il ne compte pas dans le scénario testé ici.
+    if (
+      /admin_events/.test(query) ||
+      /SELECT first_name, last_name, phone FROM users/.test(query)
+    ) {
+      return { rows: [] };
+    }
+
     queries.push(query);
     if (/SELECT \* FROM appareils/.test(query)) {
       return { rows: [{

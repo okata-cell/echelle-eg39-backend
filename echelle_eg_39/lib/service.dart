@@ -6,6 +6,8 @@ import 'api_service.dart';
 import 'client_mes_devis.dart';
 import 'login.page.dart';
 import 'quote_request_dialog.dart';
+import 'quote_request_lock.dart';
+import 'widgets/quote_pending_notice.dart';
 
 class Service {
   final String id;
@@ -46,9 +48,73 @@ class ServiceScreen extends StatefulWidget {
   State<ServiceScreen> createState() => _ServiceScreenState();
 }
 
-class _ServiceScreenState extends State<ServiceScreen> {
+class _ServiceScreenState extends State<ServiceScreen>
+    with WidgetsBindingObserver {
   String _selectedCategory = 'Tous';
   String _searchQuery = '';
+
+  /// Demandes de devis encore sans réponse, indexées par identifiant de service.
+  Map<String, Map<String, dynamic>> _devisOuverts = const {};
+  bool _devisCharges = false;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    _chargerDevisOuverts();
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // La réponse de l'admin a pu arriver pendant que l'app dormait : au retour,
+    // on relit l'état des demandes pour débloquer la bonne prestation.
+    if (state == AppLifecycleState.resumed) _chargerDevisOuverts();
+  }
+
+  Future<void> _chargerDevisOuverts() async {
+    final token = await ApiService.getToken();
+    if (!mounted) return;
+
+    if (token == null) {
+      setState(() {
+        _devisOuverts = const {};
+        _devisCharges = true;
+      });
+      return;
+    }
+
+    try {
+      final devis = await ApiService.getMyDevis();
+      if (!mounted) return;
+      setState(() {
+        _devisOuverts = indexerDevisOuverts(devis);
+        _devisCharges = true;
+      });
+    } catch (_) {
+      // Sans réponse du serveur on n'invente pas un blocage : il refusera de
+      // toute façon un doublon, avec un message explicite.
+      if (!mounted) return;
+      setState(() => _devisCharges = true);
+    }
+  }
+
+  Future<void> _ouvrirMesDevis() async {
+    if (!mounted) return;
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ClientMesDevisPage(
+          serviceImageResolver: ServiceScreen.imageUrlForId,
+        ),
+      ),
+    );
+    await _chargerDevisOuverts();
+  }
 
   final List<String> _categories = [
     'Tous',
@@ -1012,29 +1078,39 @@ class _ServiceScreenState extends State<ServiceScreen> {
                 ),
                 const SizedBox(height: 16),
 
-                // Action Button
-                SizedBox(
-                  width: double.infinity,
-                  child: ElevatedButton(
-                    onPressed: () => _startQuoteRequest(service),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: const Color(0xFF2563EB),
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 12),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(10),
+                // Action : une seule demande vivante par prestation.
+                if (_devisOuverts[service.id] case final demande?)
+                  QuotePendingNotice(
+                    demande: demande,
+                    onSuivre: _ouvrirMesDevis,
+                  )
+                else
+                  SizedBox(
+                    width: double.infinity,
+                    child: ElevatedButton(
+                      onPressed: _devisCharges
+                          ? () => _startQuoteRequest(service)
+                          : null,
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        disabledBackgroundColor: const Color(0xFFBFDBFE),
+                        disabledForegroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 12),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        elevation: _devisCharges ? 2 : 0,
                       ),
-                      elevation: 2,
-                    ),
-                    child: Text(
-                      'Demander un devis',
-                      style: GoogleFonts.poppins(
-                        fontSize: 13,
-                        fontWeight: FontWeight.w600,
+                      child: Text(
+                        _devisCharges ? 'Demander un devis' : 'Vérification…',
+                        style: GoogleFonts.poppins(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
                     ),
                   ),
-                ),
               ],
             ),
           ),
@@ -1107,6 +1183,20 @@ class _ServiceScreenState extends State<ServiceScreen> {
       return;
     }
 
+    // Filet de sécurité : le bouton est déjà remplacé quand une demande est
+    // ouverte, mais un appui très rapide ne doit pas ouvrir le formulaire.
+    if (_devisOuverts[service.id] != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text(
+            'Une demande est déjà en attente de réponse pour cette prestation.',
+          ),
+        ),
+      );
+      await _ouvrirMesDevis();
+      return;
+    }
+
     try {
       final profile = await ApiService.getMe();
       if (!mounted) return;
@@ -1158,7 +1248,6 @@ class _ServiceScreenState extends State<ServiceScreen> {
     required String requesterName,
     String initialTelephone = '',
   }) async {
-    final navigator = Navigator.of(context);
     final messenger = ScaffoldMessenger.of(context);
 
     final submitted = await showDialog<bool>(
@@ -1181,6 +1270,12 @@ class _ServiceScreenState extends State<ServiceScreen> {
     );
 
     if (!mounted || submitted != true) return;
+
+    // La prestation se verrouille tout de suite : le client voit sa demande en
+    // attente à la place du bouton, sans attendre un rechargement.
+    await _chargerDevisOuverts();
+    if (!mounted) return;
+
     messenger.showSnackBar(
       SnackBar(
         content: const Text('Demande de devis envoyée avec succès !'),
@@ -1188,15 +1283,7 @@ class _ServiceScreenState extends State<ServiceScreen> {
         action: SnackBarAction(
           label: 'Suivre',
           textColor: Colors.white,
-          onPressed: () {
-            navigator.push(
-              MaterialPageRoute(
-                builder: (_) => ClientMesDevisPage(
-                  serviceImageResolver: ServiceScreen.imageUrlForId,
-                ),
-              ),
-            );
-          },
+          onPressed: _ouvrirMesDevis,
         ),
       ),
     );

@@ -33,6 +33,15 @@ const DEVIS_TRANSITIONS = {
   termine: [],
 };
 
+/**
+ * Statuts pendant lesquels le client attend encore la réponse de l'équipe.
+ *
+ * Tant qu'une demande est dans cet état pour un service donné, le client ne peut
+ * pas en déposer une seconde : c'est seulement après approbation ou rejet qu'il
+ * retrouve le droit de demander un nouveau devis pour ce même service.
+ */
+const DEVIS_EN_ATTENTE_DE_REPONSE = ['en_attente', 'en_traitement'];
+
 const SELECT_DEVIS = `
   SELECT d.*,
          u.email AS client_email,
@@ -153,6 +162,22 @@ async function pendingRequestError(devisId) {
   };
 }
 
+/** La demande encore sans réponse pour ce client et ce service, s'il en existe. */
+async function demandeOuvertePourService(userId, serviceId) {
+  const { rows } = await pool.query(
+    `SELECT id, statut, created_at
+       FROM devis
+      WHERE user_id = $1
+        AND service_id = $2
+        AND statut = ANY($3::varchar[])
+      ORDER BY created_at DESC
+      LIMIT 1`,
+    [userId, String(serviceId), DEVIS_EN_ATTENTE_DE_REPONSE],
+  );
+
+  return rows[0] ?? null;
+}
+
 // Le bouton Envoyer du client crée une demande liée à son compte authentifié.
 router.post('/', authMiddleware, clientMiddleware, [
   body('serviceId').optional().isString(),
@@ -170,6 +195,25 @@ router.post('/', authMiddleware, clientMiddleware, [
 
   try {
     const { serviceId, serviceName, description, nom, telephone, email } = req.body;
+
+    // Un seul dossier ouvert par prestation : la règle est tenue ici, pas
+    // seulement dans l'interface, pour qu'un client qui réessaie ne crée pas
+    // deux demandes identiques.
+    if (serviceId) {
+      const ouverte = await demandeOuvertePourService(req.user.userId, serviceId);
+      if (ouverte) {
+        res.set('Cache-Control', 'private, no-store');
+        return res.status(409).json({
+          code: 'DEVIS_EN_ATTENTE',
+          error:
+            'Vous avez déjà une demande en attente pour ce service. ' +
+            'Attendez la réponse de l’équipe avant d’en déposer une nouvelle.',
+          devisId: ouverte.id,
+          statut: ouverte.statut,
+        });
+      }
+    }
+
     const result = await pool.query(
       `INSERT INTO devis (
          user_id, service_id, service_name, description,
