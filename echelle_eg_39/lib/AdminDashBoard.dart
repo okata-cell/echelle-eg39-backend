@@ -1,6 +1,7 @@
 // © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'admin.client.page.dart';
 import 'appareils.page.dart';
 import 'LocationsMenu.dart';
@@ -9,6 +10,8 @@ import 'admin_actualites.page.dart';
 import 'admin_devis.page.dart';
 import 'admin_promotions.page.dart';
 import 'admin/admin_shell.dart';
+import 'admin/admin_activity_service.dart';
+import 'models_admin_activity.dart';
 
 import 'login.page.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -22,6 +25,30 @@ class AdminDashBoard extends StatefulWidget {
 
 class _AdminDashBoardState extends State<AdminDashBoard> {
   int currentIndex = 0;
+
+  /// Journal des demandes clientes : flux temps réel plus reprise périodique.
+  final AdminActivityService _activity = AdminActivityService.instance;
+
+  @override
+  void initState() {
+    super.initState();
+    _activity.onNouvelEvenement = _signalerArrivee;
+    _activity.demarrer();
+  }
+
+  @override
+  void dispose() {
+    _activity.onNouvelEvenement = null;
+    _activity.arreter();
+    super.dispose();
+  }
+
+  /// Une demande arrive pendant que l'admin travaille : vibration courte,
+  /// la pastille et la feuille prennent le relais à l'écran.
+  void _signalerArrivee(AdminActivityEvent evenement) {
+    HapticFeedback.mediumImpact();
+    SystemSound.play(SystemSoundType.click);
+  }
 
   @override
   void didChangeDependencies() {
@@ -66,6 +93,7 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
 
   /// Fonction de déconnexion
   Future<void> logout() async {
+    _activity.arreter();
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('token');
     await prefs.remove('isLoggedIn');
@@ -87,6 +115,7 @@ class _AdminDashBoardState extends State<AdminDashBoard> {
     return AdminShell(
       currentIndex: currentIndex,
       pages: pages,
+      activity: _activity,
       onIndexChanged: (index) {
         setState(() => currentIndex = index);
       },

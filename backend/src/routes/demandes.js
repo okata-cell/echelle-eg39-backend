@@ -3,6 +3,7 @@ const router = express.Router();
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
+const { recordPurchaseRequest } = require('../services/admin_activity');
 
 // Liste des demandes d'achat.
 router.get('/', authMiddleware, async (req, res) => {
@@ -128,6 +129,10 @@ router.post('/', authMiddleware, [
       [code, req.user.userId, appareilId, appareil.nom, appareil.prix_vente, quantite, total],
     );
     const demande = result.rows[0];
+
+    recordPurchaseRequest({ demande, userId: req.user.userId }).catch((error) =>
+      console.error('Journal vente:', error.message),
+    );
 
     return res.status(201).json({
       message: 'Demande d’achat créée',

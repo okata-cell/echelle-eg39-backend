@@ -391,6 +391,41 @@ async function migrate() {
     await client.query('CREATE INDEX IF NOT EXISTS idx_devis_created_at ON devis(created_at)');
     await client.query('CREATE INDEX IF NOT EXISTS idx_devis_user_id ON devis(user_id)');
 
+    // Journal des demandes clientes, lu par l'espace administrateur.
+    // `event_key` porte la clé métier (par exemple `location:1421`) : un client
+    // qui réessaie après une coupure réseau ne crée pas de seconde alerte.
+    await client.query(`
+      CREATE TABLE IF NOT EXISTS admin_events (
+        id BIGSERIAL PRIMARY KEY,
+        event_key VARCHAR(80) UNIQUE NOT NULL,
+        kind VARCHAR(20) NOT NULL CHECK (kind IN ('location', 'vente', 'devis')),
+        reference VARCHAR(60) NOT NULL,
+        titre VARCHAR(200) NOT NULL,
+        demandeur VARCHAR(160),
+        montant BIGINT,
+        metadata JSONB DEFAULT '{}'::jsonb,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        read_at TIMESTAMP,
+        read_by INTEGER REFERENCES users(id) ON DELETE SET NULL
+      )
+    `);
+
+    await client.query(
+      `CREATE INDEX IF NOT EXISTS admin_events_unread_idx
+         ON admin_events (created_at DESC) WHERE read_at IS NULL`,
+    );
+    await client.query(
+      'CREATE INDEX IF NOT EXISTS admin_events_created_at_idx ON admin_events (created_at DESC)',
+    );
+
+    // Les événements acquittés depuis plus d'un mois sont oubliés : le journal
+    // n'a pas vocation à conserver indéfiniment un historique de consultation.
+    await client.query(
+      `DELETE FROM admin_events
+        WHERE read_at IS NOT NULL
+          AND read_at < NOW() - INTERVAL '30 days'`,
+    );
+
     await client.query('COMMIT');
     console.log('✅ Migration réussie');
     console.log(

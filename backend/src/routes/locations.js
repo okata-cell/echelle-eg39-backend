@@ -11,6 +11,7 @@ const {
   isDateOnly,
   toDateOnly,
 } = require('../utils/rental_dates');
+const { recordLocationRequest } = require('../services/admin_activity');
 
 function mapLocation(location) {
   return {
@@ -227,6 +228,14 @@ router.post(
       );
       await client.query('COMMIT');
       transactionOpen = false;
+
+      // Journalisé après le COMMIT : une réservation annulée ne doit rien
+      // laisser dans l'activité admin. L'appel n'attend pas pour répondre.
+      recordLocationRequest({
+        location: inserted.rows[0],
+        userId: targetUserId,
+      }).catch((error) => console.error('Journal location:', error.message));
+
       return res.status(201).json({
         message: 'Demande de location créée - en attente de validation admin.',
         location: {

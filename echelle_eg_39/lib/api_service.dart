@@ -155,7 +155,8 @@ class ApiService {
       type: response.statusCode >= 500
           ? ApiErrorType.serverUnavailable
           : ApiErrorType.request,
-      message: decoded?['error']?.toString() ??
+      message:
+          decoded?['error']?.toString() ??
           'Suppression impossible pour le moment.',
       statusCode: response.statusCode,
     );
@@ -457,7 +458,8 @@ class ApiService {
       if (response.statusCode == 401) {
         final body = decodeObject(response.body);
         final serverCode = body?['code']?.toString();
-        if (serverCode == 'SESSION_REVOKED' || serverCode == 'ACCOUNT_DELETED') {
+        if (serverCode == 'SESSION_REVOKED' ||
+            serverCode == 'ACCOUNT_DELETED') {
           return const SessionCheck(SessionState.revoked);
         }
       }
@@ -2336,6 +2338,76 @@ class ApiService {
     }
   }
 
+  /// Journal d'activité admin : événements récents et compteurs non lus.
+  ///
+  /// `since` (ISO 8601) permet de ne récupérer que ce qui s'est passé depuis la
+  /// dernière consultation : c'est le rattrapage quand le flux temps réel est
+  /// tombé ou que l'application était en veille.
+  static Future<Map<String, dynamic>> getAdminActivity({String? since}) async {
+    final headers = await _adminJsonHeaders();
+    final uri = Uri.parse('$baseUrl/admin/activity').replace(
+      queryParameters: since == null ? null : <String, String>{'since': since},
+    );
+
+    try {
+      final response = await http
+          .get(uri, headers: headers)
+          .timeout(const Duration(seconds: 15));
+
+      final data = decodeObject(response.body);
+      if (response.statusCode == 200 && data != null) return data;
+
+      throw _actualiteError(
+        response,
+        'Impossible de récupérer l’activité des demandes.',
+      );
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message:
+            'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+      );
+    } on ApiException {
+      rethrow;
+    } catch (_) {
+      throw const ApiException(
+        type: ApiErrorType.network,
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion internet.',
+      );
+    }
+  }
+
+  /// Marque une demande comme consultée : la pastille décroît pour tous les
+  /// administrateurs connectés.
+  static Future<void> markAdminActivityRead(int eventId) async {
+    final headers = await _adminJsonHeaders();
+
+    try {
+      await http
+          .post(
+            Uri.parse('$baseUrl/admin/activity/$eventId/read'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // L'acquittement est rejoué au prochain rafraîchissement.
+    }
+  }
+
+  /// Solde la file d'activité d'un coup.
+  static Future<void> markAllAdminActivityRead() async {
+    final headers = await _adminJsonHeaders();
+
+    try {
+      await http
+          .post(Uri.parse('$baseUrl/admin/activity/read-all'), headers: headers)
+          .timeout(const Duration(seconds: 15));
+    } catch (_) {
+      // Idem : le serveur reste la référence au rafraîchissement suivant.
+    }
+  }
+
   /// Créer une actualité (admin).
   static Future<Map<String, dynamic>> createActualite(
     Map<String, dynamic> actualite,
@@ -2435,7 +2507,8 @@ class ApiService {
     } catch (_) {
       throw const ApiException(
         type: ApiErrorType.network,
-        message: 'Impossible de contacter le serveur. Vérifiez votre connexion.',
+        message:
+            'Impossible de contacter le serveur. Vérifiez votre connexion.',
       );
     }
   }
@@ -2490,10 +2563,7 @@ class ApiService {
     };
   }
 
-  static ApiException _actualiteError(
-    http.Response response,
-    String fallback,
-  ) {
+  static ApiException _actualiteError(http.Response response, String fallback) {
     final data = decodeObject(response.body);
     final message = switch (response.statusCode) {
       401 => 'Votre session a expiré. Reconnectez-vous puis réessayez.',
@@ -2597,7 +2667,8 @@ class ApiService {
         type: response.statusCode >= 500
             ? ApiErrorType.serverUnavailable
             : ApiErrorType.request,
-        message: decoded?['error']?.toString() ?? 'Impossible d’envoyer l’image.',
+        message:
+            decoded?['error']?.toString() ?? 'Impossible d’envoyer l’image.',
         statusCode: response.statusCode,
       );
     } on ApiException {

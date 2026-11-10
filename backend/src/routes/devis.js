@@ -3,6 +3,7 @@ const { body, param, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { normalizePhone } = require('../utils/identifiers');
+const { recordQuoteRequest } = require('../services/admin_activity');
 
 const router = express.Router();
 
@@ -185,6 +186,10 @@ router.post('/', authMiddleware, clientMiddleware, [
         normalizePhone(telephone) || null,
         email || null,
       ],
+    );
+
+    recordQuoteRequest({ devis: result.rows[0] }).catch((error) =>
+      console.error('Journal devis:', error.message),
     );
 
     return res.status(201).json({
