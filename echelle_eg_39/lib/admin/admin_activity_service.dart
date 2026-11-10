@@ -5,7 +5,6 @@ import 'dart:convert';
 
 import 'package:flutter/widgets.dart';
 import 'package:http/http.dart' as http;
-import 'package:shared_preferences/shared_preferences.dart';
 
 import '../api_service.dart';
 import '../models_admin_activity.dart';
@@ -14,8 +13,8 @@ import '../models_admin_activity.dart';
 ///
 /// Deux canaux complémentaires, aucun service externe :
 /// * le flux SSE du backend, qui pousse chaque demande en moins d'une seconde ;
-/// * la relecture par `GET /api/admin/activity?since=…`, appelée au démarrage,
-///   au retour de veille et toutes les 20 s lorsque le flux est muet.
+/// * la relecture de `GET /api/admin/activity`, appelée au démarrage, au retour
+///   de veille et toutes les 20 s lorsque le flux est muet.
 class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
   AdminActivityService();
 
@@ -24,7 +23,6 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
   static const Duration _intervalleRepli = Duration(seconds: 20);
   static const Duration _delaiReconnexion = Duration(seconds: 5);
   static const int _plafond = 80;
-  static const String _cleCurseur = 'admin_activity_cursor';
 
   final List<AdminActivityEvent> _evenements = <AdminActivityEvent>[];
   final Map<String, int> _nonLus = <String, int>{
@@ -37,12 +35,11 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
   StreamSubscription<String>? _abonnement;
   Timer? _repli;
   Timer? _reconnexion;
-  String? _curseur;
 
   bool _demarre = false;
   bool _fluxOuvert = false;
   bool _connexionEnCours = false;
-  bool _chargement = false;
+  bool _refreshing = false;
   bool _horsLigne = false;
   DateTime? _derniereActivite;
 
@@ -73,9 +70,6 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
     _demarre = true;
 
     WidgetsBinding.instance.addObserver(this);
-
-    final prefs = await SharedPreferences.getInstance();
-    _curseur = prefs.getString(_cleCurseur);
 
     await rafraichir();
     unawaited(_ouvrirFlux());
@@ -115,18 +109,22 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
   }
 
   /// Relecture du journal : la référence reste le serveur.
+  ///
+  /// Volontairement sans curseur : le registre doit montrer l'historique récent,
+  /// pas seulement ce qui est arrivé après la dernière consultation. Un `since`
+  /// calculé à l'ouverture précédente masquait les demandes encore non traitées.
   Future<void> rafraichir() async {
-    if (_chargement) return;
-    _chargement = true;
+    if (_refreshing) return;
+    _refreshing = true;
 
     try {
-      final data = await ApiService.getAdminActivity(since: _curseur);
+      final data = await ApiService.getAdminActivity();
       _horsLigne = false;
       _appliquer(data);
     } catch (_) {
       _horsLigne = true;
     } finally {
-      _chargement = false;
+      _refreshing = false;
       notifyListeners();
     }
   }
@@ -229,8 +227,6 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
     _evenements
       ..clear()
       ..addAll(liste.take(_plafond));
-
-    _majCurseur(_evenements.first.createdAt);
   }
 
   void _ajouter(AdminActivityEvent evenement) {
@@ -241,7 +237,6 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
 
     _nonLus[evenement.kind] = (_nonLus[evenement.kind] ?? 0) + 1;
     _derniereActivite = evenement.createdAt;
-    _majCurseur(evenement.createdAt);
 
     notifyListeners();
     onNouvelEvenement?.call(evenement);
@@ -250,22 +245,6 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
   void _decrementer(String kind) {
     final actuel = _nonLus[kind] ?? 0;
     if (actuel > 0) _nonLus[kind] = actuel - 1;
-  }
-
-  void _majCurseur(DateTime instant) {
-    // Un léger retrait évite de manquer un événement écrit dans la même seconde.
-    final marge = instant
-        .subtract(const Duration(seconds: 2))
-        .toUtc()
-        .toIso8601String();
-    if (_curseur == marge) return;
-
-    _curseur = marge;
-    unawaited(
-      SharedPreferences.getInstance().then(
-        (prefs) => prefs.setString(_cleCurseur, marge),
-      ),
-    );
   }
 
   Future<void> _ouvrirFlux() async {

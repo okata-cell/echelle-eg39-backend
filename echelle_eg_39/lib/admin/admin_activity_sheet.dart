@@ -230,16 +230,11 @@ class _EnTete extends StatelessWidget {
             scrollDirection: Axis.horizontal,
             child: Row(
               children: [
-                _Filtre(
-                  label: 'Tous',
-                  icone: Icons.inbox_outlined,
-                  nombre: service.evenements.length,
-                  teinte: AdminPalette.deepSlate,
-                  selectionne: filtre == null,
-                  onTap: () => onFiltre(null),
-                ),
+                // Les trois modules seulement : sur un écran de 360 dp, un
+                // quatrième filtre « Tous » repoussait « Devis » hors du cadre.
                 for (final kind in _AdminActivitySheetState._modules) ...[
-                  const SizedBox(width: AdminSpacing.sm),
+                  if (kind != _AdminActivitySheetState._modules.first)
+                    const SizedBox(width: AdminSpacing.sm),
                   _Filtre(
                     label: _moduleLabel(kind),
                     icone: _icone(kind),
@@ -247,6 +242,16 @@ class _EnTete extends StatelessWidget {
                     teinte: _teinte(kind),
                     selectionne: filtre == kind,
                     onTap: () => onFiltre(kind),
+                  ),
+                ],
+                if (filtre != null) ...[
+                  const SizedBox(width: AdminSpacing.xs),
+                  IconButton(
+                    onPressed: () => onFiltre(null),
+                    tooltip: 'Tous les modules',
+                    icon: const Icon(Icons.filter_alt_off_outlined, size: 18),
+                    color: AdminPalette.secondaryText,
+                    visualDensity: VisualDensity.compact,
                   ),
                 ],
               ],
