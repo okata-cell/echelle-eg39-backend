@@ -216,6 +216,9 @@ void main() {
   testWidgets('la feuille Activité liste les demandes non lues', (
     tester,
   ) async {
+    // Demandes reçues dans l'heure : la section affichée est celle du jour,
+    // quel que soit le moment où la suite de tests est exécutée.
+    final maintenant = DateTime.now();
     final service = AdminActivityService()
       ..injecter(
         <AdminActivityEvent>[
@@ -224,7 +227,7 @@ void main() {
             kind: 'location',
             reference: 'LOC-17930-8842',
             titre: 'Station totale Leica TS06',
-            createdAt: DateTime(2026, 11, 10, 20, 44),
+            createdAt: maintenant.subtract(const Duration(minutes: 12)),
             demandeur: 'Silva Okata · +228 90 94 94 39',
             montant: 60000,
           ),
@@ -233,7 +236,7 @@ void main() {
             kind: 'devis',
             reference: 'DEV-17930-8844',
             titre: 'Implantation de 40 bornes',
-            createdAt: DateTime(2026, 11, 10, 19, 58),
+            createdAt: maintenant.subtract(const Duration(minutes: 46)),
             demandeur: 'Ayi Mensah',
             description: '3 lots',
           ),

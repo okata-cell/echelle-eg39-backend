@@ -9,6 +9,7 @@ import 'forgot_password.page.dart';
 import 'demo_main.dart';
 import 'api_service.dart';
 import 'password_recovery_scaffold.dart';
+import 'widgets/clipboard_paste_action.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class LoginPage extends StatefulWidget {
@@ -298,9 +299,18 @@ class _LoginPageState extends State<LoginPage> {
           color: Color(0xFF7A7A7A),
           size: 20,
         ),
-        trailing: identifierController.text.isEmpty
-            ? null
-            : IconButton(
+        // Le champ vide propose « Coller » ; une fois rempli, la place revient
+        // à l'effacement.
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (identifierController.text.isEmpty)
+              ClipboardPasteAction(
+                controller: identifierController,
+                focusNode: identifierFocus,
+              ),
+            if (identifierController.text.isNotEmpty)
+              IconButton(
                 tooltip: 'Effacer',
                 icon: const Icon(
                   Icons.clear,
@@ -312,6 +322,8 @@ class _LoginPageState extends State<LoginPage> {
                   identifierFocus.requestFocus();
                 },
               ),
+          ],
+        ),
       ),
     );
   }
@@ -333,18 +345,29 @@ class _LoginPageState extends State<LoginPage> {
           color: Color(0xFF7A7A7A),
           size: 20,
         ),
-        trailing: IconButton(
-          tooltip: _obscurePassword
-              ? 'Afficher le mot de passe'
-              : 'Masquer le mot de passe',
-          icon: Icon(
-            _obscurePassword ? Icons.visibility_off : Icons.visibility,
-            color: const Color(0xFF7A7A7A),
-            size: 20,
-          ),
-          onPressed: () {
-            setState(() => _obscurePassword = !_obscurePassword);
-          },
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (passwordController.text.isEmpty)
+              ClipboardPasteAction(
+                controller: passwordController,
+                focusNode: passwordFocus,
+                trim: false,
+              ),
+            IconButton(
+              tooltip: _obscurePassword
+                  ? 'Afficher le mot de passe'
+                  : 'Masquer le mot de passe',
+              icon: Icon(
+                _obscurePassword ? Icons.visibility_off : Icons.visibility,
+                color: const Color(0xFF7A7A7A),
+                size: 20,
+              ),
+              onPressed: () {
+                setState(() => _obscurePassword = !_obscurePassword);
+              },
+            ),
+          ],
         ),
       ),
     );
