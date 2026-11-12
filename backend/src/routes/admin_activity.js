@@ -5,6 +5,7 @@
  * `GET /stream`   : flux temps réel, une ligne SSE par demande déposée.
  * `POST /:id/read`: acquittement d'une demande consultée.
  * `POST /read-all`: acquittement global.
+ * `DELETE /:id`   : retrait d'une ligne dont la demande est close.
  */
 const express = require('express');
 
@@ -90,6 +91,37 @@ router.post('/:id/read', authMiddleware, adminMiddleware, async (req, res) => {
     return res.json({ event: evenement });
   } catch (error) {
     console.error('Erreur acquittement activité:', error.message);
+    return res.status(500).json({ error: 'Erreur serveur.' });
+  }
+});
+
+router.delete('/:id', authMiddleware, adminMiddleware, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isSafeInteger(id) || id <= 0) {
+    return res.status(400).json({ error: 'Identifiant invalide.' });
+  }
+
+  try {
+    const resultat = await activite.deleteEvent(id);
+
+    if (resultat.introuvable) {
+      return res
+        .status(404)
+        .json({ error: 'Cette ligne du journal n’existe plus.' });
+    }
+
+    if (resultat.refus) {
+      // 409 : l'état de la demande interdit la suppression, ce n'est pas une
+      // erreur de saisie. L'écran affiche le motif tel quel.
+      return res.status(409).json({
+        error: resultat.refus,
+        statut: resultat.statut ?? null,
+      });
+    }
+
+    return res.status(204).end();
+  } catch (error) {
+    console.error('Erreur suppression activité:', error.message);
     return res.status(500).json({ error: 'Erreur serveur.' });
   }
 });

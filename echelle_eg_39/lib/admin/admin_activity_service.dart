@@ -167,6 +167,25 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
     }
   }
 
+  /// Retire une ligne du journal d'activité.
+  ///
+  /// Le serveur reste seul juge : une demande encore ouverte est refusée par
+  /// une [ApiException] dont le message est montré à l'administrateur. En cas
+  /// de succès, la ligne disparaît aussi sur les autres postes connectés.
+  Future<void> supprimer(AdminActivityEvent evenement) async {
+    await ApiService.deleteAdminActivity(evenement.id);
+    _retirer(evenement.id);
+  }
+
+  void _retirer(int id) {
+    final index = _evenements.indexWhere((item) => item.id == id);
+    if (index < 0) return;
+
+    final retire = _evenements.removeAt(index);
+    if (retire.nonLu) _decrementer(retire.kind);
+    notifyListeners();
+  }
+
   /// Injecte un état connu (tests et écrans de prévisualisation).
   @visibleForTesting
   void injecter(
@@ -305,6 +324,13 @@ class AdminActivityService extends ChangeNotifier with WidgetsBindingObserver {
     try {
       final decode = jsonDecode(charge);
       if (decode is! Map<String, dynamic>) return;
+
+      // Un autre administrateur a nettoyé l'historique : la ligne s'efface ici
+      // aussi, sans attendre la prochaine relecture.
+      if (decode['supprime'] == true) {
+        _retirer(num.tryParse('${decode['id'] ?? 0}')?.toInt() ?? 0);
+        return;
+      }
 
       if (decode.containsKey('reference')) {
         _ajouter(AdminActivityEvent.fromJson(decode));

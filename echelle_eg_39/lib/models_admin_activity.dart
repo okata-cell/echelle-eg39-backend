@@ -15,6 +15,8 @@ class AdminActivityEvent {
     this.montant,
     this.readAt,
     this.description,
+    this.demandeStatut,
+    this.supprimable = false,
   });
 
   factory AdminActivityEvent.fromJson(Map<String, dynamic> json) {
@@ -31,6 +33,8 @@ class AdminActivityEvent {
           DateTime.now(),
       readAt: DateTime.tryParse((json['readAt'] ?? '').toString())?.toLocal(),
       description: metadata is Map ? _texte(metadata['description']) : null,
+      demandeStatut: _texte(json['demandeStatut']),
+      supprimable: json['supprimable'] == true,
     );
   }
 
@@ -60,6 +64,13 @@ class AdminActivityEvent {
   /// Précision libre du devis (description saisie par le client).
   final String? description;
 
+  /// Statut actuel de la demande liée (`termine`, `en_cours`, `rejetee`…).
+  final String? demandeStatut;
+
+  /// Vrai quand le serveur autorise le retrait de cette ligne du journal :
+  /// la demande est close (terminée, livrée ou annulée).
+  final bool supprimable;
+
   bool get nonLu => readAt == null;
 
   String get moduleLabel => switch (kind) {
@@ -79,6 +90,8 @@ class AdminActivityEvent {
     montant: montant,
     readAt: instant,
     description: description,
+    demandeStatut: demandeStatut,
+    supprimable: supprimable,
   );
 }
 

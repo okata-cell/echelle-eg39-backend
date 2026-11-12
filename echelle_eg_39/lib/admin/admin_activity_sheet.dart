@@ -2,6 +2,7 @@
 
 import 'package:flutter/material.dart';
 
+import '../api_service.dart';
 import '../models_admin_activity.dart';
 import 'admin_activity_service.dart';
 import 'admin_components.dart';
@@ -102,6 +103,7 @@ class _AdminActivitySheetState extends State<AdminActivitySheet> {
                       : _Registre(
                           sections: grouperParJour(evenements),
                           onOuvrir: _ouvrir,
+                          onSupprimer: _supprimer,
                         ),
                 ),
                 const Divider(height: 1, color: AdminPalette.border),
@@ -124,6 +126,56 @@ class _AdminActivitySheetState extends State<AdminActivitySheet> {
 
     navigateur.pop();
     widget.onModuleSelected(evenement.kind);
+  }
+
+  /// Retrait d'une ligne close : confirmation, puis suppression côté serveur.
+  Future<void> _supprimer(AdminActivityEvent evenement) async {
+    final confirme = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('Retirer de l’historique ?'),
+        content: Text(
+          '${evenement.reference.toUpperCase()} — ${evenement.titre}\n\n'
+          'Cette demande est close. La ligne disparaît du journal ; '
+          'la fiche reste intacte dans l’onglet ${evenement.moduleLabel}.',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext, false),
+            child: const Text('Annuler'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: AdminPalette.destructiveRed,
+            ),
+            onPressed: () => Navigator.pop(dialogContext, true),
+            child: const Text('Supprimer'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirme != true || !mounted) return;
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await widget.service.supprimer(evenement);
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(
+            '${evenement.reference.toUpperCase()} retirée de l’historique.',
+          ),
+        ),
+      );
+    } on ApiException catch (error) {
+      // Le serveur refuse une demande redevenue active entre-temps.
+      messenger.showSnackBar(
+        SnackBar(
+          content: Text(error.message),
+          backgroundColor: AdminPalette.destructiveRed,
+        ),
+      );
+    }
   }
 }
 
@@ -332,10 +384,15 @@ class _Filtre extends StatelessWidget {
 }
 
 class _Registre extends StatelessWidget {
-  const _Registre({required this.sections, required this.onOuvrir});
+  const _Registre({
+    required this.sections,
+    required this.onOuvrir,
+    required this.onSupprimer,
+  });
 
   final List<AdminActivityJour> sections;
   final ValueChanged<AdminActivityEvent> onOuvrir;
+  final ValueChanged<AdminActivityEvent> onSupprimer;
 
   @override
   Widget build(BuildContext context) {
@@ -372,7 +429,11 @@ class _Registre extends StatelessWidget {
               ),
             ),
             for (final evenement in section.evenements)
-              _Ligne(evenement: evenement, onTap: () => onOuvrir(evenement)),
+              _Ligne(
+                evenement: evenement,
+                onTap: () => onOuvrir(evenement),
+                onSupprimer: () => onSupprimer(evenement),
+              ),
           ],
         );
       },
@@ -381,10 +442,15 @@ class _Registre extends StatelessWidget {
 }
 
 class _Ligne extends StatelessWidget {
-  const _Ligne({required this.evenement, required this.onTap});
+  const _Ligne({
+    required this.evenement,
+    required this.onTap,
+    required this.onSupprimer,
+  });
 
   final AdminActivityEvent evenement;
   final VoidCallback onTap;
+  final VoidCallback onSupprimer;
 
   @override
   Widget build(BuildContext context) {
@@ -488,6 +554,20 @@ class _Ligne extends StatelessWidget {
                 ),
               ),
             ],
+            // Corbeille réservée aux demandes closes : une demande en attente
+            // ou en cours n'affiche pas d'action de suppression.
+            if (evenement.supprimable)
+              IconButton(
+                onPressed: onSupprimer,
+                tooltip: 'Retirer de l’historique',
+                icon: const Icon(Icons.delete_outline, size: 18),
+                color: AdminPalette.tertiaryText,
+                style: IconButton.styleFrom(
+                  minimumSize: const Size(32, 32),
+                  padding: EdgeInsets.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
             const SizedBox(width: 2),
             const Icon(
               Icons.chevron_right,

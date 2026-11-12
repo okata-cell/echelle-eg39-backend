@@ -16,6 +16,8 @@ AdminActivityEvent _evenement({
   int? montant,
   DateTime? readAt,
   String? description,
+  String? demandeStatut,
+  bool supprimable = false,
 }) {
   return AdminActivityEvent(
     id: id,
@@ -27,6 +29,8 @@ AdminActivityEvent _evenement({
     montant: montant,
     readAt: readAt,
     description: description,
+    demandeStatut: demandeStatut,
+    supprimable: supprimable,
   );
 }
 
@@ -258,5 +262,117 @@ void main() {
     expect(find.text('Implantation de 40 bornes'), findsOneWidget);
     expect(find.text('Aujourd’hui'.toUpperCase()), findsOneWidget);
     expect(find.text('Tout marquer comme lu'), findsOneWidget);
+  });
+
+  group('Suppression de l’historique', () {
+    test('le statut et l’autorisation viennent du serveur', () {
+      final clos = AdminActivityEvent.fromJson(<String, dynamic>{
+        'id': 7,
+        'kind': 'location',
+        'reference': 'LOC-7',
+        'titre': 'Station totale',
+        'createdAt': '2026-11-11T10:00:00.000Z',
+        'demandeStatut': 'termine',
+        'supprimable': true,
+      });
+
+      expect(clos.demandeStatut, 'termine');
+      expect(clos.supprimable, isTrue);
+      // L'acquittement ne doit pas effacer l'autorisation de suppression.
+      expect(clos.marqueLu(DateTime(2026, 11, 11, 12)).supprimable, isTrue);
+
+      final ouverte = AdminActivityEvent.fromJson(<String, dynamic>{
+        'id': 8,
+        'kind': 'devis',
+        'reference': 'DEV-8',
+        'titre': 'Bornes',
+        'createdAt': '2026-11-11T10:00:00.000Z',
+        'demandeStatut': 'en_cours',
+        'supprimable': false,
+      });
+
+      expect(ouverte.supprimable, isFalse);
+    });
+
+    testWidgets('la corbeille n’apparaît que sur les demandes closes', (
+      tester,
+    ) async {
+      final service = AdminActivityService()
+        ..injecter(
+          <AdminActivityEvent>[
+            _evenement(
+              id: 1,
+              kind: 'location',
+              reference: 'LOC-CLOSE',
+              titre: 'Station totale rendue',
+              createdAt: DateTime.now(),
+              demandeStatut: 'termine',
+              supprimable: true,
+            ),
+            _evenement(
+              id: 2,
+              kind: 'location',
+              reference: 'LOC-OUVERTE',
+              titre: 'Niveau en cours',
+              createdAt: DateTime.now(),
+              demandeStatut: 'en_cours',
+            ),
+          ],
+          nonLus: <String, int>{'location': 0, 'vente': 0, 'devis': 0},
+        );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminActivitySheet(service: service, onModuleSelected: (_) {}),
+          ),
+        ),
+      );
+
+      expect(find.byTooltip('Retirer de l’historique'), findsOneWidget);
+      expect(find.text('LOC-CLOSE'), findsOneWidget);
+      expect(find.text('LOC-OUVERTE'), findsOneWidget);
+    });
+
+    testWidgets('la corbeille demande confirmation avant de retirer', (
+      tester,
+    ) async {
+      final service = AdminActivityService()
+        ..injecter(
+          <AdminActivityEvent>[
+            _evenement(
+              id: 1,
+              kind: 'vente',
+              reference: 'DA-CLOSE',
+              titre: 'GPS livré',
+              createdAt: DateTime.now(),
+              demandeStatut: 'livree',
+              supprimable: true,
+            ),
+          ],
+          nonLus: <String, int>{'location': 0, 'vente': 0, 'devis': 0},
+        );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: AdminActivitySheet(service: service, onModuleSelected: (_) {}),
+          ),
+        ),
+      );
+
+      await tester.tap(find.byTooltip('Retirer de l’historique'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Retirer de l’historique ?'), findsOneWidget);
+      expect(find.textContaining('la fiche reste intacte'), findsOneWidget);
+
+      await tester.tap(find.text('Annuler'));
+      await tester.pumpAndSettle();
+
+      expect(find.text('Retirer de l’historique ?'), findsNothing);
+      expect(service.evenements, hasLength(1));
+      expect(find.text('DA-CLOSE'), findsOneWidget);
+    });
   });
 }

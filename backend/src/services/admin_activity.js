@@ -18,7 +18,46 @@ const listeners = new Set();
 const HEARTBEAT_MS = 25000;
 const RETENTION_JOURS = 30;
 
-function mapEvent(row) {
+/**
+ * États pour lesquels la demande liée est close : sa ligne du journal peut être
+ * retirée. Un rejet reste volontairement protégé, il documente la décision de
+ * l'atelier ; tout ce qui est en attente, approuvé sans être livré, en cours ou
+ * en retard est refusé.
+ */
+const STATUTS_CLOS = {
+  location: new Set(['termine', 'annulee']),
+  vente: new Set(['livree', 'termine']),
+  devis: new Set(['termine']),
+};
+
+/** Tables métier derrière chaque module du journal. */
+const TABLES_DEMANDES = {
+  location: 'locations',
+  vente: 'demandes_achat',
+  devis: 'devis',
+};
+
+/** `location:12` → `{ kind: 'location', id: 12 }`, sinon null. */
+function cleDemande(eventKey) {
+  const [kind, valeur] = String(eventKey ?? '').split(':');
+  if (!TABLES_DEMANDES[kind]) return null;
+
+  const id = Number(valeur);
+  if (!Number.isSafeInteger(id) || id <= 0) return null;
+
+  return { kind, id };
+}
+
+function estClos(kind, statut) {
+  const clos = STATUTS_CLOS[kind];
+  if (!clos || statut === null || statut === undefined) return false;
+
+  return clos.has(String(statut).toLowerCase());
+}
+
+function mapEvent(row, statut = null) {
+  const cle = cleDemande(row.event_key);
+
   return {
     id: Number(row.id),
     kind: row.kind,
@@ -28,6 +67,9 @@ function mapEvent(row) {
     montant: row.montant === null ? null : Number(row.montant),
     createdAt: row.created_at,
     readAt: row.read_at,
+    demandeStatut: statut ?? null,
+    // L'écran admin n'affiche la corbeille que sur les demandes closes.
+    supprimable: cle ? estClos(cle.kind, statut) : false,
   };
 }
 
@@ -35,6 +77,27 @@ function broadcast(row) {
   if (listeners.size === 0) return;
 
   const charge = `event: activite\ndata: ${JSON.stringify(mapEvent(row))}\n\n`;
+  for (const reponse of listeners) {
+    try {
+      reponse.write(charge);
+    } catch (error) {
+      listeners.delete(reponse);
+    }
+  }
+}
+
+/**
+ * Annonce le retrait d'une ligne : les autres postes admin ouverts l'effacent
+ * sans attendre leur prochain rafraîchissement.
+ */
+function broadcastSuppression(id) {
+  if (listeners.size === 0) return;
+
+  const charge = `event: activite-supprimee\ndata: ${JSON.stringify({
+    id: Number(id),
+    supprime: true,
+  })}\n\n`;
+
   for (const reponse of listeners) {
     try {
       reponse.write(charge);
@@ -152,6 +215,43 @@ async function recordQuoteRequest({ devis }) {
   });
 }
 
+/**
+ * Statuts actuels des demandes citées par le journal, en trois requêtes au plus
+ * quel que soit le nombre de lignes affichées.
+ */
+async function statutsDesDemandes(evenements) {
+  const idsParModule = { location: [], vente: [], devis: [] };
+
+  for (const ligne of evenements) {
+    const cle = cleDemande(ligne.event_key);
+    if (cle) idsParModule[cle.kind].push(cle.id);
+  }
+
+  const statuts = new Map();
+
+  await Promise.all(
+    Object.entries(idsParModule).map(async ([kind, ids]) => {
+      if (ids.length === 0) return;
+
+      try {
+        const { rows } = await pool.query(
+          `SELECT id, statut FROM ${TABLES_DEMANDES[kind]} WHERE id = ANY($1::int[])`,
+          [ids],
+        );
+        for (const ligne of rows) {
+          statuts.set(`${kind}:${ligne.id}`, ligne.statut);
+        }
+      } catch (error) {
+        // Le journal reste lisible même si une table métier est indisponible :
+        // la corbeille sera simplement absente de ces lignes.
+        console.error('Statut des demandes pour le journal:', error.message);
+      }
+    }),
+  );
+
+  return statuts;
+}
+
 async function listActivity({ since, limit = 60 } = {}) {
   const params = [];
   let filtre = '';
@@ -171,7 +271,13 @@ async function listActivity({ since, limit = 60 } = {}) {
     params,
   );
 
-  return rows.map(mapEvent);
+  const statuts = await statutsDesDemandes(rows);
+
+  return rows.map((ligne) => {
+    const cle = cleDemande(ligne.event_key);
+    const statut = cle ? statuts.get(`${cle.kind}:${cle.id}`) ?? null : null;
+    return mapEvent(ligne, statut);
+  });
 }
 
 async function activitySummary() {
@@ -217,6 +323,51 @@ async function markAllRead(adminId) {
 }
 
 /**
+ * Retire une ligne du journal, à condition que la demande liée soit close.
+ *
+ * La demande elle-même n'est jamais touchée : seule la ligne d'historique
+ * disparaît. Une demande en attente, en cours, en retard ou rejetée est
+ * refusée, pour que l'atelier garde la trace de ce qu'il reste à traiter.
+ */
+async function deleteEvent(id) {
+  const { rows } = await pool.query(
+    'SELECT * FROM admin_events WHERE id = $1',
+    [id],
+  );
+  const ligne = rows[0];
+  if (!ligne) return { introuvable: true };
+
+  const cle = cleDemande(ligne.event_key);
+  if (!cle) {
+    return {
+      refus:
+        'La demande d’origine de cette ligne est introuvable : elle ne peut pas être supprimée.',
+      statut: null,
+    };
+  }
+
+  const { rows: demandes } = await pool.query(
+    `SELECT statut FROM ${TABLES_DEMANDES[cle.kind]} WHERE id = $1`,
+    [cle.id],
+  );
+  const statut = demandes[0]?.statut ?? null;
+
+  if (!estClos(cle.kind, statut)) {
+    return {
+      refus: statut
+        ? 'Cette demande est encore ouverte : elle ne peut pas être retirée de l’historique.'
+        : 'La demande d’origine est introuvable : cette ligne ne peut pas être supprimée.',
+      statut,
+    };
+  }
+
+  await pool.query('DELETE FROM admin_events WHERE id = $1', [id]);
+  broadcastSuppression(id);
+
+  return { supprime: true, statut };
+}
+
+/**
  * Ménage : le journal n'a pas vocation à grossir indéfiniment. Les événements
  * lus et vieux de plus d'un mois sont supprimés à chaque démarrage de migration.
  */
@@ -234,6 +385,7 @@ module.exports = {
   HEARTBEAT_MS,
   activitySummary,
   connectedListeners,
+  deleteEvent,
   listActivity,
   markAllRead,
   markEventRead,

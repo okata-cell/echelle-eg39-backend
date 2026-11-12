@@ -2395,6 +2395,44 @@ class ApiService {
     }
   }
 
+  /// Retire une ligne du journal d'activité.
+  ///
+  /// Le serveur tient la règle : il répond 409 tant que la demande liée n'est
+  /// pas close, avec le motif que l'écran affiche tel quel.
+  static Future<void> deleteAdminActivity(int eventId) async {
+    final headers = await _adminJsonHeaders();
+
+    try {
+      final response = await http
+          .delete(
+            Uri.parse('$baseUrl/admin/activity/$eventId'),
+            headers: headers,
+          )
+          .timeout(const Duration(seconds: 15));
+
+      if (response.statusCode == 204 || response.statusCode == 200) return;
+
+      final data = decodeObject(response.body);
+      throw ApiException(
+        type: response.statusCode == 401
+            ? ApiErrorType.request
+            : response.statusCode >= 500
+            ? ApiErrorType.serverUnavailable
+            : ApiErrorType.request,
+        message: response.statusCode == 401
+            ? 'Votre session a expiré. Reconnectez-vous puis réessayez.'
+            : data?['error']?.toString() ?? 'Suppression impossible.',
+        statusCode: response.statusCode,
+      );
+    } on TimeoutException {
+      throw const ApiException(
+        type: ApiErrorType.serverUnavailable,
+        message:
+            'Le serveur ne répond pas pour le moment. Veuillez réessayer plus tard.',
+      );
+    }
+  }
+
   /// Solde la file d'activité d'un coup.
   static Future<void> markAllAdminActivityRead() async {
     final headers = await _adminJsonHeaders();
