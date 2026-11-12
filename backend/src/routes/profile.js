@@ -1,5 +1,4 @@
 const express = require('express');
-const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
@@ -9,6 +8,14 @@ const {
   normalizePhone,
   getPhoneCandidates,
 } = require('../utils/identifiers');
+const {
+  hasherMotDePasse,
+  verifierMotDePasse,
+} = require('../utils/password_hash');
+const {
+  REGLES: REGLES_MOT_DE_PASSE,
+  verifierMotDePasse: verifierPolitique,
+} = require('../utils/password_policy');
 
 const router = express.Router();
 const MAX_AVATAR_BYTES = 1024 * 1024;
@@ -166,7 +173,7 @@ router.patch('/me', authMiddleware, accountTokenRequired, [
       }
       const current = currentResult.rows[0];
       const contactChanged = email !== normalizeEmail(current.email) || phone !== current.phone;
-      if (contactChanged && !(req.body.currentPassword && await bcrypt.compare(String(req.body.currentPassword), current.password_hash))) {
+      if (contactChanged && !(req.body.currentPassword && await verifierMotDePasse(String(req.body.currentPassword), current.password_hash))) {
         const error = new Error('Mot de passe actuel incorrect ou manquant.');
         error.statusCode = 401;
         throw error;
@@ -225,18 +232,37 @@ router.patch('/me', authMiddleware, accountTokenRequired, [
 
 router.post('/password', authMiddleware, accountTokenRequired, [
   body('currentPassword').isString().notEmpty().withMessage('Mot de passe actuel requis.'),
-  body('newPassword').isString().isLength({ min: 6, max: 200 })
-    .matches(/[a-zA-Z]/).matches(/[0-9]/)
-    .withMessage('Le mot de passe doit contenir au moins 6 caractères, une lettre et un chiffre.'),
+  body('newPassword').isString().notEmpty().withMessage('Nouveau mot de passe requis.'),
 ], async (req, res) => {
   if (sendValidationError(req, res)) return;
   try {
-    const result = await pool.query('SELECT password_hash FROM users WHERE id = $1', [Number(req.user.userId)]);
+    const result = await pool.query(
+      'SELECT password_hash, first_name, last_name, email, phone FROM users WHERE id = $1',
+      [Number(req.user.userId)],
+    );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable.' });
-    if (!(await bcrypt.compare(String(req.body.currentPassword), result.rows[0].password_hash))) {
+
+    const compte = result.rows[0];
+    if (!(await verifierMotDePasse(String(req.body.currentPassword), compte.password_hash))) {
       return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
     }
-    const passwordHash = await bcrypt.hash(String(req.body.newPassword), 10);
+
+    const nouveauMotDePasse = String(req.body.newPassword);
+    const politique = verifierPolitique(nouveauMotDePasse, {
+      firstName: compte.first_name,
+      lastName: compte.last_name,
+      email: compte.email,
+      phone: compte.phone,
+    });
+    if (!politique.valide) {
+      return res.status(400).json({
+        code: 'PASSWORD_TOO_WEAK',
+        error: politique.message,
+        rules: REGLES_MOT_DE_PASSE,
+      });
+    }
+
+    const passwordHash = await hasherMotDePasse(nouveauMotDePasse);
     // Le client choisit son mot de passe ici aussi : le drapeau de mot de passe
     // temporaire n'a plus lieu d'être.
     await pool.query(

@@ -148,17 +148,17 @@ void main() {
 
     await tester.enterText(
       find.byKey(const ValueKey('temporary-new-password')),
-      '1234AZER',
+      'Chantier#2026',
     );
     await tester.enterText(
       find.byKey(const ValueKey('temporary-confirm-password')),
-      '1234AZER',
+      'Chantier#2026',
     );
     await tester.tap(find.byKey(const ValueKey('temporary-password-save')));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 400));
 
-    expect(saved, '1234AZER');
+    expect(saved, 'Chantier#2026');
     expect(find.text('accueil'), findsOneWidget);
   });
 
@@ -191,18 +191,18 @@ void main() {
     await tester.pump();
 
     expect(
-      find.text('4 chiffres puis 4 lettres majuscules (ex. 1234AZER).'),
+      find.text('Le mot de passe doit contenir au moins 10 caractères.'),
       findsOneWidget,
     );
     expect(saved, isNull);
 
     await tester.enterText(
       find.byKey(const ValueKey('temporary-new-password')),
-      '1234AZER',
+      'Chantier#2026',
     );
     await tester.enterText(
       find.byKey(const ValueKey('temporary-confirm-password')),
-      '1234AZEZ',
+      'Chantier#2027',
     );
     await tester.pump();
     await tester.tap(find.byKey(const ValueKey('temporary-password-save')));

@@ -20,6 +20,7 @@ const {
   matchesRecoveryCodeHash,
   normalizeRecoveryCode,
 } = require('../src/utils/recovery_code');
+const { verifierMotDePasse } = require('../src/utils/password_hash');
 
 const authApp = express();
 authApp.use(express.json());
@@ -114,6 +115,9 @@ test('l’inscription renvoie le code de récupération et n’en garde que l’
     if (/SELECT id FROM users WHERE LOWER\(email\)/.test(query)) {
       return { rows: [] };
     }
+    if (/SELECT id FROM users WHERE phone = ANY/.test(query)) {
+      return { rows: [] };
+    }
     if (/INSERT INTO users/.test(query)) {
       storedHash = params[6];
       assert.match(query, /recovery_code_hash/);
@@ -139,7 +143,7 @@ test('l’inscription renvoie le code de récupération et n’en garde que l’
     lastName: 'Koffi',
     email: 'afi@example.com',
     phone: '+22890000000',
-    password: '1234AZER',
+    password: 'Chantier#2026',
   });
   const payload = await response.json();
 
@@ -185,10 +189,13 @@ test('la récupération exige le code remis à l’inscription', async () => {
   assert.match(payload.temporaryPassword, /^\d{4}[A-Z]{4}$/);
   assert.equal(payload.displaySeconds, 120);
   assert.ok(payload.tempToken);
+  // Le mot de passe temporaire est haché au format courant, jamais stocké en
+  // clair : il doit être vérifiable mais rester court (affiché 2 minutes).
   assert.equal(
-    await bcrypt.compare(payload.temporaryPassword, storedHash),
+    await verifierMotDePasse(payload.temporaryPassword, storedHash),
     true,
   );
+  assert.notEqual(storedHash, payload.temporaryPassword);
 });
 
 test('un code erroné est refusé sans toucher au mot de passe', async () => {
@@ -337,6 +344,20 @@ test('le changement obligatoire remplace le mot de passe et lève le drapeau', a
     if (/SELECT id, must_change_password FROM users/.test(query)) {
       return { rows: [{ id: 7, must_change_password: true }] };
     }
+    // Identité lue pour vérifier que le mot de passe ne reprend pas le nom,
+    // l'e-mail ou le téléphone du titulaire.
+    if (/SELECT first_name, last_name, email, phone FROM users/.test(query)) {
+      return {
+        rows: [
+          {
+            first_name: 'Afi',
+            last_name: 'Koffi',
+            email: 'afi@example.com',
+            phone: '+22890000000',
+          },
+        ],
+      };
+    }
     if (/UPDATE users[\s\S]*must_change_password = FALSE/.test(query)) {
       storedHash = params[0];
       clearedFlag = true;
@@ -355,13 +376,46 @@ test('le changement obligatoire remplace le mot de passe et lève le drapeau', a
 
   const response = await post(
     `${authUrl}/change-temporary-password`,
-    { newPassword: '5678QWER' },
+    { newPassword: 'Chantier#2026' },
     token,
   );
 
   assert.equal(response.status, 200);
   assert.equal(clearedFlag, true);
-  assert.equal(await bcrypt.compare('5678QWER', storedHash), true);
+  assert.equal(await verifierMotDePasse('Chantier#2026', storedHash), true);
+});
+
+test('un mot de passe trop facile à deviner est refusé', async () => {
+  pool.query = async (query) => {
+    if (/SELECT id, must_change_password FROM users/.test(query)) {
+      return { rows: [{ id: 7, must_change_password: true }] };
+    }
+    if (/SELECT first_name, last_name, email, phone FROM users/.test(query)) {
+      return {
+        rows: [
+          {
+            first_name: 'Afi',
+            last_name: 'Koffi',
+            email: 'afi@example.com',
+            phone: '+22890000000',
+          },
+        ],
+      };
+    }
+    throw new Error(`Requête inattendue : ${query}`);
+  };
+
+  const token = jwt.sign({ userId: 7, role: 'client' }, process.env.JWT_SECRET);
+  const response = await post(
+    `${authUrl}/change-temporary-password`,
+    { newPassword: 'azerty1234' },
+    token,
+  );
+  const payload = await response.json();
+
+  assert.equal(response.status, 400);
+  assert.equal(payload.code, 'PASSWORD_TOO_WEAK');
+  assert.match(payload.rules, /10 caractères minimum/);
 });
 
 test('aucun mot de passe temporaire à remplacer renvoie 409', async () => {
@@ -383,6 +437,18 @@ test('choisir soi-même son mot de passe lève aussi le drapeau', async () => {
   let clearedFlag = false;
 
   pool.query = async (query) => {
+    if (/SELECT first_name, last_name, email, phone FROM users/.test(query)) {
+      return {
+        rows: [
+          {
+            first_name: 'Afi',
+            last_name: 'Koffi',
+            email: 'afi@example.com',
+            phone: '+22890000000',
+          },
+        ],
+      };
+    }
     if (/UPDATE users[\s\S]*must_change_password = FALSE/.test(query)) {
       clearedFlag = true;
       return { rows: [{ id: 7 }] };
@@ -398,7 +464,7 @@ test('choisir soi-même son mot de passe lève aussi le drapeau', async () => {
 
   const response = await post(`${authUrl}/reset-password`, {
     tempToken,
-    newPassword: '5678QWER',
+    newPassword: 'Chantier#2026',
   });
 
   assert.equal(response.status, 200);

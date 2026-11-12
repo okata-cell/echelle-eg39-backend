@@ -23,8 +23,14 @@ void main() {
     await tester.enterText(find.byType(TextFormField).at(1), 'Koffi');
     await tester.enterText(find.byType(TextFormField).at(2), 'afi@example.com');
     await tester.enterText(find.byType(TextFormField).at(3), '90000000');
-    await tester.enterText(find.byType(TextFormField).at(4), '1234AZER');
-    await tester.enterText(find.byType(TextFormField).at(5), '1234AZER');
+    await tester.enterText(
+      find.byType(TextFormField).at(4),
+      'Chantier#2026',
+    );
+    await tester.enterText(
+      find.byType(TextFormField).at(5),
+      'Chantier#2026',
+    );
   }
 
   Future<void> submitForm(WidgetTester tester) async {
@@ -128,7 +134,7 @@ void main() {
     await tester.tap(find.byKey(const ValueKey('register-submit-button')));
     await tester.pump();
     expect(
-      find.text('4 chiffres puis 4 lettres majuscules (ex. 1234AZER).'),
+      find.text('Le mot de passe doit contenir au moins 10 caractères.'),
       findsOneWidget,
     );
 
@@ -172,7 +178,7 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(of: dialog, matching: find.text('1234AZER')),
+      find.descendant(of: dialog, matching: find.text('Chantier#2026')),
       findsOneWidget,
     );
     // Les libellés de la fiche sont affichés en capitales.
@@ -193,7 +199,7 @@ void main() {
       find.text('Coordonnées copiées. Gardez-les en lieu sûr.'),
       findsOneWidget,
     );
-    expect(clipboard.value, contains('Mot de passe : 1234AZER'));
+    expect(clipboard.value, contains('Mot de passe : Chantier#2026'));
     expect(clipboard.value, contains('Code de récupération : EG39-ABCD-EFGH'));
 
     await tester.pumpWidget(const SizedBox.shrink());
@@ -226,7 +232,7 @@ void main() {
     expect(capturedDraft?.firstName, 'Afi');
     expect(capturedDraft?.lastName, 'Koffi');
     expect(capturedDraft?.phone, '+22890000000');
-    expect(capturedDraft?.password, '1234AZER');
+    expect(capturedDraft?.password, 'Chantier#2026');
 
     expect(find.byType(AccountCredentialsDialog), findsOneWidget);
     expect(

@@ -14,6 +14,7 @@ const {
   clearRevokedAccounts,
 } = require('../src/services/session_revocation');
 const { hashIdentifier } = require('../src/utils/identifier_hash');
+const { verifierMotDePasse } = require('../src/utils/password_hash');
 
 const app = express();
 app.use(express.json());
@@ -153,8 +154,8 @@ test('anonymise le compte et efface les contenus personnels', async () => {
   assert.equal(users.values[0], 7);
   assert.equal(users.values[1], 'supprime+7@echelle-eg39.invalid');
   assert.equal(users.values[2], '+000007');
-  assert.match(users.values[3], /^\$2[aby]\$/);
-  assert.equal(await bcrypt.compare('1234AZER', users.values[3]), false);
+  assert.match(users.values[3], /^(p2:)?\$2[aby]\$/);
+  assert.equal(await verifierMotDePasse('1234AZER', users.values[3]), false);
 
   // Les empreintes permettent de reconnaître l'ancien identifiant sans
   // conserver l'e-mail ni le téléphone.

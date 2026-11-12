@@ -3,6 +3,7 @@
 import 'package:flutter/material.dart';
 
 import 'login.page.dart';
+import 'password_policy.dart';
 import 'password_recovery_contact_mask.dart';
 import 'password_recovery_scaffold.dart';
 
@@ -45,12 +46,7 @@ class _ResetPasswordPageState extends State<ResetPasswordPage> {
   String? _validateNewPassword(String? value) {
     final password = value ?? '';
     if (password.isEmpty) return 'Saisissez votre nouveau mot de passe.';
-    if (password.length < 6 ||
-        !RegExp(r'[A-Za-z]').hasMatch(password) ||
-        !RegExp(r'\d').hasMatch(password)) {
-      return '6 caractères minimum, dont une lettre et un chiffre.';
-    }
-    return null;
+    return PasswordPolicy.validate(password);
   }
 
   String? _validateConfirmation(String? value) {

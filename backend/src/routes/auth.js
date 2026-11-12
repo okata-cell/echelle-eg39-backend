@@ -7,6 +7,15 @@ const pool = require('../config/database');
 const { authMiddleware } = require('../middleware/auth');
 const { createLoginThrottle } = require('../middleware/login_throttle');
 const {
+  hachageARenforcer,
+  hasherMotDePasse,
+  verifierMotDePasse: verifierHachage,
+} = require('../utils/password_hash');
+const {
+  REGLES: REGLES_MOT_DE_PASSE,
+  verifierMotDePasse: verifierPolitique,
+} = require('../utils/password_policy');
+const {
   generateRecoveryCode,
   hashRecoveryCode,
   matchesRecoveryCodeHash,
@@ -25,13 +34,27 @@ const {
 } = require('../utils/temporary_password');
 
 const router = express.Router();
+// Quatre échecs bloquent le compte 24 h ; une connexion réussie remet à zéro.
 const loginThrottle = createLoginThrottle();
 // Le code de récupération fait 8 caractères : on limite les essais pour qu'il
-// ne puisse pas être deviné par répétition.
+// ne puisse pas être deviné par répétition. Blocage court, le temps que la
+// personne vérifie son code plutôt que de la pénaliser une journée.
 const recoveryThrottle = createLoginThrottle({
   keyField: 'contact',
   maxAttempts: 6,
+  blockMs: 15 * 60 * 1000,
 });
+
+/** Message de blocage, avec le délai réel pour que l'écran puisse l'afficher. */
+function refusTropDeTentatives(res, throttle, retryAfter) {
+  res.set('Retry-After', String(retryAfter));
+  return res.status(429).json({
+    code: 'TOO_MANY_ATTEMPTS',
+    retryAfterSeconds: retryAfter,
+    error:
+      'Trop de tentatives de connexion. Ce compte est bloqué temporairement, réessayez plus tard.',
+  });
+}
 
 function getJwtSecret() {
   const secret = process.env.JWT_SECRET?.trim();
@@ -49,6 +72,31 @@ function sendAuthError(res, error, context) {
     return res.status(503).json({ error: 'Service d’authentification indisponible' });
   }
   return res.status(500).json({ error: 'Erreur serveur' });
+}
+
+/**
+ * Nom, e-mail et téléphone du compte : la politique refuse un mot de passe qui
+ * reprend ces éléments personnels. Une lecture impossible ne bloque pas la
+ * validation, elle la rend seulement moins exigeante.
+ */
+async function chargerIdentite(userId) {
+  try {
+    const { rows } = await pool.query(
+      'SELECT first_name, last_name, email, phone FROM users WHERE id = $1',
+      [userId],
+    );
+    const ligne = rows[0];
+    if (!ligne) return {};
+
+    return {
+      firstName: ligne.first_name,
+      lastName: ligne.last_name,
+      email: ligne.email,
+      phone: ligne.phone,
+    };
+  } catch (error) {
+    return {};
+  }
 }
 
 function firstValidationError(req, res) {
@@ -83,6 +131,7 @@ router.post('/forgot-password', [
     res.set('Retry-After', String(retryAfter));
     return res.status(429).json({
       code: 'TOO_MANY_ATTEMPTS',
+      retryAfterSeconds: retryAfter,
       error:
         'Trop d’essais avec ce code de récupération. Réessayez dans quelques minutes.',
     });
@@ -130,7 +179,7 @@ router.post('/forgot-password', [
     // envoyé. Le mot de passe temporaire est haché ici et renvoyé une seule
     // fois à l'application, qui l'affiche deux minutes.
     const temporaryPassword = generateTemporaryPassword();
-    const temporaryHash = await bcrypt.hash(temporaryPassword, 10);
+    const temporaryHash = await hasherMotDePasse(temporaryPassword);
     await pool.query(
       `UPDATE users
           SET password_hash = $1,
@@ -174,9 +223,10 @@ router.post('/verify-code', (req, res) => {
 router.post('/reset-password', [
   body('tempToken').trim().notEmpty().withMessage('Token requis'),
   body('newPassword')
-    .isLength({ min: 6 }).withMessage('Mot de passe minimum 6 caractères')
-    .matches(/[a-zA-Z]/).withMessage('Doit contenir des lettres')
-    .matches(/[0-9]/).withMessage('Doit contenir des chiffres'),
+    .isString()
+    .withMessage('Nouveau mot de passe requis')
+    .notEmpty()
+    .withMessage('Nouveau mot de passe requis'),
 ], async (req, res) => {
   if (firstValidationError(req, res)) return;
 
@@ -186,7 +236,20 @@ router.post('/reset-password', [
       return res.status(401).json({ error: 'Token invalide' });
     }
 
-    const hashedPassword = await bcrypt.hash(req.body.newPassword, 10);
+    const nouveauMotDePasse = String(req.body.newPassword);
+    const politique = verifierPolitique(
+      nouveauMotDePasse,
+      await chargerIdentite(decoded.userId),
+    );
+    if (!politique.valide) {
+      return res.status(400).json({
+        code: 'PASSWORD_TOO_WEAK',
+        error: politique.message,
+        rules: REGLES_MOT_DE_PASSE,
+      });
+    }
+
+    const hashedPassword = await hasherMotDePasse(nouveauMotDePasse);
     // Le client choisit lui-même son mot de passe : plus rien à remplacer.
     const result = await pool.query(
       `UPDATE users
@@ -223,9 +286,10 @@ router.post('/reset-password', [
 // comptes effectivement marqués comme « mot de passe à remplacer ».
 router.post('/change-temporary-password', authMiddleware, [
   body('newPassword')
-    .isLength({ min: 6 }).withMessage('Mot de passe minimum 6 caractères')
-    .matches(/[a-zA-Z]/).withMessage('Doit contenir des lettres')
-    .matches(/[0-9]/).withMessage('Doit contenir des chiffres'),
+    .isString()
+    .withMessage('Nouveau mot de passe requis')
+    .notEmpty()
+    .withMessage('Nouveau mot de passe requis'),
 ], async (req, res) => {
   if (firstValidationError(req, res)) return;
 
@@ -249,7 +313,16 @@ router.post('/change-temporary-password', authMiddleware, [
       });
     }
 
-    const hashedPassword = await bcrypt.hash(newPassword, 10);
+    const politique = verifierPolitique(newPassword, await chargerIdentite(userId));
+    if (!politique.valide) {
+      return res.status(400).json({
+        code: 'PASSWORD_TOO_WEAK',
+        error: politique.message,
+        rules: REGLES_MOT_DE_PASSE,
+      });
+    }
+
+    const hashedPassword = await hasherMotDePasse(newPassword);
     await pool.query(
       `UPDATE users
           SET password_hash = $1,
@@ -274,9 +347,13 @@ router.post('/register', [
   body('lastName').trim().notEmpty().withMessage('Nom requis'),
   body('email').isEmail().withMessage('Email invalide'),
   body('phone').trim().notEmpty().withMessage('Téléphone requis'),
-  body('password').isLength({ min: 6 }).withMessage('Mot de passe minimum 6 caractères')
-    .matches(/[a-zA-Z]/).withMessage('Doit contenir des lettres')
-    .matches(/[0-9]/).withMessage('Doit contenir des chiffres'),
+  // La solidité est vérifiée plus bas, avec l'identité : la politique refuse un
+  // mot de passe qui reprend le nom, l'e-mail ou le téléphone.
+  body('password')
+    .isString()
+    .withMessage('Mot de passe requis')
+    .notEmpty()
+    .withMessage('Mot de passe requis'),
 ], async (req, res) => {
   if (firstValidationError(req, res)) return;
 
@@ -290,20 +367,54 @@ router.post('/register', [
     return res.status(400).json({ error: 'Numéro de téléphone invalide' });
   }
 
-  try {
-    const existingUser = await pool.query(
-      'SELECT id FROM users WHERE LOWER(email) = $1 OR phone = ANY($2::text[])',
-      [email, getPhoneCandidates(phone)],
-    );
+  const politique = verifierPolitique(password, {
+    firstName,
+    lastName,
+    email,
+    phone,
+  });
+  if (!politique.valide) {
+    return res.status(400).json({
+      code: 'PASSWORD_TOO_WEAK',
+      error: politique.message,
+      rules: REGLES_MOT_DE_PASSE,
+    });
+  }
 
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'Email ou téléphone déjà utilisé' });
+  try {
+    // Unicité contrôlée champ par champ : l'écran peut alors désigner la case à
+    // corriger au lieu d'un « email ou téléphone déjà utilisé » ambigu.
+    const [emailExiste, phoneExiste] = await Promise.all([
+      pool.query('SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1', [
+        email,
+      ]),
+      pool.query('SELECT id FROM users WHERE phone = ANY($1::text[]) LIMIT 1', [
+        getPhoneCandidates(phone),
+      ]),
+    ]);
+
+    const champsPris = [];
+    if (emailExiste.rows.length > 0) champsPris.push('email');
+    if (phoneExiste.rows.length > 0) champsPris.push('phone');
+
+    if (champsPris.length > 0) {
+      const message = champsPris.length === 2
+        ? 'Cet e-mail et ce numéro de téléphone sont déjà utilisés.'
+        : champsPris[0] === 'email'
+          ? 'Cette adresse e-mail est déjà utilisée.'
+          : 'Ce numéro de téléphone est déjà utilisé.';
+
+      return res.status(409).json({
+        code: 'IDENTIFIER_TAKEN',
+        fields: champsPris,
+        error: message,
+      });
     }
 
     // Les inscriptions publiques créent toujours des comptes clients.
     // Le compte administrateur est provisionné séparément par la migration.
     const role = 'client';
-    const hashedPassword = await bcrypt.hash(password, 10);
+    const hashedPassword = await hasherMotDePasse(password);
 
     // Code de récupération : remis une seule fois au client à la création du
     // compte, seule son empreinte est conservée. C'est lui qui remplace l'envoi
@@ -355,11 +466,7 @@ router.post('/login', [
 
   const retryAfter = loginThrottle.retryAfterSeconds(req);
   if (retryAfter > 0) {
-    res.set('Retry-After', String(retryAfter));
-    return res.status(429).json({
-      code: 'TOO_MANY_ATTEMPTS',
-      error: 'Trop de tentatives de connexion. Réessayez dans quelques minutes.',
-    });
+    return refusTropDeTentatives(res, loginThrottle, retryAfter);
   }
 
   const identifier = normalizeIdentifier(req.body.identifier);
@@ -420,15 +527,39 @@ router.post('/login', [
       });
     }
 
-    if (!user.password_hash || !(await bcrypt.compare(password, user.password_hash))) {
+    if (
+      !user.password_hash ||
+      !(await verifierHachage(password, user.password_hash))
+    ) {
       loginThrottle.registerFailure(req);
+      // Le message ne révèle pas le nombre d'essais restants, mais prévient
+      // qu'un blocage vient de tomber.
+      const bloque = loginThrottle.retryAfterSeconds(req) > 0;
       return res.status(401).json({
         code: 'INVALID_PASSWORD',
-        error: 'Mot de passe incorrect',
+        error: bloque
+          ? 'Mot de passe incorrect. Ce compte est désormais bloqué 24 heures.'
+          : 'Mot de passe incorrect',
       });
     }
 
     loginThrottle.reset(req);
+
+    // Hachage hérité : réécrit au format courant dès la première connexion
+    // réussie. Le mot de passe lui-même n'est pas modifié, la personne ne voit
+    // rien et garde ses coordonnées intactes.
+    if (hachageARenforcer(user.password_hash)) {
+      try {
+        await pool.query(
+          `UPDATE users
+              SET password_hash = $1, updated_at = CURRENT_TIMESTAMP
+            WHERE id = $2`,
+          [await hasherMotDePasse(password), user.id],
+        );
+      } catch (error) {
+        console.error('Renforcement du hachage:', error.message);
+      }
+    }
 
     const token = jwt.sign(
       { userId: user.id, email: user.email, role: user.role },
@@ -544,7 +675,7 @@ router.delete(
 
       if (
         !user.password_hash ||
-        !(await bcrypt.compare(password, user.password_hash))
+        !(await verifierHachage(password, user.password_hash))
       ) {
         await client.query('ROLLBACK');
         return res.status(401).json({
@@ -581,7 +712,7 @@ router.delete(
       // Compte : identité remplacée par des valeurs neutres, mot de passe rendu
       // inutilisable, e-mail et téléphone libérés pour une future inscription.
       // Seules leurs empreintes restent, pour répondre « compte supprimé ».
-      const neutralHash = await bcrypt.hash(crypto.randomUUID(), 10);
+      const neutralHash = await hasherMotDePasse(crypto.randomUUID());
       const deletedEmailHash = hashIdentifiers([user.email])[0] || null;
       const deletedPhoneHash = hashIdentifiers([user.phone])[0] || null;
       await client.query(

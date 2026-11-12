@@ -192,13 +192,13 @@ void main() {
     await tester.tap(find.text('Mettre à jour le mot de passe'));
     await tester.pump();
     expect(
-      find.text('6 caractères minimum, dont une lettre et un chiffre.'),
+      find.text('Le mot de passe doit contenir au moins 10 caractères.'),
       findsOneWidget,
     );
     expect(savedPassword, isNull);
 
-    await tester.enterText(password, '1234AZER');
-    await tester.enterText(confirmation, '1234AZEZ');
+    await tester.enterText(password, 'Chantier#2026');
+    await tester.enterText(confirmation, 'Chantier#2027');
     await tester.pumpAndSettle();
     expect(
       find.text('Les mots de passe ne correspondent pas.'),
@@ -206,11 +206,11 @@ void main() {
     );
     expect(savedPassword, isNull);
 
-    await tester.enterText(confirmation, '1234AZER');
+    await tester.enterText(confirmation, 'Chantier#2026');
     await tester.pumpAndSettle();
     await tester.tap(find.text('Mettre à jour le mot de passe'));
     await tester.pump();
-    expect(savedPassword, '1234AZER');
+    expect(savedPassword, 'Chantier#2026');
 
     await tester.pump(const Duration(milliseconds: 1500));
   });

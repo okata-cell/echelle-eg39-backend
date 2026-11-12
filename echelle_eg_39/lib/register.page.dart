@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'api_service.dart';
 import 'main.dart';
 import 'offline_registration_store.dart';
+import 'password_policy.dart';
 import 'password_recovery_scaffold.dart';
 import 'sync_service.dart';
 import 'widgets/account_credentials_dialog.dart';
@@ -162,10 +163,16 @@ class _RegisterPageState extends State<RegisterPage>
 
   String? _validatePassword(String? value) {
     if (value == null || value.isEmpty) return 'Le mot de passe est requis.';
-    if (!RegExp(r'^\d{4}[A-Z]{4}$').hasMatch(value)) {
-      return '4 chiffres puis 4 lettres majuscules (ex. 1234AZER).';
-    }
-    return null;
+
+    // Mêmes règles que le serveur, appliquées avec l'identité déjà saisie :
+    // un mot de passe qui reprend le nom, l'e-mail ou le téléphone est refusé.
+    return PasswordPolicy.validate(
+      value,
+      firstName: _firstNameController.text,
+      lastName: _lastNameController.text,
+      email: _emailController.text,
+      phone: _phoneController.text,
+    );
   }
 
   String? _validateConfirmation(String? value) {
@@ -609,7 +616,7 @@ class _RegisterPageState extends State<RegisterPage>
             padding: const EdgeInsets.only(top: 6),
             child: Text.rich(
               TextSpan(
-                text: '4 chiffres puis 4 lettres majuscules. Exemple : ',
+                text: '${PasswordPolicy.rules} Exemple : ',
                 style: GoogleFonts.poppins(
                   color: Colors.white.withValues(alpha: 0.86),
                   fontSize: 11,
@@ -617,7 +624,7 @@ class _RegisterPageState extends State<RegisterPage>
                 ),
                 children: [
                   TextSpan(
-                    text: '1234AZER.',
+                    text: 'Chantier#2026.',
                     style: GoogleFonts.poppins(
                       color: Colors.white,
                       fontWeight: FontWeight.w700,

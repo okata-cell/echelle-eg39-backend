@@ -8,6 +8,7 @@ import 'AdminDashBoard.dart';
 import 'api_service.dart';
 import 'login.page.dart';
 import 'main.dart';
+import 'password_policy.dart';
 import 'profile_theme.dart';
 
 /// Écran imposé après une connexion avec un mot de passe temporaire.
@@ -54,10 +55,10 @@ class _ChangeTemporaryPasswordPageState
   String? _validatePassword(String? value) {
     final password = value ?? '';
     if (password.isEmpty) return 'Saisissez votre nouveau mot de passe.';
-    if (!RegExp(r'^\d{4}[A-Z]{4}$').hasMatch(password)) {
-      return '4 chiffres puis 4 lettres majuscules (ex. 1234AZER).';
-    }
-    return null;
+
+    // Le mot de passe temporaire est court et provisoire ; celui que le client
+    // choisit ici doit suivre la politique complète.
+    return PasswordPolicy.validate(password);
   }
 
   String? _validateConfirmation(String? value) {
@@ -263,7 +264,7 @@ class _ChangeTemporaryPasswordPageState
                             }),
                             decoration: _decoration(
                               label: 'Nouveau mot de passe',
-                              hint: '1234AZER',
+                              hint: 'Chantier#2026',
                               obscure: _obscurePassword,
                               onToggle: () => setState(
                                 () => _obscurePassword = !_obscurePassword,
@@ -286,7 +287,7 @@ class _ChangeTemporaryPasswordPageState
                             onFieldSubmitted: (_) => _save(),
                             decoration: _decoration(
                               label: 'Confirmer le mot de passe',
-                              hint: '1234AZER',
+                              hint: 'Chantier#2026',
                               obscure: _obscureConfirm,
                               onToggle: () => setState(
                                 () => _obscureConfirm = !_obscureConfirm,

@@ -171,15 +171,9 @@ class _LoginPageState extends State<LoginPage> {
       }
     }
 
-    // 🔑 VALIDATION DU MOT DE PASSE : 4 chiffres + 4 lettres majuscules (ex: 1234AZER)
-    final passwordRegex = RegExp(r'^\d{4}[A-Z]{4}$');
-    if (!passwordRegex.hasMatch(password)) {
-      _showLoginMessage(
-        "Le mot de passe doit contenir 4 chiffres suivis de 4 lettres majuscules (ex: 1234AZER)",
-        backgroundColor: Colors.red,
-      );
-      return;
-    }
+    // La solidité est vérifiée à l'inscription et au changement de mot de
+    // passe. À la connexion, seul le serveur juge : imposer un format ici
+    // empêcherait d'entrer un mot de passe renforcé (caractères spéciaux).
 
     setState(() {
       isLoading = true;
@@ -339,7 +333,7 @@ class _LoginPageState extends State<LoginPage> {
       onSubmitted: (_) => login(),
       style: const TextStyle(color: passwordRecoveryInk),
       decoration: passwordRecoveryFieldDecoration(
-        hint: '4 chiffres + 4 lettres (ex: 1234AZER)',
+        hint: 'Votre mot de passe',
         leading: const Icon(
           Icons.lock_outline,
           color: Color(0xFF7A7A7A),
@@ -489,7 +483,7 @@ class _LoginPageState extends State<LoginPage> {
           _buildPasswordField(),
           const SizedBox(height: 10),
           Text(
-            'Format : +228 suivi de 8 chiffres · mot de passe 1234AZER',
+            'Format : +228 suivi de 8 chiffres',
             style: Theme.of(context).textTheme.bodySmall?.copyWith(
               color: Colors.white.withValues(alpha: 0.72),
               height: 1.4,

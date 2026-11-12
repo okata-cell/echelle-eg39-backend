@@ -8,6 +8,7 @@ process.env.JWT_SECRET = 'test-only-profile-secret';
 
 const pool = require('../src/config/database');
 const app = require('../src/server');
+const { verifierMotDePasse } = require('../src/utils/password_hash');
 
 let server;
 let originalQuery;
@@ -181,7 +182,7 @@ test('le changement de mot de passe vérifie le mot de passe actuel', async () =
     method: 'POST', body: { currentPassword: 'Current123', newPassword: 'Newpass123' },
   });
   assert.equal(valid.status, 200);
-  assert.equal(await bcrypt.compare('Newpass123', updatedHash), true);
+  assert.equal(await verifierMotDePasse('Newpass123', updatedHash), true);
 });
 
 test('les avatars acceptent uniquement des octets image valides de moins de 1 Mo', async () => {

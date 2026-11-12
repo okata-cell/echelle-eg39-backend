@@ -55,6 +55,29 @@ async function migrate() {
       'ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_code_hash TEXT',
     );
 
+    // Unicité de l'e-mail insensible à la casse : la contrainte UNIQUE de la
+    // colonne, elle, distingue « Client@X.com » de « client@x.com ». Les
+    // comptes existants sont conservés tels quels : si des doublons hérités
+    // existent déjà, l'index n'est pas créé et un avertissement le signale.
+    const emailsEnDouble = await client.query(`
+      SELECT LOWER(email) AS email
+        FROM users
+       GROUP BY LOWER(email)
+      HAVING COUNT(*) > 1
+       LIMIT 5
+    `);
+
+    if (emailsEnDouble.rows.length === 0) {
+      await client.query(
+        'CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users (LOWER(email))',
+      );
+    } else {
+      console.warn(
+        '⚠️ Unicité e-mail insensible à la casse non appliquée : doublons hérités',
+        emailsEnDouble.rows.map((ligne) => ligne.email).join(', '),
+      );
+    }
+
     await client.query(`
       CREATE TABLE IF NOT EXISTS appareils (
         id SERIAL PRIMARY KEY,
