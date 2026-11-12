@@ -1,3 +1,4 @@
+const { contactsDuCompte } = require('../utils/contact_crypto');
 const express = require('express');
 const { body, param, validationResult } = require('express-validator');
 const pool = require('../config/database');
@@ -45,6 +46,7 @@ const DEVIS_EN_ATTENTE_DE_REPONSE = ['en_attente', 'en_traitement'];
 const SELECT_DEVIS = `
   SELECT d.*,
          u.email AS client_email,
+         u.email_cipher AS client_email_cipher,
          u.first_name AS client_first_name,
          u.last_name AS client_last_name
     FROM devis d
@@ -55,7 +57,10 @@ function mapDevis(devis) {
   return {
     id: devis.id,
     userId: devis.user_id,
-    clientEmail: devis.client_email ?? null,
+    clientEmail: contactsDuCompte({
+      email: devis.client_email,
+      email_cipher: devis.client_email_cipher,
+    }).email,
     clientNom: devis.client_first_name
       ? `${devis.client_first_name} ${devis.client_last_name || ''}`.trim()
       : null,

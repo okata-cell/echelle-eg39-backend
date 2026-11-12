@@ -55,6 +55,33 @@ async function migrate() {
       'ALTER TABLE users ADD COLUMN IF NOT EXISTS recovery_code_hash TEXT',
     );
 
+    // Coordonnées chiffrées pour les comptes créés après cette date. Les
+    // comptes existants gardent `email` et `phone` en clair : rien n'est migré
+    // de force. Une nouvelle ligne laisse ces colonnes vides et s'appuie sur le
+    // chiffré (lecture) et l'empreinte HMAC (recherche et unicité).
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_cipher TEXT',
+    );
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_cipher TEXT',
+    );
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS email_bidx TEXT',
+    );
+    await client.query(
+      'ALTER TABLE users ADD COLUMN IF NOT EXISTS phone_bidx TEXT',
+    );
+    await client.query('ALTER TABLE users ALTER COLUMN email DROP NOT NULL');
+    await client.query('ALTER TABLE users ALTER COLUMN phone DROP NOT NULL');
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS users_email_bidx_idx
+        ON users (email_bidx) WHERE email_bidx IS NOT NULL
+    `);
+    await client.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS users_phone_bidx_idx
+        ON users (phone_bidx) WHERE phone_bidx IS NOT NULL
+    `);
+
     // Unicité de l'e-mail insensible à la casse : la contrainte UNIQUE de la
     // colonne, elle, distingue « Client@X.com » de « client@x.com ». Les
     // comptes existants sont conservés tels quels : si des doublons hérités

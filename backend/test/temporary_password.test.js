@@ -112,14 +112,14 @@ test('l’inscription renvoie le code de récupération et n’en garde que l’
   let storedHash = null;
 
   pool.query = async (query, params) => {
-    if (/SELECT id FROM users WHERE LOWER\(email\)/.test(query)) {
+    if (/LOWER\(email\) = \$1/.test(query)) {
       return { rows: [] };
     }
-    if (/SELECT id FROM users WHERE phone = ANY/.test(query)) {
+    if (/phone = ANY\(\$1::text\[\]\)/.test(query)) {
       return { rows: [] };
     }
     if (/INSERT INTO users/.test(query)) {
-      storedHash = params[6];
+      storedHash = params[4];
       assert.match(query, /recovery_code_hash/);
       return {
         rows: [
@@ -127,8 +127,8 @@ test('l’inscription renvoie le code de récupération et n’en garde que l’
             id: 9,
             first_name: params[0],
             last_name: params[1],
-            email: params[2],
-            phone: params[3],
+            email: null,
+            phone: null,
             role: 'client',
             created_at: '2026-11-07T00:00:00.000Z',
           },
@@ -159,7 +159,7 @@ test('la récupération exige le code remis à l’inscription', async () => {
   let storedHash = null;
 
   pool.query = async (query, params) => {
-    if (/SELECT id, email, phone, recovery_code_hash/.test(query)) {
+    if (/SELECT id, recovery_code_hash/.test(query)) {
       return {
         rows: [
           {
@@ -202,7 +202,7 @@ test('un code erroné est refusé sans toucher au mot de passe', async () => {
   let passwordUpdated = false;
 
   pool.query = async (query) => {
-    if (/SELECT id, email, phone, recovery_code_hash/.test(query)) {
+    if (/SELECT id, recovery_code_hash/.test(query)) {
       return {
         rows: [
           {
@@ -346,7 +346,7 @@ test('le changement obligatoire remplace le mot de passe et lève le drapeau', a
     }
     // Identité lue pour vérifier que le mot de passe ne reprend pas le nom,
     // l'e-mail ou le téléphone du titulaire.
-    if (/SELECT first_name, last_name, email, phone FROM users/.test(query)) {
+    if (/SELECT first_name, last_name, email, phone,/.test(query)) {
       return {
         rows: [
           {
@@ -390,7 +390,7 @@ test('un mot de passe trop facile à deviner est refusé', async () => {
     if (/SELECT id, must_change_password FROM users/.test(query)) {
       return { rows: [{ id: 7, must_change_password: true }] };
     }
-    if (/SELECT first_name, last_name, email, phone FROM users/.test(query)) {
+    if (/SELECT first_name, last_name, email, phone,/.test(query)) {
       return {
         rows: [
           {
@@ -437,7 +437,7 @@ test('choisir soi-même son mot de passe lève aussi le drapeau', async () => {
   let clearedFlag = false;
 
   pool.query = async (query) => {
-    if (/SELECT first_name, last_name, email, phone FROM users/.test(query)) {
+    if (/SELECT first_name, last_name, email, phone,/.test(query)) {
       return {
         rows: [
           {

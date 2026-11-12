@@ -47,7 +47,7 @@ test('le répertoire clients est réservé aux administrateurs', async () => {
 test('le répertoire admin renvoie les coordonnées des clients sans données secrètes', async () => {
   pool.query = async (query) => {
     assert.match(query, /WHERE role <> 'admin'/);
-    assert.match(query, /first_name, last_name, email, phone, role, created_at/);
+    assert.match(query, /first_name, last_name, email, phone/);
     return {
       rows: [
         {

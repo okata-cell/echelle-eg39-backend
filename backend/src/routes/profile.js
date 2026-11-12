@@ -16,6 +16,11 @@ const {
   REGLES: REGLES_MOT_DE_PASSE,
   verifierMotDePasse: verifierPolitique,
 } = require('../utils/password_policy');
+const {
+  chiffrerContact,
+  contactsDuCompte,
+  empreinteContact,
+} = require('../utils/contact_crypto');
 
 const router = express.Router();
 const MAX_AVATAR_BYTES = 1024 * 1024;
@@ -31,7 +36,8 @@ const SUPPORT_STATUSES = ['nouveau', 'en_traitement', 'termine', 'ferme'];
 const TRAINING_STATUSES = ['nouveau', 'contacte', 'inscrit', 'termine', 'annule'];
 
 const PROFILE_SELECT = `
-  SELECT u.id, u.first_name, u.last_name, u.email, u.phone, u.role, u.created_at,
+  SELECT u.id, u.first_name, u.last_name, u.email, u.phone,
+         u.email_cipher, u.phone_cipher, u.role, u.created_at,
          u.avatar_data, u.avatar_mime_type,
          c.entreprise, c.adresse, c.ville, c.pays
   FROM users u
@@ -59,12 +65,14 @@ function parsePositiveId(value) {
 
 function publicProfile(row) {
   const avatar = row.avatar_data;
+  // Lecture mixte : clair pour un compte hérité, déchiffré pour un compte récent.
+  const contacts = contactsDuCompte(row);
   return {
     id: row.id,
     firstName: row.first_name,
     lastName: row.last_name,
-    email: row.email,
-    phone: row.phone,
+    email: contacts.email,
+    phone: contacts.phone,
     role: row.role,
     createdAt: row.created_at,
     company: row.entreprise || '',
@@ -163,7 +171,8 @@ router.patch('/me', authMiddleware, accountTokenRequired, [
   try {
     const profile = await transaction(async (client) => {
       const currentResult = await client.query(
-        'SELECT id, email, phone, password_hash FROM users WHERE id = $1 FOR UPDATE',
+        `SELECT id, email, phone, email_cipher, phone_cipher, password_hash
+           FROM users WHERE id = $1 FOR UPDATE`,
         [userId],
       );
       if (currentResult.rows.length === 0) {
@@ -172,17 +181,27 @@ router.patch('/me', authMiddleware, accountTokenRequired, [
         throw error;
       }
       const current = currentResult.rows[0];
-      const contactChanged = email !== normalizeEmail(current.email) || phone !== current.phone;
+      const contactsActuels = contactsDuCompte(current);
+      const contactChanged =
+        email !== normalizeEmail(contactsActuels.email) ||
+        phone !== contactsActuels.phone;
       if (contactChanged && !(req.body.currentPassword && await verifierMotDePasse(String(req.body.currentPassword), current.password_hash))) {
         const error = new Error('Mot de passe actuel incorrect ou manquant.');
         error.statusCode = 401;
         throw error;
       }
 
+      // Unicité vérifiée sur les deux formes : coordonnée en clair d'un compte
+      // hérité, empreinte d'un compte chiffré.
+      const emailBidx = empreinteContact(email);
+      const phoneBidx = empreinteContact(phone);
       const duplicate = await client.query(
         `SELECT id FROM users
-         WHERE id <> $1 AND (LOWER(email) = $2 OR phone = ANY($3::text[])) LIMIT 1`,
-        [userId, email, getPhoneCandidates(phone)],
+         WHERE id <> $1
+           AND (LOWER(email) = $2 OR email_bidx = $3
+                OR phone = ANY($4::text[]) OR phone_bidx = $5)
+         LIMIT 1`,
+        [userId, email, emailBidx, getPhoneCandidates(phone), phoneBidx],
       );
       if (duplicate.rows.length > 0) {
         const error = new Error('Cet e-mail ou ce téléphone est déjà utilisé par un autre compte.');
@@ -190,10 +209,25 @@ router.patch('/me', authMiddleware, accountTokenRequired, [
         throw error;
       }
 
+      // Les coordonnées modifiées sont réécrites chiffrées : la ligne quitte le
+      // format hérité au moment où la personne change elle-même ses contacts.
       await client.query(
-        `UPDATE users SET first_name = $1, last_name = $2, email = $3, phone = $4,
-         updated_at = CURRENT_TIMESTAMP WHERE id = $5`,
-        [firstName, lastName, email, phone, userId],
+        `UPDATE users
+            SET first_name = $1, last_name = $2,
+                email = NULL, phone = NULL,
+                email_cipher = $3, phone_cipher = $4,
+                email_bidx = $5, phone_bidx = $6,
+                updated_at = CURRENT_TIMESTAMP
+          WHERE id = $7`,
+        [
+          firstName,
+          lastName,
+          chiffrerContact(email),
+          chiffrerContact(phone),
+          emailBidx,
+          phoneBidx,
+          userId,
+        ],
       );
       await client.query(
         `INSERT INTO clients (user_id, entreprise, adresse, ville, pays)
@@ -237,7 +271,9 @@ router.post('/password', authMiddleware, accountTokenRequired, [
   if (sendValidationError(req, res)) return;
   try {
     const result = await pool.query(
-      'SELECT password_hash, first_name, last_name, email, phone FROM users WHERE id = $1',
+      `SELECT password_hash, first_name, last_name, email, phone,
+              email_cipher, phone_cipher
+         FROM users WHERE id = $1`,
       [Number(req.user.userId)],
     );
     if (result.rows.length === 0) return res.status(404).json({ error: 'Utilisateur introuvable.' });
@@ -247,12 +283,13 @@ router.post('/password', authMiddleware, accountTokenRequired, [
       return res.status(401).json({ error: 'Mot de passe actuel incorrect.' });
     }
 
+    const contacts = contactsDuCompte(compte);
     const nouveauMotDePasse = String(req.body.newPassword);
     const politique = verifierPolitique(nouveauMotDePasse, {
       firstName: compte.first_name,
       lastName: compte.last_name,
-      email: compte.email,
-      phone: compte.phone,
+      email: contacts.email,
+      phone: contacts.phone,
     });
     if (!politique.valide) {
       return res.status(400).json({
@@ -398,6 +435,7 @@ router.get('/admin/support-messages', authMiddleware, adminMiddleware, async (re
     const result = await pool.query(
       `SELECT sm.id, sm.message, sm.status, sm.created_at,
               u.first_name, u.last_name, u.email, u.phone,
+              u.email_cipher, u.phone_cipher,
               COALESCE(json_agg(json_build_object('id', a.id, 'mimeType', a.mime_type, 'byteSize', a.byte_size))
                 FILTER (WHERE a.id IS NOT NULL), '[]'::json) AS attachments
        FROM profile_support_messages sm JOIN users u ON u.id = sm.user_id
@@ -405,7 +443,9 @@ router.get('/admin/support-messages', authMiddleware, adminMiddleware, async (re
        GROUP BY sm.id, u.id ORDER BY sm.created_at DESC LIMIT 200`,
     );
     res.set('Cache-Control', 'no-store');
-    return res.json({ messages: result.rows });
+    return res.json({
+      messages: result.rows.map((row) => ({ ...row, ...contactsDuCompte(row) })),
+    });
   } catch (error) {
     console.error('Erreur lecture support admin:', error);
     return res.status(500).json({ error: 'Impossible de charger les messages de support.' });
@@ -458,12 +498,18 @@ router.get('/admin/training-interests', authMiddleware, adminMiddleware, async (
   try {
     const result = await pool.query(
       `SELECT ti.id, ti.training_name, ti.message, ti.status, ti.created_at,
-              u.first_name, u.last_name, u.email, u.phone
+              u.first_name, u.last_name, u.email, u.phone,
+              u.email_cipher, u.phone_cipher
        FROM profile_training_interests ti JOIN users u ON u.id = ti.user_id
        ORDER BY ti.created_at DESC LIMIT 200`,
     );
     res.set('Cache-Control', 'no-store');
-    return res.json({ interests: result.rows });
+    return res.json({
+      interests: result.rows.map((row) => ({
+        ...row,
+        ...contactsDuCompte(row),
+      })),
+    });
   } catch (error) {
     console.error('Erreur lecture demandes formation:', error);
     return res.status(500).json({ error: 'Impossible de charger les demandes de formation.' });
@@ -494,12 +540,17 @@ router.get('/admin/ratings', authMiddleware, adminMiddleware, async (req, res) =
   try {
     const result = await pool.query(
       `SELECT r.id, r.rating, r.comment, r.created_at, r.updated_at,
-              u.first_name, u.last_name, u.email
+              u.first_name, u.last_name, u.email, u.email_cipher, u.phone_cipher
        FROM profile_app_ratings r JOIN users u ON u.id = r.user_id
        ORDER BY r.updated_at DESC LIMIT 200`,
     );
     res.set('Cache-Control', 'no-store');
-    return res.json({ ratings: result.rows });
+    return res.json({
+      ratings: result.rows.map((row) => ({
+        ...row,
+        email: contactsDuCompte(row).email,
+      })),
+    });
   } catch (error) {
     console.error('Erreur lecture évaluations:', error);
     return res.status(500).json({ error: 'Impossible de charger les évaluations.' });

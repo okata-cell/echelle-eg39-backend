@@ -4,6 +4,7 @@ const { body, validationResult } = require('express-validator');
 const pool = require('../config/database');
 const { authMiddleware, adminMiddleware } = require('../middleware/auth');
 const { recordPurchaseRequest } = require('../services/admin_activity');
+const { contactsDuCompte } = require('../utils/contact_crypto');
 
 // Liste des demandes d'achat.
 router.get('/', authMiddleware, async (req, res) => {
@@ -11,6 +12,7 @@ router.get('/', authMiddleware, async (req, res) => {
     const { statut } = req.query;
     let query = `
       SELECT d.*, u.first_name, u.last_name, u.email, u.phone,
+             u.email_cipher, u.phone_cipher,
              a.code AS appareil_code, a.type AS appareil_type,
              a.image_url AS appareil_image_url
       FROM demandes_achat d
@@ -40,8 +42,8 @@ router.get('/', authMiddleware, async (req, res) => {
         id: d.id,
         code: d.code,
         clientNom: `${d.first_name} ${d.last_name}`,
-        clientEmail: d.email,
-        clientPhone: d.phone,
+        clientEmail: contactsDuCompte(d).email,
+        clientPhone: contactsDuCompte(d).phone,
         appareilId: d.appareil_id,
         appareilCode: d.appareil_code,
         appareilType: d.appareil_type,

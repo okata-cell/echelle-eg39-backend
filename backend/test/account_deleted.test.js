@@ -61,7 +61,7 @@ function stubLogin({ userRows = [], deletedMatch = false } = {}) {
     if (/deleted_email_hash = ANY/.test(sql)) {
       return { rows: deletedMatch ? [{ id: 12 }] : [] };
     }
-    if (/FROM users WHERE LOWER\(email\)/.test(sql)) {
+    if (/FROM users/.test(sql)) {
       return { rows: userRows };
     }
     throw new Error(`Requête inattendue : ${sql}`);

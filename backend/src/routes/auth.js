@@ -27,6 +27,11 @@ const {
   getPhoneCandidates,
 } = require('../utils/identifiers');
 const { hashIdentifiers } = require('../utils/identifier_hash');
+const {
+  chiffrerContact,
+  contactsDuCompte,
+  empreinteContact,
+} = require('../utils/contact_crypto');
 const { revokeAccount } = require('../services/session_revocation');
 const {
   TEMPORARY_PASSWORD_DISPLAY_SECONDS,
@@ -82,17 +87,21 @@ function sendAuthError(res, error, context) {
 async function chargerIdentite(userId) {
   try {
     const { rows } = await pool.query(
-      'SELECT first_name, last_name, email, phone FROM users WHERE id = $1',
+      `SELECT first_name, last_name, email, phone, email_cipher, phone_cipher
+         FROM users WHERE id = $1`,
       [userId],
     );
     const ligne = rows[0];
     if (!ligne) return {};
 
+    // L'identité peut être chiffrée : la politique compare le mot de passe à
+    // l'e-mail et au téléphone en clair.
+    const contacts = contactsDuCompte(ligne);
     return {
       firstName: ligne.first_name,
       lastName: ligne.last_name,
-      email: ligne.email,
-      phone: ligne.phone,
+      email: contacts.email,
+      phone: contacts.phone,
     };
   } catch (error) {
     return {};
@@ -147,14 +156,19 @@ router.post('/forgot-password', [
   const contact = String(req.body.contact).trim();
 
   try {
+    // Lecture mixte : les comptes hérités sont retrouvés par leur coordonnée en
+    // clair, les comptes chiffrés par l'empreinte.
+    const empreinte = empreinteContact(contact);
     const userResult = contactType === 'email'
       ? await pool.query(
-          'SELECT id, email, phone, recovery_code_hash FROM users WHERE LOWER(email) = $1',
-          [normalizeEmail(contact)],
+          `SELECT id, recovery_code_hash FROM users
+            WHERE LOWER(email) = $1 OR email_bidx = $2`,
+          [normalizeEmail(contact), empreinte],
         )
       : await pool.query(
-          'SELECT id, email, phone, recovery_code_hash FROM users WHERE phone = ANY($1::text[])',
-          [getPhoneCandidates(contact)],
+          `SELECT id, recovery_code_hash FROM users
+            WHERE phone = ANY($1::text[]) OR phone_bidx = $2`,
+          [getPhoneCandidates(contact), empreinte],
         );
 
     // Message unique : il ne doit révéler ni l'existence du compte, ni la
@@ -384,13 +398,24 @@ router.post('/register', [
   try {
     // Unicité contrôlée champ par champ : l'écran peut alors désigner la case à
     // corriger au lieu d'un « email ou téléphone déjà utilisé » ambigu.
+    // Empreintes calculées une fois : elles servent au contrôle d'unicité puis
+    // à l'écriture. Elles ne sont pas réversibles et ne quittent pas le serveur.
+    const emailBidx = empreinteContact(email);
+    const phoneBidx = empreinteContact(phone);
+    const emailCipher = chiffrerContact(email);
+    const phoneCipher = chiffrerContact(phone);
+
     const [emailExiste, phoneExiste] = await Promise.all([
-      pool.query('SELECT id FROM users WHERE LOWER(email) = $1 LIMIT 1', [
-        email,
-      ]),
-      pool.query('SELECT id FROM users WHERE phone = ANY($1::text[]) LIMIT 1', [
-        getPhoneCandidates(phone),
-      ]),
+      pool.query(
+        `SELECT id FROM users
+          WHERE LOWER(email) = $1 OR email_bidx = $2 LIMIT 1`,
+        [email, emailBidx],
+      ),
+      pool.query(
+        `SELECT id FROM users
+          WHERE phone = ANY($1::text[]) OR phone_bidx = $2 LIMIT 1`,
+        [getPhoneCandidates(phone), phoneBidx],
+      ),
     ]);
 
     const champsPris = [];
@@ -422,16 +447,31 @@ router.post('/register', [
     const recoveryCode = generateRecoveryCode();
     const recoveryCodeHash = hashRecoveryCode(recoveryCode);
 
+    // Les coordonnées ne vont plus en clair : les colonnes héritées restent
+    // vides, le chiffré sert à l'affichage et l'empreinte à la recherche.
     const result = await pool.query(
       `INSERT INTO users
-         (first_name, last_name, email, phone, password_hash, role, recovery_code_hash)
-       VALUES ($1, $2, $3, $4, $5, $6, $7)
-       RETURNING id, first_name, last_name, email, phone, role, created_at`,
-      [firstName, lastName, email, phone, hashedPassword, role, recoveryCodeHash],
+         (first_name, last_name, email, phone, password_hash, role,
+          recovery_code_hash, email_cipher, phone_cipher, email_bidx, phone_bidx)
+       VALUES ($1, $2, NULL, NULL, $3, $4, $5, $6, $7, $8, $9)
+       RETURNING id, first_name, last_name, role, created_at`,
+      [
+        firstName,
+        lastName,
+        hashedPassword,
+        role,
+        recoveryCodeHash,
+        emailCipher,
+        phoneCipher,
+        emailBidx,
+        phoneBidx,
+      ],
     );
     const user = result.rows[0];
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
+      // L'e-mail part dans le jeton même s'il n'est pas stocké en clair : il
+      // vient de la saisie, pas de la base.
+      { userId: user.id, email, role: user.role },
       getJwtSecret(),
       { expiresIn: '30d' },
     );
@@ -442,8 +482,8 @@ router.post('/register', [
         id: user.id,
         firstName: user.first_name,
         lastName: user.last_name,
-        email: user.email,
-        phone: user.phone,
+        email,
+        phone,
         role: user.role,
         mustChangePassword: false,
       },
@@ -473,9 +513,25 @@ router.post('/login', [
   const password = String(req.body.password);
 
   try {
+    // Lecture mixte : un compte hérité est trouvé par sa coordonnée en clair,
+    // un compte chiffré par son empreinte. Les deux requêtes ne renvoient rien
+    // de plus que ce que le serveur savait déjà.
+    const empreintesTelephone = identifier.phoneCandidates
+      .map((candidat) => empreinteContact(candidat))
+      .filter((valeur) => valeur !== null);
+
     const result = await pool.query(
-      'SELECT * FROM users WHERE LOWER(email) = $1 OR phone = ANY($2::text[])',
-      [identifier.email, identifier.phoneCandidates],
+      `SELECT * FROM users
+        WHERE LOWER(email) = $1
+           OR phone = ANY($2::text[])
+           OR email_bidx = $3
+           OR phone_bidx = ANY($4::text[])`,
+      [
+        identifier.email,
+        identifier.phoneCandidates,
+        empreinteContact(identifier.email),
+        empreintesTelephone,
+      ],
     );
 
     if (result.rows.length === 0) {
@@ -561,8 +617,12 @@ router.post('/login', [
       }
     }
 
+    // Coordonnées relues selon leur forme de stockage : clair pour un compte
+    // hérité, déchiffrées pour un compte récent.
+    const contacts = contactsDuCompte(user);
+
     const token = jwt.sign(
-      { userId: user.id, email: user.email, role: user.role },
+      { userId: user.id, email: contacts.email, role: user.role },
       getJwtSecret(),
       { expiresIn: '30d' },
     );
@@ -573,8 +633,8 @@ router.post('/login', [
         id: user.id,
         firstName: user.first_name,
         lastName: user.last_name,
-        email: user.email,
-        phone: user.phone,
+        email: contacts.email,
+        phone: contacts.phone,
         role: user.role,
         // Vrai après une récupération : l'application impose alors de choisir
         // un mot de passe définitif.
@@ -591,8 +651,8 @@ router.post('/login', [
 router.get('/me', authMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, first_name, last_name, email, phone, role, created_at,
-              must_change_password
+      `SELECT id, first_name, last_name, email, phone, email_cipher,
+              phone_cipher, role, created_at, must_change_password
          FROM users WHERE id = $1`,
       [req.user.userId],
     );
@@ -602,12 +662,13 @@ router.get('/me', authMiddleware, async (req, res) => {
     }
 
     const user = result.rows[0];
+    const contacts = contactsDuCompte(user);
     return res.json({
       id: user.id,
       firstName: user.first_name,
       lastName: user.last_name,
-      email: user.email,
-      phone: user.phone,
+      email: contacts.email,
+      phone: contacts.phone,
       role: user.role,
       createdAt: user.created_at,
       mustChangePassword: user.must_change_password === true,
@@ -653,7 +714,8 @@ router.delete(
       // email et phone sont lus avant neutralisation : leurs empreintes servent
       // ensuite à reconnaître la personne si elle retente une connexion.
       const found = await client.query(
-        'SELECT id, role, password_hash, email, phone FROM users WHERE id = $1 FOR UPDATE',
+        `SELECT id, role, password_hash, email, phone, email_cipher, phone_cipher
+           FROM users WHERE id = $1 FOR UPDATE`,
         [userId],
       );
 
@@ -713,8 +775,11 @@ router.delete(
       // inutilisable, e-mail et téléphone libérés pour une future inscription.
       // Seules leurs empreintes restent, pour répondre « compte supprimé ».
       const neutralHash = await hasherMotDePasse(crypto.randomUUID());
-      const deletedEmailHash = hashIdentifiers([user.email])[0] || null;
-      const deletedPhoneHash = hashIdentifiers([user.phone])[0] || null;
+      // Coordonnées relues puis effacées, chiffré compris : après suppression,
+      // plus aucune adresse ni numéro, en clair ou illisible, ne subsiste.
+      const contacts = contactsDuCompte(user);
+      const deletedEmailHash = hashIdentifiers([contacts.email])[0] || null;
+      const deletedPhoneHash = hashIdentifiers([contacts.phone])[0] || null;
       await client.query(
         `UPDATE users
             SET first_name = 'Compte',
@@ -726,6 +791,10 @@ router.delete(
                 deleted_at = CURRENT_TIMESTAMP,
                 deleted_email_hash = $5,
                 deleted_phone_hash = $6,
+                email_cipher = NULL,
+                phone_cipher = NULL,
+                email_bidx = NULL,
+                phone_bidx = NULL,
                 avatar_data = NULL,
                 avatar_mime_type = NULL,
                 updated_at = CURRENT_TIMESTAMP

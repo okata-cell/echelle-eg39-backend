@@ -157,7 +157,7 @@ function newDatabase({ device = {}, locations = [] } = {}) {
           return { rows: location ? [{ id: location.id }] : [] };
         }
 
-        if (/SELECT l\.\*, u\.first_name, u\.last_name, u\.email FROM locations/.test(normalized)) {
+        if (/SELECT l\.\*, u\.first_name, u\.last_name, u\.email/.test(normalized)) {
           const location = state.locations.find((item) => String(item.id) === String(values[0]));
           return { rows: location ? [{ ...location }] : [] };
         }

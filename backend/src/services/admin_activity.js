@@ -11,6 +11,7 @@
  * jamais faire échouer la demande d'un client.
  */
 const pool = require('../config/database');
+const { contactsDuCompte } = require('../utils/contact_crypto');
 
 /** Connexions SSE ouvertes, tenues en mémoire du processus. */
 const listeners = new Set();
@@ -154,14 +155,17 @@ async function demandeurLabel(userId) {
 
   try {
     const { rows } = await pool.query(
-      'SELECT first_name, last_name, phone FROM users WHERE id = $1',
+      `SELECT first_name, last_name, phone, phone_cipher
+         FROM users WHERE id = $1`,
       [userId],
     );
     const ligne = rows[0];
     if (!ligne) return null;
 
     const nom = [ligne.first_name, ligne.last_name].filter(Boolean).join(' ');
-    return ligne.phone ? `${nom} · ${ligne.phone}` : nom;
+    // Le numéro est déchiffré ici pour que l'admin voie qui appeler.
+    const telephone = contactsDuCompte(ligne).phone;
+    return telephone ? `${nom} · ${telephone}` : nom;
   } catch (error) {
     return null;
   }

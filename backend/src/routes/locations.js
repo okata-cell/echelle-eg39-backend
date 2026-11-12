@@ -12,15 +12,18 @@ const {
   toDateOnly,
 } = require('../utils/rental_dates');
 const { recordLocationRequest } = require('../services/admin_activity');
+const { contactsDuCompte } = require('../utils/contact_crypto');
 
 function mapLocation(location) {
+  // Coordonnées du client relues selon leur stockage (clair ou chiffré).
+  const contacts = contactsDuCompte(location);
   return {
     id: location.id,
     code: location.code,
     clientNom: [location.first_name, location.last_name].filter(Boolean).join(' '),
-    clientEmail: location.email,
-    clientPhone: location.phone,
-    clientTelephone: location.phone,
+    clientEmail: contacts.email,
+    clientPhone: contacts.phone,
+    clientTelephone: contacts.phone,
     appareilId: location.appareil_id,
     appareilCode: location.appareil_code,
     appareilNom: location.appareil_nom,
@@ -54,6 +57,7 @@ async function listLocations(req, res, { adminOnly = false } = {}) {
     const { statut } = req.query;
     let query = `
       SELECT l.*, u.first_name, u.last_name, u.email, u.phone,
+             u.email_cipher, u.phone_cipher,
              a.code AS appareil_code, a.type AS appareil_type,
              a.image_url AS appareil_image_url
         FROM locations l
@@ -351,7 +355,7 @@ router.patch('/:id/approuver', authMiddleware, adminMiddleware, async (req, res)
     await client.query('BEGIN');
     transactionOpen = true;
     const locationResult = await client.query(
-      `SELECT l.*, u.first_name, u.last_name, u.email
+      `SELECT l.*, u.first_name, u.last_name, u.email, u.email_cipher
          FROM locations l
          JOIN users u ON u.id = l.user_id
         WHERE l.id = $1

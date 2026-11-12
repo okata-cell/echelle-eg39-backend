@@ -27,6 +27,16 @@ services:
         sync: false
       - key: JWT_SECRET
         sync: false
+      # Chiffrement des coordonnées des nouveaux comptes (AES-256-GCM) et
+      # empreintes de recherche (HMAC). Générer la première avec :
+      #   node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+      # ATTENTION : perdre DATA_ENCRYPTION_KEY rend illisibles les e-mails et
+      # téléphones chiffrés. La conserver hors de Render (gestionnaire de
+      # secrets). En son absence, une clé est dérivée de JWT_SECRET.
+      - key: DATA_ENCRYPTION_KEY
+        sync: false
+      - key: CONTACT_INDEX_SECRET
+        sync: false
       - key: ALLOWED_ORIGINS
         sync: false
       # ADMIN_PASSWORD est obligatoire à la première création du compte

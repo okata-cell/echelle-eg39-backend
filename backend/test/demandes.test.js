@@ -48,7 +48,7 @@ test('la création d’une demande inclut l’image de l’appareil', async () =
     // demande elle-même, il ne compte pas dans le scénario testé ici.
     if (
       /admin_events/.test(query) ||
-      /SELECT first_name, last_name, phone FROM users/.test(query)
+      /phone_cipher/.test(query)
     ) {
       return { rows: [] };
     }

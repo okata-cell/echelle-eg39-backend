@@ -38,22 +38,21 @@ function baseSimulee({ emailPris = false, phonePris = false } = {}) {
     const requete = query.replace(/\s+/g, ' ').trim();
     etat.requetes.push(requete);
 
-    if (/SELECT id FROM users WHERE LOWER\(email\) = \$1 LIMIT 1/.test(requete)) {
+    if (/LOWER\(email\) = \$1 OR email_bidx = \$2/.test(requete)) {
       return { rows: emailPris ? [{ id: 1 }] : [] };
     }
-    if (/SELECT id FROM users WHERE phone = ANY/.test(requete)) {
+    if (/phone = ANY\(\$1::text\[\]\) OR phone_bidx = \$2/.test(requete)) {
       return { rows: phonePris ? [{ id: 2 }] : [] };
     }
     if (/INSERT INTO users/.test(requete)) {
       etat.insere = params;
+      etat.requeteInsert = requete;
       return {
         rows: [
           {
             id: 11,
             first_name: params[0],
             last_name: params[1],
-            email: params[2],
-            phone: params[3],
             role: 'client',
             created_at: '2026-11-12T10:00:00.000Z',
           },
@@ -140,9 +139,16 @@ test('une inscription valide hache le mot de passe et normalise l’e-mail', asy
   const corps = await reponse.json();
 
   assert.equal(reponse.status, 201);
-  assert.equal(etat.insere[2], 'afi.koffi@example.com');
 
-  const hash = etat.insere[4];
+  // Les coordonnées ne sont plus stockées en clair : elles sont chiffrées et
+  // accompagnées de leur empreinte, les colonnes héritées restant vides.
+  assert.match(etat.requeteInsert, /VALUES \(\$1, \$2, NULL, NULL/);
+  assert.match(etat.insere[5], /^v1:/);
+  assert.match(etat.insere[6], /^v1:/);
+  assert.match(etat.insere[7], /^[0-9a-f]{64}$/);
+  assert.match(etat.insere[8], /^[0-9a-f]{64}$/);
+
+  const hash = etat.insere[2];
   assert.match(hash, /^p2:/);
   assert.ok(!hash.includes('Chantier'));
   assert.equal(typeof corps.recoveryCode, 'string');

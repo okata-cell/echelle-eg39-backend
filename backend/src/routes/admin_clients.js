@@ -10,6 +10,11 @@ const {
   generateRecoveryCode,
   hashRecoveryCode,
 } = require('../utils/recovery_code');
+const {
+  chiffrerContact,
+  contactsDuCompte,
+  empreinteContact,
+} = require('../utils/contact_crypto');
 
 const router = express.Router();
 
@@ -19,12 +24,13 @@ function parseClientId(value) {
 }
 
 function serializeClient(client) {
+  const contacts = contactsDuCompte(client);
   return {
     id: client.id,
     firstName: client.first_name,
     lastName: client.last_name,
-    email: client.email,
-    phone: client.phone,
+    email: contacts.email,
+    phone: contacts.phone,
     role: client.role || 'client',
     createdAt: client.created_at,
     isActive: client.is_active !== false,
@@ -34,7 +40,8 @@ function serializeClient(client) {
 router.get('/', authMiddleware, adminMiddleware, async (req, res) => {
   try {
     const result = await pool.query(
-      `SELECT id, first_name, last_name, email, phone, role, created_at, is_active
+      `SELECT id, first_name, last_name, email, phone, email_cipher,
+              phone_cipher, role, created_at, is_active
        FROM users
        WHERE role <> 'admin'
        ORDER BY created_at DESC, id DESC`,
@@ -79,11 +86,15 @@ router.patch(
 
     const { firstName, lastName, email, phone } = req.body;
     try {
+      const emailBidx = empreinteContact(email);
+      const phoneBidx = empreinteContact(phone);
       const duplicate = await pool.query(
         `SELECT id FROM users
-         WHERE id <> $1 AND (LOWER(email) = LOWER($2) OR phone = $3)
+         WHERE id <> $1
+           AND (LOWER(email) = LOWER($2) OR email_bidx = $3
+                OR phone = $4 OR phone_bidx = $5)
          LIMIT 1`,
-        [userId, email, phone],
+        [userId, email, emailBidx, phone, phoneBidx],
       );
       if (duplicate.rows.length > 0) {
         return res.status(409).json({
@@ -93,11 +104,22 @@ router.patch(
 
       const result = await pool.query(
         `UPDATE users
-         SET first_name = $1, last_name = $2, email = $3, phone = $4,
+         SET first_name = $1, last_name = $2, email = NULL, phone = NULL,
+             email_cipher = $3, phone_cipher = $4,
+             email_bidx = $5, phone_bidx = $6,
              updated_at = CURRENT_TIMESTAMP
-         WHERE id = $5 AND role <> 'admin'
-         RETURNING id, first_name, last_name, email, phone, role, created_at, is_active`,
-        [firstName.trim(), lastName.trim(), email.trim(), phone.trim(), userId],
+         WHERE id = $7 AND role <> 'admin'
+         RETURNING id, first_name, last_name, email, phone,
+                   email_cipher, phone_cipher, role, created_at, is_active`,
+        [
+          firstName.trim(),
+          lastName.trim(),
+          chiffrerContact(email),
+          chiffrerContact(phone),
+          emailBidx,
+          phoneBidx,
+          userId,
+        ],
       );
 
       if (result.rows.length === 0) {
@@ -132,7 +154,8 @@ router.patch('/:id/status', authMiddleware, adminMiddleware, async (req, res) =>
       `UPDATE users
        SET is_active = $1, updated_at = CURRENT_TIMESTAMP
        WHERE id = $2 AND role <> 'admin'
-       RETURNING id, first_name, last_name, email, phone, role, created_at, is_active`,
+       RETURNING id, first_name, last_name, email, phone,
+                 email_cipher, phone_cipher, role, created_at, is_active`,
       [req.body.isActive, userId],
     );
 
@@ -185,7 +208,8 @@ router.post(
         `UPDATE users
             SET recovery_code_hash = $1, updated_at = CURRENT_TIMESTAMP
           WHERE id = $2 AND role <> 'admin'
-          RETURNING id, first_name, last_name, phone, email`,
+          RETURNING id, first_name, last_name, phone, email,
+                    email_cipher, phone_cipher`,
         [recoveryCodeHash, userId],
       );
 
@@ -194,6 +218,7 @@ router.post(
       }
 
       const client = result.rows[0];
+      const contacts = contactsDuCompte(client);
       res.set('Cache-Control', 'no-store');
       return res.json({
         recoveryCode,
@@ -201,8 +226,8 @@ router.post(
           id: client.id,
           firstName: client.first_name,
           lastName: client.last_name,
-          phone: client.phone,
-          email: client.email,
+          phone: contacts.phone,
+          email: contacts.email,
         },
       });
     } catch (error) {
