@@ -10,6 +10,7 @@ const {
   describeDeliveryChannels,
   deliveryWarnings,
 } = require('./services/notification_service');
+const { etatSecrets } = require('./utils/contact_crypto');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -43,13 +44,15 @@ app.use('/api/users/clients', require('./routes/admin_clients'));
 app.use('/api/users', require('./routes/users'));
 
 // Route de santé
-// `/health` sert aussi de diagnostic : les canaux d'envoi (e-mail, SMS) sont
-// annoncés configurés ou non, sans jamais exposer de clé.
+// `/health` sert aussi de diagnostic : les canaux d'envoi (e-mail, SMS) et les
+// secrets de chiffrement sont annoncés configurés ou non, sans jamais exposer
+// de clé.
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
     timestamp: new Date().toISOString(),
     delivery: describeDeliveryChannels(),
+    secrets: etatSecrets(),
   });
 });
 

@@ -137,6 +137,33 @@ function empreinteContact(valeur, { env = process.env } = {}) {
     .digest('hex');
 }
 
+/**
+ * État des deux secrets, tel qu'affiché par `/health` : des mots, jamais les
+ * valeurs. Permet de vérifier après un déploiement que Render a bien pris les
+ * variables, sans avoir à se connecter pour le deviner.
+ *
+ * `dediee` / `dedie` : variable propre définie. `derivee` / `herite` : repli sur
+ * `JWT_SECRET`, donc rien n'est cassé mais la séparation des clés n'est pas
+ * faite. Changer de repli vers une variable dédiée plus tard rend illisibles
+ * les empreintes et les chiffrés déjà écrits avec le repli : définir les
+ * variables avant les premières inscriptions.
+ */
+function etatSecrets(env = process.env) {
+  const chiffrement = String(env.DATA_ENCRYPTION_KEY || '').trim()
+    ? 'dediee'
+    : String(env.JWT_SECRET || '').trim()
+      ? 'derivee'
+      : 'absente';
+
+  const empreinte = String(env.CONTACT_INDEX_SECRET || '').trim()
+    ? 'dedie'
+    : String(env.IDENTIFIER_HASH_SECRET || env.JWT_SECRET || '').trim()
+      ? 'herite'
+      : 'absent';
+
+  return { encryptionKey: chiffrement, indexSecret: empreinte };
+}
+
 /** Coordonnées lisibles d'une ligne `users`, chiffrées ou héritées. */
 function contactsDuCompte(ligne, { env = process.env } = {}) {
   if (!ligne) return { email: null, phone: null };
@@ -169,5 +196,6 @@ module.exports = {
   contactsDuCompte,
   dechiffrerContact,
   empreinteContact,
+  etatSecrets,
   secretEmpreinte,
 };

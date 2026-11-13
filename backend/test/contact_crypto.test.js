@@ -7,6 +7,7 @@ const {
   contactsDuCompte,
   dechiffrerContact,
   empreinteContact,
+  etatSecrets,
 } = require('../src/utils/contact_crypto');
 
 const CLE = Buffer.alloc(32, 7).toString('base64');
@@ -130,4 +131,23 @@ test('la lecture reste mixte pour les comptes hérités', () => {
     email: null,
     phone: null,
   });
+});
+
+test('/health annonce les secrets sans jamais livrer leur valeur', () => {
+  // Variables renseignées : c'est l'état attendu en production.
+  assert.deepEqual(etatSecrets(ENV), {
+    encryptionKey: 'dediee',
+    indexSecret: 'dedie',
+  });
+
+  // Rien de renseigné : le service tourne, mais le repli n'existe pas.
+  assert.deepEqual(etatSecrets({}), {
+    encryptionKey: 'absente',
+    indexSecret: 'absent',
+  });
+
+  // Repli documenté sur le secret du serveur.
+  const repli = etatSecrets({ JWT_SECRET: 'secret-de-secours' });
+  assert.deepEqual(repli, { encryptionKey: 'derivee', indexSecret: 'herite' });
+  assert.ok(!JSON.stringify(etatSecrets(ENV)).includes(CLE));
 });
