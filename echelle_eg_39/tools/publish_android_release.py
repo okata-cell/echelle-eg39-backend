@@ -460,6 +460,20 @@ def git(*arguments: str, journal: Journal) -> str:
     return resultat.stdout.strip()
 
 
+def pousser_tag(tag: str, journal: Journal) -> None:
+    """Pousse le tag ; tolère une republication après un échec réseau."""
+    resultat = subprocess.run(['git', 'push', 'origin', f'refs/tags/{tag}'],
+                              cwd=REPO, capture_output=True, text=True)
+    if resultat.returncode == 0:
+        journal.ok(f'tag {tag} poussé')
+        return
+    if 'already exists' in resultat.stderr or 'déjà existante' in resultat.stderr:
+        journal.avertir(f'tag {tag} déjà présent sur origin : la release le réutilisera '
+                        f'(supprimez-le à la main si le commit est faux)')
+        return
+    journal.echouer(f'git push du tag : {resultat.stderr.strip()}')
+
+
 def index_propre(fichiers: list[Path], journal: Journal) -> None:
     """Refuse de committer des modifications déjà indexées par quelqu'un d'autre."""
     deja = subprocess.run(['git', 'diff', '--cached', '--name-only'], cwd=REPO,
@@ -621,7 +635,7 @@ def main() -> None:
         journal=journal)
     git('tag', '-f', tag, journal=journal)
     git('push', 'origin', BRANCH, journal=journal)
-    git('push', 'origin', f'refs/tags/{tag}', journal=journal)
+    pousser_tag(tag, journal)
     journal.ok(f'commit et tag {tag} poussés sur {BRANCH}')
 
     journal.etape('Release GitHub')
