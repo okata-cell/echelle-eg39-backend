@@ -542,6 +542,8 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                   // Appareil name
                                   Text(
                                     a.nom,
+                                    maxLines: 2,
+                                    overflow: TextOverflow.ellipsis,
                                     style: const TextStyle(
                                       fontSize: 22,
                                       fontWeight: FontWeight.bold,
@@ -550,7 +552,10 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                   ),
                                   const SizedBox(height: 8),
 
-                                  // Type with icon
+                                  // Type with icon. Le libellé est dans un
+                                  // `Expanded` : en largeur naturelle, il
+                                  // poussait la ligne de 228 px hors de la
+                                  // carte sur un écran de 320 dp.
                                   Row(
                                     children: [
                                       Icon(
@@ -559,12 +564,16 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                         color: Colors.blue.shade600,
                                       ),
                                       const SizedBox(width: 8),
-                                      Text(
-                                        "Type : ${a.type}",
-                                        style: TextStyle(
-                                          fontSize: 16,
-                                          color: Colors.grey.shade600,
-                                          fontWeight: FontWeight.w500,
+                                      Expanded(
+                                        child: Text(
+                                          "Type : ${a.type}",
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                          style: TextStyle(
+                                            fontSize: 16,
+                                            color: Colors.grey.shade600,
+                                            fontWeight: FontWeight.w500,
+                                          ),
                                         ),
                                       ),
                                     ],
@@ -586,36 +595,46 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                         color: Colors.blue.shade200,
                                       ),
                                     ),
+                                    // Tarifs partagés à parts égales : sur
+                                    // 320 dp, deux montants en largeur
+                                    // naturelle débordaient de 258 px.
                                     child: Row(
-                                      mainAxisAlignment:
-                                          MainAxisAlignment.spaceAround,
                                       children: [
-                                        _buildPriceItem(
-                                          "Location",
-                                          "${a.prixLocation.toString()} FCFA",
-                                          Icons.access_time,
-                                          Colors.orange,
+                                        Expanded(
+                                          child: _buildPriceItem(
+                                            "Location",
+                                            "${a.prixLocation.toString()} FCFA",
+                                            Icons.access_time,
+                                            Colors.orange,
+                                          ),
                                         ),
                                         Container(
                                           height: 40,
                                           width: 1,
                                           color: Colors.grey.shade300,
                                         ),
-                                        _buildPriceItem(
-                                          "Vente",
-                                          "${a.prixVente.toString()} FCFA",
-                                          Icons.sell,
-                                          Colors.green,
+                                        Expanded(
+                                          child: _buildPriceItem(
+                                            "Vente",
+                                            "${a.prixVente.toString()} FCFA",
+                                            Icons.sell,
+                                            Colors.green,
+                                          ),
                                         ),
                                       ],
                                     ),
                                   ),
                                   const SizedBox(height: 16),
 
-                                  // Status and actions
-                                  Row(
-                                    mainAxisAlignment:
-                                        MainAxisAlignment.spaceBetween,
+                                  // Status and actions. En `Wrap`, la pastille
+                                  // et le menu passent à la ligne au lieu de
+                                  // déborder de 51 px sur un écran de 320 dp.
+                                  Wrap(
+                                    alignment: WrapAlignment.spaceBetween,
+                                    crossAxisAlignment:
+                                        WrapCrossAlignment.center,
+                                    spacing: 8,
+                                    runSpacing: 8,
                                     children: [
                                       // Status chip with enhanced design
                                       Container(
@@ -649,15 +668,19 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
                                                   : Colors.red.shade700,
                                             ),
                                             const SizedBox(width: 6),
-                                            Text(
-                                              a.disponible
-                                                  ? "Disponible"
-                                                  : "Indisponible",
-                                              style: TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                                color: a.disponible
-                                                    ? Colors.green.shade700
-                                                    : Colors.red.shade700,
+                                            Flexible(
+                                              child: Text(
+                                                a.disponible
+                                                    ? "Disponible"
+                                                    : "Indisponible",
+                                                maxLines: 1,
+                                                overflow: TextOverflow.ellipsis,
+                                                style: TextStyle(
+                                                  fontWeight: FontWeight.bold,
+                                                  color: a.disponible
+                                                      ? Colors.green.shade700
+                                                      : Colors.red.shade700,
+                                                ),
                                               ),
                                             ),
                                           ],
@@ -772,11 +795,15 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
     Color color,
   ) {
     return Column(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Icon(icon, color: color, size: 20),
         const SizedBox(height: 4),
         Text(
           label,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          textAlign: TextAlign.center,
           style: TextStyle(
             fontSize: 12,
             color: Colors.grey.shade600,
@@ -784,12 +811,16 @@ class _AdminAppareilsPageState extends State<AdminAppareilsPage> {
           ),
         ),
         const SizedBox(height: 2),
-        Text(
-          price,
-          style: TextStyle(
-            fontSize: 16,
-            fontWeight: FontWeight.bold,
-            color: color,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            price,
+            maxLines: 1,
+            style: TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
           ),
         ),
       ],

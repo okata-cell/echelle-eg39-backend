@@ -82,9 +82,13 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
   List<Map<String, dynamic>> get _visibleDemandes {
     switch (_filter) {
       case 'en_attente':
-        return _demandes.where((demande) => _status(demande) == 'en_attente').toList();
+        return _demandes
+            .where((demande) => _status(demande) == 'en_attente')
+            .toList();
       case 'approuvee':
-        return _demandes.where((demande) => _status(demande) == 'approuvee').toList();
+        return _demandes
+            .where((demande) => _status(demande) == 'approuvee')
+            .toList();
       case 'corbeille':
         return _historyDemandes();
       case 'tous':
@@ -96,9 +100,13 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
   int _countFor(String filter) {
     switch (filter) {
       case 'en_attente':
-        return _demandes.where((demande) => _status(demande) == 'en_attente').length;
+        return _demandes
+            .where((demande) => _status(demande) == 'en_attente')
+            .length;
       case 'approuvee':
-        return _demandes.where((demande) => _status(demande) == 'approuvee').length;
+        return _demandes
+            .where((demande) => _status(demande) == 'approuvee')
+            .length;
       case 'corbeille':
         return _historyDemandes().length;
       case 'tous':
@@ -245,7 +253,9 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
     final email = _display(demande['clientEmail']);
     final phone = _display(demande['clientPhone']);
     final date = formatAdminDate(demande['createdAt']);
-    final note = _display(demande['commentaireAdmin'] ?? demande['commentaire_admin']);
+    final note = _display(
+      demande['commentaireAdmin'] ?? demande['commentaire_admin'],
+    );
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -270,7 +280,10 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
             ),
             child: Text(
               'Note admin : $note',
-              style: const TextStyle(color: AdminPalette.secondaryText, height: 1.35),
+              style: const TextStyle(
+                color: AdminPalette.secondaryText,
+                height: 1.35,
+              ),
             ),
           ),
         ],
@@ -316,8 +329,14 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
     final id = int.tryParse(demande['id'].toString());
     if (id == null) return const SizedBox.shrink();
 
-    final product = _display(demande['appareilNom'], fallback: 'Appareil non renseigné');
-    final client = _display(demande['clientNom'], fallback: 'Client non renseigné');
+    final product = _display(
+      demande['appareilNom'],
+      fallback: 'Appareil non renseigné',
+    );
+    final client = _display(
+      demande['clientNom'],
+      fallback: 'Client non renseigné',
+    );
     final quantity = demande['quantite'] ?? 1;
     final code = _display(demande['code'], fallback: 'DA-$id');
 
@@ -344,44 +363,63 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
   @override
   Widget build(BuildContext context) {
     final visibleDemandes = _visibleDemandes;
+    // Pendant le premier chargement, compteurs et filtres n'ont rien à montrer
+    // et occupaient toute la hauteur : l'indicateur restait hors de l'écran et
+    // la page semblait vide, avec seulement son entête.
+    final chargementInitial = _isLoading && _demandes.isEmpty;
+    // États posés juste sous l'entête, pas centrés dans l'espace restant : sur
+    // 320 dp il ne restait parfois aucune hauteur et la page semblait vide.
     final content = _isLoading && _demandes.isEmpty
-        ? const SliverFillRemaining(
-            hasScrollBody: false,
-            child: AdminLoadingState(label: 'Chargement des demandes d\'achat…'),
+        ? const SliverToBoxAdapter(
+            child: Padding(
+              padding: EdgeInsets.symmetric(vertical: AdminSpacing.section),
+              child: AdminLoadingState(
+                label: 'Chargement des demandes d\'achat…',
+              ),
+            ),
           )
         : _errorMessage != null
-            ? SliverFillRemaining(
-                hasScrollBody: false,
-                child: AdminErrorState(
-                  message: _errorMessage!,
-                  onRetry: _loadDemandes,
-                ),
-              )
-            : visibleDemandes.isEmpty
-                ? SliverFillRemaining(
-                    hasScrollBody: false,
-                    child: AdminEmptyState(
-                      icon: Icons.shopping_cart_outlined,
-                      title: _filter == 'en_attente'
-                          ? 'Aucune demande en attente'
-                          : 'Aucune demande pour ce filtre',
-                      message: _filter == 'en_attente'
-                          ? 'Les nouvelles demandes d\'achat apparaîtront ici.'
-                          : 'Changez de filtre ou actualisez la file.',
-                    ),
-                  )
-                : SliverPadding(
-                    padding: const EdgeInsets.fromLTRB(
-                      AdminSpacing.lg,
-                      AdminSpacing.sm,
-                      AdminSpacing.lg,
-                      AdminSpacing.section,
-                    ),
-                    sliver: SliverList.builder(
-                      itemCount: visibleDemandes.length,
-                      itemBuilder: (context, index) => _buildDemandeItem(visibleDemandes[index]),
-                    ),
-                  );
+        ? SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: AdminSpacing.section,
+              ),
+              child: AdminErrorState(
+                message: _errorMessage!,
+                onRetry: _loadDemandes,
+              ),
+            ),
+          )
+        : visibleDemandes.isEmpty
+        ? SliverToBoxAdapter(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(
+                vertical: AdminSpacing.section,
+              ),
+              child: AdminEmptyState(
+                icon: Icons.shopping_cart_outlined,
+                title: _filter == 'en_attente'
+                    ? 'Aucune demande en attente'
+                    : 'Aucune demande pour ce filtre',
+                message: _filter == 'en_attente'
+                    ? 'Les nouvelles demandes d\'achat apparaîtront ici.'
+                    : 'Changez de filtre ou actualisez la file.',
+              ),
+            ),
+          )
+        : SliverPadding(
+            padding: const EdgeInsets.fromLTRB(
+              AdminSpacing.lg,
+              AdminSpacing.sm,
+              AdminSpacing.lg,
+              AdminSpacing.section,
+            ),
+            sliver: SliverList.builder(
+              itemCount: visibleDemandes.length,
+              itemBuilder: (context, index) =>
+                  _buildDemandeItem(visibleDemandes[index]),
+            ),
+          );
 
     return RefreshIndicator(
       onRefresh: _loadDemandes,
@@ -392,7 +430,8 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
           SliverToBoxAdapter(
             child: AdminPageHeader(
               title: 'Demandes d’achat',
-              subtitle: 'Priorisez les commandes d’équipement et suivez leur traitement.',
+              subtitle:
+                  'Priorisez les commandes d’équipement et suivez leur traitement.',
               icon: Icons.shopping_cart_outlined,
               actions: [
                 IconButton(
@@ -404,55 +443,57 @@ class _AdminVentesPageFixedState extends State<AdminVentesPageFixed> {
               ],
             ),
           ),
-          SliverToBoxAdapter(
-            child: AdminMetricCluster(
-              primary: AdminMetric(
-                label: 'Demandes à traiter',
-                value: _countFor('en_attente'),
-                icon: Icons.pending_actions_outlined,
+          if (!chargementInitial)
+            SliverToBoxAdapter(
+              child: AdminMetricCluster(
+                primary: AdminMetric(
+                  label: 'Demandes à traiter',
+                  value: _countFor('en_attente'),
+                  icon: Icons.pending_actions_outlined,
+                ),
+                secondary: [
+                  AdminMetric(
+                    label: 'Approuvées',
+                    value: _countFor('approuvee'),
+                    icon: Icons.check_circle_outline,
+                  ),
+                  AdminMetric(
+                    label: 'Historique / rejetées',
+                    value: _countFor('corbeille'),
+                    icon: Icons.history_outlined,
+                  ),
+                ],
               ),
-              secondary: [
-                AdminMetric(
-                  label: 'Approuvées',
-                  value: _countFor('approuvee'),
-                  icon: Icons.check_circle_outline,
-                ),
-                AdminMetric(
-                  label: 'Historique / rejetées',
-                  value: _countFor('corbeille'),
-                  icon: Icons.history_outlined,
-                ),
-              ],
             ),
-          ),
-          SliverToBoxAdapter(
-            child: AdminSegmentedFilter(
-              selectedValue: _filter,
-              onChanged: (value) => setState(() => _filter = value),
-              options: [
-                AdminFilterOption(
-                  value: 'en_attente',
-                  label: 'En attente',
-                  count: _countFor('en_attente'),
-                ),
-                AdminFilterOption(
-                  value: 'approuvee',
-                  label: 'Approuvées',
-                  count: _countFor('approuvee'),
-                ),
-                AdminFilterOption(
-                  value: 'corbeille',
-                  label: 'Historique',
-                  count: _countFor('corbeille'),
-                ),
-                AdminFilterOption(
-                  value: 'tous',
-                  label: 'Toutes',
-                  count: _countFor('tous'),
-                ),
-              ],
+          if (!chargementInitial)
+            SliverToBoxAdapter(
+              child: AdminSegmentedFilter(
+                selectedValue: _filter,
+                onChanged: (value) => setState(() => _filter = value),
+                options: [
+                  AdminFilterOption(
+                    value: 'en_attente',
+                    label: 'En attente',
+                    count: _countFor('en_attente'),
+                  ),
+                  AdminFilterOption(
+                    value: 'approuvee',
+                    label: 'Approuvées',
+                    count: _countFor('approuvee'),
+                  ),
+                  AdminFilterOption(
+                    value: 'corbeille',
+                    label: 'Historique',
+                    count: _countFor('corbeille'),
+                  ),
+                  AdminFilterOption(
+                    value: 'tous',
+                    label: 'Toutes',
+                    count: _countFor('tous'),
+                  ),
+                ],
+              ),
             ),
-          ),
           content,
         ],
       ),

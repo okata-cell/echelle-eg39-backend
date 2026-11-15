@@ -24,14 +24,11 @@ bool isFirebaseReady = false;
 void main() async {
   // Capture globale des erreurs Flutter (framework, rendu, etc.)
   FlutterError.onError = (FlutterErrorDetails details) {
-    print('🔥 FlutterError: ${details.exception}');
+    // `details.toString()` conserve la chaîne des widgets fautifs
+    // (« creator: Row ← Padding ← … »), seule information qui permet de
+    // localiser un débordement. N'imprimer que `details.exception` la perdait.
+    print('🔥 FlutterError: $details');
     print('🔥 StackTrace: ${details.stack}');
-    if (details.library != null) {
-      print('🔥 Library: ${details.library}');
-    }
-    if (details.context != null) {
-      print('🔥 Context: ${details.context}');
-    }
   };
 
   // Capture globale des erreurs asynchrones via runZonedGuarded.

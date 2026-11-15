@@ -1,10 +1,20 @@
 // © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'admin_activity_service.dart';
 import 'admin_activity_sheet.dart';
 import 'admin_tokens.dart';
+
+/// Barre d'état du poste administrateur : icônes claires sur le bleu ardoise.
+/// Le fond de navigation système reste inchangé (seule la barre d'état est
+/// décrite ici).
+const SystemUiOverlayStyle _adminOverlayStyle = SystemUiOverlayStyle(
+  statusBarColor: Colors.transparent,
+  statusBarIconBrightness: Brightness.light,
+  statusBarBrightness: Brightness.dark,
+);
 
 class AdminShell extends StatelessWidget {
   const AdminShell({
@@ -44,26 +54,43 @@ class AdminShell extends StatelessWidget {
       builder: (context, _) {
         return Scaffold(
           backgroundColor: AdminPalette.canvas,
-          appBar: PreferredSize(
-            preferredSize: const Size.fromHeight(74),
-            child: _AdminTopBar(
-              module: module,
-              onLogout: onLogout,
-              unreadTotal: activity.total,
-              fluxEnDirect: activity.fluxEnDirect,
-              onOpenActivity: () => showAdminActivitySheet(
-                context,
-                service: activity,
-                onModuleSelected: (kind) {
-                  final cible = _modules.indexWhere(
-                    (item) => item.kind == kind,
-                  );
-                  if (cible >= 0) onIndexChanged(cible);
-                },
-              ),
+          // La barre du haut vit dans le body, pas dans `appBar` : sa hauteur
+          // suit alors son contenu. Une hauteur figée ne pouvait pas contenir
+          // l'encoche du système (24 à 59 dp selon l'appareil) en plus du
+          // contenu, ce qui débordait de 17 px sur Android et faisait se
+          // chevaucher le titre sur iPhone.
+          body: AnnotatedRegion<SystemUiOverlayStyle>(
+            value: _adminOverlayStyle,
+            child: Column(
+              children: [
+                _AdminTopBar(
+                  module: module,
+                  onLogout: onLogout,
+                  unreadTotal: activity.total,
+                  fluxEnDirect: activity.fluxEnDirect,
+                  onOpenActivity: () => showAdminActivitySheet(
+                    context,
+                    service: activity,
+                    onModuleSelected: (kind) {
+                      final cible = _modules.indexWhere(
+                        (item) => item.kind == kind,
+                      );
+                      if (cible >= 0) onIndexChanged(cible);
+                    },
+                  ),
+                ),
+                Expanded(
+                  // La barre a déjà consommé l'encoche : la retirer évite que
+                  // les pages ajoutent une bande vide sous la barre.
+                  child: MediaQuery.removePadding(
+                    context: context,
+                    removeTop: true,
+                    child: pages[safeIndex],
+                  ),
+                ),
+              ],
             ),
           ),
-          body: pages[safeIndex],
           bottomNavigationBar: _AdminBottomNavigation(
             currentIndex: safeIndex,
             onChanged: onIndexChanged,
@@ -102,6 +129,20 @@ class _AdminTopBar extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final brandStyle = Theme.of(context).textTheme.labelSmall?.copyWith(
+      color: const Color(0xFF93C5FD),
+      fontWeight: FontWeight.w800,
+      letterSpacing: 0.8,
+    );
+    final separatorStyle = brandStyle?.copyWith(
+      color: const Color(0xFF64748B),
+      letterSpacing: 0,
+    );
+    final moduleStyle = Theme.of(context).textTheme.titleMedium?.copyWith(
+      color: Colors.white,
+      fontWeight: FontWeight.w800,
+    );
+
     return ColoredBox(
       color: AdminPalette.deepSlate,
       child: SafeArea(
@@ -136,29 +177,48 @@ class _AdminTopBar extends StatelessWidget {
               const SizedBox(width: AdminSpacing.md),
               Expanded(
                 child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      'ÉCHELLE EG39  /  ADMIN',
-                      style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                        color: const Color(0xFF93C5FD),
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: 0.8,
-                      ),
+                    // Marque et rôle composés en une seule ligne : le séparateur
+                    // et « ADMIN » ne peuvent pas se replier, même avec la
+                    // police système au maximum. Seul le nom de marque
+                    // s'abrège s'il manque de place.
+                    Row(
+                      children: [
+                        Flexible(
+                          child: Text(
+                            'ÉCHELLE EG39',
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: brandStyle,
+                          ),
+                        ),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: AdminSpacing.xs,
+                          ),
+                          child: Text('/', style: separatorStyle),
+                        ),
+                        Text(
+                          'ADMIN',
+                          maxLines: 1,
+                          style: brandStyle?.copyWith(letterSpacing: 1.2),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 2),
                     Row(
                       children: [
                         Icon(module.icon, color: Colors.white, size: 16),
                         const SizedBox(width: AdminSpacing.sm),
-                        Text(
-                          module.label,
-                          style: Theme.of(context).textTheme.titleMedium
-                              ?.copyWith(
-                                color: Colors.white,
-                                fontWeight: FontWeight.w800,
-                              ),
+                        Flexible(
+                          child: Text(
+                            module.label,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: moduleStyle,
+                          ),
                         ),
                       ],
                     ),
@@ -300,8 +360,10 @@ class _AdminBottomNavigation extends StatelessWidget {
       ),
       child: SafeArea(
         top: false,
-        child: SizedBox(
-          height: 68,
+        // Hauteur minimale et non hauteur figée : la barre garde son gabarit de
+        // 68 px mais peut grandir si la police système est agrandie.
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(minHeight: 68),
           child: Row(
             children: List.generate(AdminShell._modules.length, (index) {
               final module = AdminShell._modules[index];
@@ -326,7 +388,11 @@ class _AdminBottomNavigation extends StatelessWidget {
                       ),
                     ),
                     padding: const EdgeInsets.symmetric(vertical: 7),
+                    // Sans `min`, la colonne prend toute la hauteur que lui
+                    // laisse le Row (celle de l'écran) et la barre d'onglets
+                    // recouvre alors le corps de la page.
                     child: Column(
+                      mainAxisSize: MainAxisSize.min,
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         _OngletIcone(

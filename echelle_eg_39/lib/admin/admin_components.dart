@@ -19,8 +19,49 @@ class AdminPageHeader extends StatelessWidget {
   final IconData icon;
   final List<Widget> actions;
 
+  /// Au-delà de 140 %, le titre suivait la police système et occupait cinq
+  /// lignes sur iPhone (420 px de haut) : illisible, et lu comme un
+  /// empilement. On plafonne son échelle et on le garde sur une seule ligne.
+  static const double _maxTitreEchelle = 1.4;
+
+  /// À partir de 160 %, les boutons d'action passent sous le titre : ils
+  /// prenaient 96 px de large et forçaient le titre à s'abréger.
+  static const double _seuilActionsSousLeTitre = 1.6;
+
   @override
   Widget build(BuildContext context) {
+    final facteur = MediaQuery.textScalerOf(context).scale(1);
+    final actionsSousLeTitre =
+        actions.isNotEmpty && facteur >= _seuilActionsSousLeTitre;
+
+    final titre = MediaQuery.withClampedTextScaling(
+      maxScaleFactor: _maxTitreEchelle,
+      child: Text(
+        title,
+        maxLines: 1,
+        softWrap: false,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.titleLarge?.copyWith(
+          color: AdminPalette.primaryText,
+          fontWeight: FontWeight.w800,
+          letterSpacing: -0.2,
+        ),
+      ),
+    );
+
+    final sousTitre = MediaQuery.withClampedTextScaling(
+      maxScaleFactor: _seuilActionsSousLeTitre,
+      child: Text(
+        subtitle,
+        maxLines: 2,
+        overflow: TextOverflow.ellipsis,
+        style: Theme.of(context).textTheme.bodySmall?.copyWith(
+          color: AdminPalette.secondaryText,
+          height: 1.35,
+        ),
+      ),
+    );
+
     return Padding(
       padding: const EdgeInsets.fromLTRB(
         AdminSpacing.lg,
@@ -28,47 +69,45 @@ class AdminPageHeader extends StatelessWidget {
         AdminSpacing.lg,
         AdminSpacing.md,
       ),
-      child: Row(
+      child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: AdminPalette.deepSlate,
-              borderRadius: BorderRadius.circular(AdminRadii.card),
-            ),
-            child: Icon(icon, color: Colors.white, size: 22),
-          ),
-          const SizedBox(width: AdminSpacing.md),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                    color: AdminPalette.primaryText,
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.2,
-                  ),
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration: BoxDecoration(
+                  color: AdminPalette.deepSlate,
+                  borderRadius: BorderRadius.circular(AdminRadii.card),
                 ),
-                const SizedBox(height: AdminSpacing.xs),
-                Text(
-                  subtitle,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: AdminPalette.secondaryText,
-                    height: 1.35,
-                  ),
+                child: Icon(icon, color: Colors.white, size: 22),
+              ),
+              const SizedBox(width: AdminSpacing.md),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    titre,
+                    const SizedBox(height: AdminSpacing.xs),
+                    sousTitre,
+                  ],
                 ),
+              ),
+              if (actions.isNotEmpty && !actionsSousLeTitre) ...[
+                const SizedBox(width: AdminSpacing.sm),
+                Wrap(spacing: AdminSpacing.xs, children: actions),
               ],
-            ),
+            ],
           ),
-          if (actions.isNotEmpty) ...[
-            const SizedBox(width: AdminSpacing.sm),
-            Wrap(spacing: AdminSpacing.xs, children: actions),
+          if (actionsSousLeTitre) ...[
+            const SizedBox(height: AdminSpacing.sm),
+            // Décalés sous le texte, alignés avec lui.
+            Padding(
+              padding: const EdgeInsets.only(left: 44 + AdminSpacing.md),
+              child: Wrap(spacing: AdminSpacing.xs, children: actions),
+            ),
           ],
         ],
       ),
@@ -107,47 +146,52 @@ class AdminMetricCluster extends StatelessWidget {
         color: AdminPalette.deepSlate,
         borderRadius: BorderRadius.circular(AdminRadii.sheet),
       ),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final compact = constraints.maxWidth < 430;
-          final secondaryColumn = Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              for (var index = 0; index < secondary.length; index++) ...[
-                if (index > 0)
-                  const Divider(color: Color(0x33475569), height: 20),
-                _MiniMetric(metric: secondary[index]),
+      // Bloc plafonné à 160 % : à 310 %, la ligne « PRIORITÉ » débordait de
+      // 121 px vers la droite et les chiffres écrasaient leurs libellés.
+      child: MediaQuery.withClampedTextScaling(
+        maxScaleFactor: 1.6,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final compact = constraints.maxWidth < 430;
+            final secondaryColumn = Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (var index = 0; index < secondary.length; index++) ...[
+                  if (index > 0)
+                    const Divider(color: Color(0x33475569), height: 20),
+                  _MiniMetric(metric: secondary[index]),
+                ],
               ],
-            ],
-          );
+            );
 
-          final primaryBlock = Expanded(
-            flex: compact ? 5 : 6,
-            child: _PrimaryMetric(metric: primary),
-          );
+            final primaryBlock = Expanded(
+              flex: compact ? 5 : 6,
+              child: _PrimaryMetric(metric: primary),
+            );
 
-          if (compact) {
+            if (compact) {
+              return Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  primaryBlock,
+                  const SizedBox(width: AdminSpacing.xl),
+                  Expanded(flex: 4, child: secondaryColumn),
+                ],
+              );
+            }
+
             return Row(
               crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 primaryBlock,
-                const SizedBox(width: AdminSpacing.xl),
-                Expanded(flex: 4, child: secondaryColumn),
+                const SizedBox(width: AdminSpacing.xxl),
+                Container(width: 1, height: 72, color: const Color(0x33475569)),
+                const SizedBox(width: AdminSpacing.xxl),
+                Expanded(flex: 5, child: secondaryColumn),
               ],
             );
-          }
-
-          return Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              primaryBlock,
-              const SizedBox(width: AdminSpacing.xxl),
-              Container(width: 1, height: 72, color: const Color(0x33475569)),
-              const SizedBox(width: AdminSpacing.xxl),
-              Expanded(flex: 5, child: secondaryColumn),
-            ],
-          );
-        },
+          },
+        ),
       ),
     );
   }
@@ -167,12 +211,17 @@ class _PrimaryMetric extends StatelessWidget {
           children: [
             Icon(metric.icon, color: AdminPalette.safetyAmber, size: 18),
             const SizedBox(width: AdminSpacing.sm),
-            Text(
-              'PRIORITÉ',
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                color: const Color(0xFFFFD38A),
-                fontWeight: FontWeight.w800,
-                letterSpacing: 1.2,
+            Flexible(
+              child: Text(
+                'PRIORITÉ',
+                maxLines: 1,
+                softWrap: false,
+                overflow: TextOverflow.ellipsis,
+                style: Theme.of(context).textTheme.labelSmall?.copyWith(
+                  color: const Color(0xFFFFD38A),
+                  fontWeight: FontWeight.w800,
+                  letterSpacing: 1.2,
+                ),
               ),
             ),
           ],
@@ -880,24 +929,34 @@ class AdminWorkItemCard extends StatelessWidget {
                           ),
                         ),
                         const SizedBox(width: AdminSpacing.sm),
-                        Column(
-                          crossAxisAlignment: CrossAxisAlignment.end,
-                          children: [
-                            AdminStatusChip(status: status),
-                            if (amount != null && amount!.isNotEmpty) ...[
-                              const SizedBox(height: AdminSpacing.md),
-                              Text(
-                                amount!,
-                                textAlign: TextAlign.end,
-                                style: adminMonoStyle(
-                                  context,
-                                  color: AdminPalette.primaryText,
-                                  size: 13,
-                                  weight: FontWeight.w800,
-                                ),
-                              ),
-                            ],
-                          ],
+                        // Le statut et le montant sont plafonnés et peuvent se
+                        // réduire : à 310 % le bloc réclamait 156 px de trop et
+                        // faisait déborder toute la carte.
+                        Flexible(
+                          child: MediaQuery.withClampedTextScaling(
+                            maxScaleFactor: 1.6,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.end,
+                              children: [
+                                AdminStatusChip(status: status),
+                                if (amount != null && amount!.isNotEmpty) ...[
+                                  const SizedBox(height: AdminSpacing.md),
+                                  Text(
+                                    amount!,
+                                    textAlign: TextAlign.end,
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                    style: adminMonoStyle(
+                                      context,
+                                      color: AdminPalette.primaryText,
+                                      size: 13,
+                                      weight: FontWeight.w800,
+                                    ),
+                                  ),
+                                ],
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),

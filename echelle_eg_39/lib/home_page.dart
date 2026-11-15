@@ -157,32 +157,41 @@ class _ModernHomePageState extends State<ModernHomePage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
+                      // Le titre et l'accroche sont dans un `Expanded` : sur un
+                      // écran de 320 dp, le texte gardait sa largeur naturelle
+                      // et poussait la Row de 58 px hors de la page.
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                'ÉCHELLE EG39',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 26,
-                                  fontWeight: FontWeight.w800,
-                                  color: Colors.white,
-                                  letterSpacing: 0.5,
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'ÉCHELLE EG39',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 26,
+                                    fontWeight: FontWeight.w800,
+                                    color: Colors.white,
+                                    letterSpacing: 0.5,
+                                  ),
                                 ),
-                              ),
-                              const SizedBox(height: 6),
-                              Text(
-                                'La qualité dans nos prestations',
-                                style: GoogleFonts.poppins(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w500,
-                                  color: const Color(0xFFBFDBFE),
+                                const SizedBox(height: 6),
+                                Text(
+                                  'La qualité dans nos prestations',
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: GoogleFonts.poppins(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w500,
+                                    color: const Color(0xFFBFDBFE),
+                                  ),
                                 ),
-                              ),
-                            ],
+                              ],
+                            ),
                           ),
+                          const SizedBox(width: 12),
                           Container(
                             width: 44,
                             height: 44,
@@ -417,9 +426,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
               ),
 
               // ── Espacement final ────────────────────────────────────────
-              const SliverToBoxAdapter(
-                child: SizedBox(height: 24),
-              ),
+              const SliverToBoxAdapter(child: SizedBox(height: 24)),
             ],
           ),
         ),
@@ -432,11 +439,7 @@ class _ModernHomePageState extends State<ModernHomePage> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(
-            Icons.devices_other,
-            size: 64,
-            color: Colors.grey[300],
-          ),
+          Icon(Icons.devices_other, size: 64, color: Colors.grey[300]),
           const SizedBox(height: 16),
           Text(
             'Aucun appareil disponible',
@@ -456,7 +459,8 @@ class _ModernHomePageState extends State<ModernHomePage> {
     final type = appareil['type'] as String? ?? 'Équipement';
     final prixLocation = appareil['prixLocation'] as int? ?? 0;
     final prixVente = appareil['prixVente'] as int? ?? 0;
-    final imageUrl = appareil['imageUrl'] as String? ??
+    final imageUrl =
+        appareil['imageUrl'] as String? ??
         AppareilImages.getImageUrlForType(type.toLowerCase());
 
     return Container(

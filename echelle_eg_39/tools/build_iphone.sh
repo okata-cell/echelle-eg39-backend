@@ -251,6 +251,31 @@ log "${DIM}comptez ~6-12 min sur appareil physique (pods + Xcode + AOT)${RESET}"
 status=0
 "${run_cmd[@]}" 2>&1 | tee "$LOG_FILE" || status=${PIPESTATUS[0]}
 
+# Repli : sur cet iPhone l'outillage Flutter échoue au lancement même quand la
+# compilation a réussi (« Could not run build/ios/iphoneos/Runner.app »), alors
+# que l'installation et le lancement système fonctionnent. Constaté le 2026-11-15
+# deux fois de suite : sans ce repli le script sortait en erreur après un succès.
+if [ "$status" -ne 0 ] && [ "$TARGET_SIM" -eq 0 ]; then
+  APP_PATH="$REPO_ROOT/build/ios/iphoneos/Runner.app"
+  if [ -d "$APP_PATH" ] &&
+    grep -q "Could not run build/ios/iphoneos/Runner.app" "$LOG_FILE"; then
+    step "Lancement Flutter impossible — reprise par installation directe"
+    bundle_id="$(plutil -extract CFBundleIdentifier raw "$APP_PATH/Info.plist" 2>/dev/null || true)"
+    if xcrun devicectl device install app --device "$DEVICE_ID" "$APP_PATH" >/dev/null 2>&1; then
+      log "  ${GREEN}✓${RESET} installation directe réussie"
+      if [ -n "$bundle_id" ] && xcrun devicectl device process launch \
+        --device "$DEVICE_ID" --terminate-existing "$bundle_id" >/dev/null 2>&1; then
+        log "  ${GREEN}✓${RESET} lancement direct réussi ($bundle_id)"
+      else
+        warn "installation faite mais lancement refusé : déverrouillez l'iPhone puis ouvrez l'app depuis l'écran d'accueil."
+      fi
+      status=0
+    else
+      warn "l'installation directe a échoué : profil de signature ou câble à vérifier."
+    fi
+  fi
+fi
+
 if [ "$status" -ne 0 ]; then
   printf '\n%sechec%s : la compilation ou l'\''installation a renvoyé le code %s.\n' "$RED" "$RESET" "$status" >&2
   printf 'Dernières lignes du log :\n' >&2

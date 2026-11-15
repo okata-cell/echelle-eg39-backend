@@ -108,6 +108,21 @@ void main() {
     expect(find.text('LOCATION #12'), findsOneWidget);
 
     requests = [_location(99, 'en_attente'), ...requests];
+    // Depuis le 15/11 l'entête défile avec la liste : on remonte en haut pour
+    // atteindre le bouton Actualiser.
+    tester
+        .state<ScrollableState>(
+          find
+              .byWidgetPredicate(
+                (widget) =>
+                    widget is Scrollable &&
+                    widget.axisDirection == AxisDirection.down,
+              )
+              .first,
+        )
+        .position
+        .jumpTo(0);
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Actualiser'));
     await tester.pumpAndSettle();
 
@@ -171,6 +186,10 @@ void main() {
     );
     expect(find.text('LOCATION #12'), findsOneWidget);
 
+    // L'entête défile avec la liste : remonter en haut est nécessaire pour
+    // atteindre le bouton Actualiser.
+    tester.state<ScrollableState>(list).position.jumpTo(0);
+    await tester.pumpAndSettle();
     await tester.tap(find.byTooltip('Actualiser'));
     await tester.pumpAndSettle();
     expect(loadCount, 2);

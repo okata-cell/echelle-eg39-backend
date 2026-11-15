@@ -1072,8 +1072,11 @@ class _EquipmentCardState extends State<_EquipmentCard> {
     return Semantics(
       label: semanticLabel,
       button: true,
-      child: SizedBox(
-        height: 58,
+      // Hauteur minimale et non hauteur figée : avec la police Android
+      // agrandie, le libellé et la date réclamaient 60 px et débordaient de
+      // 2 px du cadre de 58.
+      child: ConstrainedBox(
+        constraints: const BoxConstraints(minHeight: 58),
         child: OutlinedButton(
           key: key,
           onPressed: onPressed,

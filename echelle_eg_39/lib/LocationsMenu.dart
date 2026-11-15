@@ -760,6 +760,10 @@ class _LocationPageState extends State<LocationPage> {
       print('🏗️ visibleLocations.length=${visibleLocations.length}');
 
       // ---- Header widgets (commun à tous les états) ----
+      // Pendant le premier chargement, compteurs et filtres n'ont rien à
+      // montrer et occupaient toute la hauteur : l'indicateur de chargement
+      // restait sous la ligne de flottaison et la page semblait vide.
+      final chargementInitial = _isLoading && _locations.isEmpty;
       final header = Column(
         mainAxisSize: MainAxisSize.min,
         children: [
@@ -777,52 +781,54 @@ class _LocationPageState extends State<LocationPage> {
               ),
             ],
           ),
-          AdminMetricCluster(
-            primary: AdminMetric(
-              label: 'Réservations à traiter',
-              value: _countFor(LocationQueueFilter.pending),
-              icon: Icons.pending_actions_outlined,
-            ),
-            secondary: [
-              AdminMetric(
-                label: 'Locations en cours',
-                value: _countFor(LocationQueueFilter.inProgress),
-                icon: Icons.play_circle_outline,
+          if (!chargementInitial) ...[
+            AdminMetricCluster(
+              primary: AdminMetric(
+                label: 'Réservations à traiter',
+                value: _countFor(LocationQueueFilter.pending),
+                icon: Icons.pending_actions_outlined,
               ),
-              AdminMetric(
-                label: 'Locations terminées',
-                value: _countFor(LocationQueueFilter.completed),
-                icon: Icons.check_circle_outline,
-              ),
-              AdminMetric(
-                label: 'Historique rejeté',
-                value: _countFor(LocationQueueFilter.history),
-                icon: Icons.history_outlined,
-              ),
-            ],
-          ),
-          AdminSegmentedFilter(
-            selectedValue: _filter.key,
-            onChanged: (key) {
-              final selected = LocationQueueFilter.values.firstWhere(
-                (filter) => filter.key == key,
-              );
-              setState(() => _filter = selected);
-              WidgetsBinding.instance.addPostFrameCallback((_) {
-                if (_locationsScrollController.hasClients) {
-                  _locationsScrollController.jumpTo(0);
-                }
-              });
-            },
-            options: [
-              for (final filter in LocationQueueFilter.values)
-                AdminFilterOption(
-                  value: filter.key,
-                  label: filter.label,
-                  count: _countFor(filter),
+              secondary: [
+                AdminMetric(
+                  label: 'Locations en cours',
+                  value: _countFor(LocationQueueFilter.inProgress),
+                  icon: Icons.play_circle_outline,
                 ),
-            ],
-          ),
+                AdminMetric(
+                  label: 'Locations terminées',
+                  value: _countFor(LocationQueueFilter.completed),
+                  icon: Icons.check_circle_outline,
+                ),
+                AdminMetric(
+                  label: 'Historique rejeté',
+                  value: _countFor(LocationQueueFilter.history),
+                  icon: Icons.history_outlined,
+                ),
+              ],
+            ),
+            AdminSegmentedFilter(
+              selectedValue: _filter.key,
+              onChanged: (key) {
+                final selected = LocationQueueFilter.values.firstWhere(
+                  (filter) => filter.key == key,
+                );
+                setState(() => _filter = selected);
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  if (_locationsScrollController.hasClients) {
+                    _locationsScrollController.jumpTo(0);
+                  }
+                });
+              },
+              options: [
+                for (final filter in LocationQueueFilter.values)
+                  AdminFilterOption(
+                    value: filter.key,
+                    label: filter.label,
+                    count: _countFor(filter),
+                  ),
+              ],
+            ),
+          ],
         ],
       );
 
@@ -830,66 +836,70 @@ class _LocationPageState extends State<LocationPage> {
       print(
         '🏗️ Branche: isLoading=$_isLoading locationsEmpty=${_locations.isEmpty}',
       );
+      // L'entête défile avec la liste, comme sur les autres pages admin. Un
+      // `Column` avec l'entête hors défilement ne tenait pas en police
+      // maximale : l'entête dépassait la hauteur de l'écran, l'`Expanded`
+      // tombait à zéro et la page devenait impossible à faire défiler.
+      // Les états vides sont posés juste sous l'entête et non centrés dans
+      // l'espace restant : sur 320 dp il ne restait parfois aucune hauteur,
+      // l'indicateur mesurait zéro pixel et la page paraissait vide.
+      Widget corps;
       if (_isLoading && _locations.isEmpty) {
-        return Column(
-          children: [
-            header,
-            const Expanded(
-              child: AdminLoadingState(label: 'Chargement des locations…'),
-            ),
-          ],
+        corps = const SliverToBoxAdapter(
+          child: Padding(
+            padding: EdgeInsets.symmetric(vertical: AdminSpacing.section),
+            child: AdminLoadingState(label: 'Chargement des locations…'),
+          ),
         );
-      }
-      if (_errorMessage != null && _locations.isEmpty) {
-        return Column(
-          children: [
-            header,
-            Expanded(
-              child: AdminErrorState(
-                message: _errorMessage!,
-                onRetry: _loadLocations,
-              ),
+      } else if (_errorMessage != null && _locations.isEmpty) {
+        corps = SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AdminSpacing.section),
+            child: AdminErrorState(
+              message: _errorMessage!,
+              onRetry: _loadLocations,
             ),
-          ],
+          ),
         );
-      }
-      if (visibleLocations.isEmpty) {
-        return Column(
-          children: [
-            header,
-            Expanded(
-              child: AdminEmptyState(
-                icon: _filter == LocationQueueFilter.history
-                    ? Icons.history_outlined
-                    : Icons.inbox_outlined,
-                title: switch (_filter) {
-                  LocationQueueFilter.pending => 'Aucune location en attente',
-                  LocationQueueFilter.inProgress => 'Aucune location en cours',
-                  LocationQueueFilter.completed => 'Aucune location terminée',
-                  LocationQueueFilter.history =>
-                    'Aucun historique de demandes rejetées ou annulées',
-                  LocationQueueFilter.all => 'Aucune location enregistrée',
-                },
-                message: _filter == LocationQueueFilter.pending
-                    ? 'Les nouvelles réservations apparaîtront ici.'
-                    : 'Changez d’onglet ou actualisez la file.',
-              ),
+      } else if (visibleLocations.isEmpty) {
+        corps = SliverToBoxAdapter(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: AdminSpacing.section),
+            child: AdminEmptyState(
+              icon: _filter == LocationQueueFilter.history
+                  ? Icons.history_outlined
+                  : Icons.inbox_outlined,
+              title: switch (_filter) {
+                LocationQueueFilter.pending => 'Aucune location en attente',
+                LocationQueueFilter.inProgress => 'Aucune location en cours',
+                LocationQueueFilter.completed => 'Aucune location terminée',
+                LocationQueueFilter.history =>
+                  'Aucun historique de demandes rejetées ou annulées',
+                LocationQueueFilter.all => 'Aucune location enregistrée',
+              },
+              message: _filter == LocationQueueFilter.pending
+                  ? 'Les nouvelles réservations apparaîtront ici.'
+                  : 'Changez d’onglet ou actualisez la file.',
             ),
-          ],
+          ),
         );
-      }
-
-      // ---- Cas normal : données présentes → ListView classique (0 sliver) ----
-      print(
-        '🏗️ Branche: NORMALE - rendu de ${visibleLocations.length} locations',
-      );
-      return Column(
-        children: [
-          header,
-          Expanded(
-            child: ListView.builder(
-              controller: _locationsScrollController,
-              physics: const AlwaysScrollableScrollPhysics(),
+      } else {
+        // ---- Cas normal : données présentes ----
+        print(
+          '🏗️ Branche: NORMALE - rendu de ${visibleLocations.length} locations',
+        );
+        corps = SliverPadding(
+          padding: const EdgeInsets.fromLTRB(
+            AdminSpacing.lg,
+            AdminSpacing.sm,
+            AdminSpacing.lg,
+            AdminSpacing.section,
+          ),
+          sliver: SliverList(
+            delegate: SliverChildBuilderDelegate(
+              (context, index) =>
+                  _buildLocationItem(visibleLocations[index], index),
+              childCount: visibleLocations.length,
               findChildIndexCallback: (key) {
                 for (var index = 0; index < visibleLocations.length; index++) {
                   if (_locationItemKey(visibleLocations[index], index) == key) {
@@ -898,17 +908,17 @@ class _LocationPageState extends State<LocationPage> {
                 }
                 return null;
               },
-              padding: const EdgeInsets.fromLTRB(
-                AdminSpacing.lg,
-                AdminSpacing.sm,
-                AdminSpacing.lg,
-                AdminSpacing.section,
-              ),
-              itemCount: visibleLocations.length,
-              itemBuilder: (context, index) =>
-                  _buildLocationItem(visibleLocations[index], index),
             ),
           ),
+        );
+      }
+
+      return CustomScrollView(
+        controller: _locationsScrollController,
+        physics: const AlwaysScrollableScrollPhysics(),
+        slivers: [
+          SliverToBoxAdapter(child: header),
+          corps,
         ],
       );
     } catch (e, stack) {
