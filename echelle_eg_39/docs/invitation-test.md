@@ -88,25 +88,38 @@ WhatsApp.
 
 ## Publier une nouvelle version de test
 
-1. Mettre à jour `version:` dans `pubspec.yaml` et la constante `kAppVersion` de
-   `lib/app_version.dart` (le numéro affiché dans le Profil).
-   **Le numéro après le `+` doit rester au-dessus de 4004** : voir l'encadré
-   ci-dessous. La 1.0.4 utilise `1.0.4+5004`.
-2. Construire : `export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"`
-   puis `flutter build apk --release` et
-   `flutter build apk --release --split-per-abi`. Vérifier les deux versionCodes :
-   `aapt2 dump badging build/app/outputs/flutter-apk/app-release.apk | head -1`.
-3. Publier la release GitHub (tag `android-test-<version>`, pré-release) avec
-   l'APK universel (`app-release.apk`, renommé
-   `echelle-eg39-<version>-android.apk`) + l'APK arm64
-   (`app-arm64-v8a-release.apk`, renommé `echelle-eg39-<version>-arm64.apk`).
-   `gh` n'est pas installé : un script Python/urllib lit le jeton dans le
-   trousseau macOS (`git credential-osxkeychain`, compte 210414533) et fait les
-   trois appels (création, suppression d'un fichier de même nom, envoi).
-4. Mettre à jour les constantes `ANDROID_TEST_*` en tête de
-   `backend/src/routes/public_pages.js` (version, taille, date, URL) et le
-   paragraphe « Nouveautés » de la page.
-5. Pousser sur `main` : Render redéploie le backend, la page `/tester` suit.
+Une seule commande : `tools/publish_android_release.py`. Elle enchaîne le bump de
+version (`pubspec.yaml` et `lib/app_version.dart`), les deux compilations, le
+contrôle des versionCodes et de la signature, la réécriture de la page `/tester`
+et de ce document, la release GitHub avec ses deux fichiers, puis le commit et le
+tag sur `main`.
+
+```sh
+# 1. écrire les notes de version (texte humain : ce qui change pour le testeur)
+$EDITOR build/notes-1.0.5.md
+
+# 2. tout publier
+python3 tools/publish_android_release.py \
+    --version 1.0.5 --build 8004 \
+    --notes build/notes-1.0.5.md \
+    --page-highlights "les actualités se publient depuis le back-office ; …"
+```
+
+`--version` et `--build` peuvent être omis : le script propose la version
+suivante et un versionCode au-dessus de la variante arm64 déployée.
+**Le numéro après le `+` doit rester au-dessus de 4004** : voir l'encadré
+ci-dessous. La 1.0.4 utilise `1.0.4+5004`.
+
+| Option | Effet |
+| --- | --- |
+| `--dry-run` | n'écrit rien : affiche les contrôles et les remplacements |
+| `--skip-build` | réutilise les APK déjà compilés (reprise après échec réseau) |
+| `--no-push` | prépare fichiers et APK, sans commit, tag ni release |
+
+Deux choses restent à la main, parce qu'elles parlent du contenu et non des
+numéros : le fichier `--notes` et le paragraphe « Nouveautés » de la page
+(`--page-highlights`). `gh` n'est pas installé : la release se crée par l'API avec
+le jeton du trousseau macOS (`git credential-osxkeychain`, compte 210414533).
 
 > **Piège des versionCodes ABI.** `--split-per-abi` ne produit pas le même
 > versionCode pour la variante arm64 : Flutter ajoute 2 000 à celui de l'APK
