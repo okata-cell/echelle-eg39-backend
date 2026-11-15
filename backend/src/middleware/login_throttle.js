@@ -5,14 +5,16 @@
 // conservé en mémoire : une seule instance Render, donc suffisant ici.
 //
 // Règle retenue : quatre échecs sur un même compte bloquent les tentatives
-// pendant 24 h, à compter de l'essai qui a déclenché le blocage. Le compteur
+// pendant 12 h, à compter de l'essai qui a déclenché le blocage. Le compteur
 // suit l'identifiant visé, pas l'appareil : un client peut réessayer depuis un
 // autre téléphone, il sera toujours bloqué, et un autre compte n'est pas
 // pénalisé. Une connexion réussie avant le blocage remet le compteur à zéro.
 
 const DEFAULTS = {
   maxAttempts: 4,
-  blockMs: 24 * 60 * 60 * 1000,
+  // Douze heures : assez long pour décourager le martèlement, assez court pour
+  // qu'un client qui s'est trompé quatre fois retrouve son compte le jour même.
+  blockMs: 12 * 60 * 60 * 1000,
   maxKeys: 5000,
 };
 

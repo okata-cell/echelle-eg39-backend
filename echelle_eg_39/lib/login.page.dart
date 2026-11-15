@@ -1,5 +1,7 @@
 // © 2026 ÉCHELLE EG39 — Tous droits réservés — EG39-20261106-E5EF
 
+import 'dart:async';
+
 import 'package:echelle_eg_39/main.dart';
 import 'package:flutter/material.dart';
 import 'AdminDashBoard.dart';
@@ -8,6 +10,7 @@ import 'register.page.dart';
 import 'forgot_password.page.dart';
 import 'demo_main.dart';
 import 'api_service.dart';
+import 'login_lockout.dart';
 import 'password_recovery_scaffold.dart';
 import 'widgets/clipboard_paste_action.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,12 +35,26 @@ class _LoginPageState extends State<LoginPage> {
   bool isLoading = false;
   bool _obscurePassword = true;
 
+  /// Échéance du blocage en cours, nulle tant que la connexion n'est pas
+  /// bloquée par le serveur.
+  DateTime? _blocageEcheance;
+
+  /// Identifiant concerné par ce blocage : le compteur, côté serveur, suit
+  /// l'identifiant saisi, pas l'appareil.
+  String? _blocageIdentifiant;
+
+  Timer? _blocageTimer;
+
   @override
   void initState() {
     super.initState();
 
     // Rafraîchir le suffixIcon "clear" quand le texte change
     identifierController.addListener(_onIdentifierChanged);
+
+    // Un blocage posé lors d'une session précédente est réaffiché à l'ouverture,
+    // sinon l'écran proposerait une connexion que le serveur refusera.
+    unawaited(_restaurerBlocage());
 
     final notice = widget.noticeMessage;
     if (notice != null && notice.trim().isNotEmpty) {
@@ -49,17 +66,124 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   void _onIdentifierChanged() {
+    final saisi = identifierController.text.trim().toLowerCase();
+
+    // Le blocage ne concerne qu'un identifiant : dès qu'un autre est saisi, le
+    // décompte disparaît, sinon il accuserait un compte qui n'est pas visé.
+    if (_blocageIdentifiant != null && saisi != _blocageIdentifiant) {
+      _leverBlocage();
+      return;
+    }
+
     setState(() {});
   }
 
   @override
   void dispose() {
+    _blocageTimer?.cancel();
     identifierController.removeListener(_onIdentifierChanged);
     identifierController.dispose();
     passwordController.dispose();
     identifierFocus.dispose();
     passwordFocus.dispose();
     super.dispose();
+  }
+
+  // ────────────────────────────────────────────────────────────────
+  //  Blocage après plusieurs échecs : bandeau, décompte et mémoire locale
+  // ────────────────────────────────────────────────────────────────
+
+  /// Durée restante, nulle quand le blocage est levé.
+  Duration? get _blocageRestant {
+    final echeance = _blocageEcheance;
+    if (echeance == null) return null;
+
+    final restant = echeance.difference(DateTime.now());
+    return restant > Duration.zero ? restant : null;
+  }
+
+  bool get _estBloque => _blocageRestant != null;
+
+  Future<void> _restaurerBlocage() async {
+    final prefs = await SharedPreferences.getInstance();
+    final identifiant = prefs.getString('saved_identifier') ?? '';
+    final cle = cleBlocage(identifiant);
+    if (cle == null) return;
+
+    final echeance = DateTime.tryParse(prefs.getString(cle) ?? '');
+    if (echeance == null) return;
+
+    if (!echeance.isAfter(DateTime.now())) {
+      await prefs.remove(cle);
+      return;
+    }
+
+    if (!mounted) return;
+    setState(() {
+      _blocageEcheance = echeance;
+      _blocageIdentifiant = identifiant.trim().toLowerCase();
+    });
+    _demarrerDecompte();
+  }
+
+  /// Conserve l'échéance et lance le décompte affiché.
+  ///
+  /// L'échéance est absolue : un passage en arrière-plan ou une fermeture de
+  /// l'application ne décale pas l'heure de reprise, contrairement à un compteur
+  /// décrémenté à chaque battement.
+  Future<void> _memoriserBlocage(String identifiant, int? secondes) async {
+    final duree = (secondes != null && secondes > 0)
+        ? Duration(seconds: secondes)
+        : delaiBlocageParDefaut;
+    final echeance = DateTime.now().add(duree);
+
+    if (!mounted) return;
+    setState(() {
+      _blocageEcheance = echeance;
+      _blocageIdentifiant = identifiant.trim().toLowerCase();
+    });
+    _demarrerDecompte();
+
+    final cle = cleBlocage(identifiant);
+    if (cle == null) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(cle, echeance.toIso8601String());
+  }
+
+  void _demarrerDecompte() {
+    _blocageTimer?.cancel();
+    _blocageTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+
+      if (_blocageRestant == null) {
+        _leverBlocage();
+        return;
+      }
+
+      setState(() {});
+    });
+  }
+
+  /// Retire le bandeau ; l'échéance mémorisée est effacée avec lui.
+  void _leverBlocage() {
+    _blocageTimer?.cancel();
+    _blocageTimer = null;
+
+    final identifiant = _blocageIdentifiant;
+    if (identifiant == null && _blocageEcheance == null) return;
+
+    if (mounted) {
+      setState(() {
+        _blocageEcheance = null;
+        _blocageIdentifiant = null;
+      });
+    }
+
+    final cle = cleBlocage(identifiant ?? '');
+    if (cle == null) return;
+    unawaited(
+      SharedPreferences.getInstance().then((prefs) => prefs.remove(cle)),
+    );
   }
 
   void _showLoginMessage(String message, {required Color backgroundColor}) {
@@ -126,6 +250,10 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   Future<void> login() async {
+    // Un blocage en cours ne doit pas être forcé : le bouton est désactivé, cette
+    // garde couvre l'envoi au clavier (validation du champ mot de passe).
+    if (_estBloque) return;
+
     String identifier = identifierController.text.trim();
     String password = passwordController.text.trim();
 
@@ -189,6 +317,10 @@ class _LoginPageState extends State<LoginPage> {
         isLoading = false;
       });
 
+      // Le compteur du serveur repart de zéro après une connexion réussie : le
+      // décompte local n'a plus lieu d'être.
+      _leverBlocage();
+
       // Connexion API réussie
       // Accès admin réservé UNIQUEMENT au DG (admin@echelle-eg39.com)
       final String loggedEmail = (result['user']['email'] ?? '')
@@ -234,12 +366,22 @@ class _LoginPageState extends State<LoginPage> {
           isLoading = false;
         });
 
-        // Un compte supprimé n'est pas une erreur de saisie : le message
-        // informe sans accuser le client d'avoir mal tapé son mot de passe.
+        // Blocage : le bandeau orange prend le relais et décompte le délai
+        // restant fourni par le serveur.
+        if (apiError.type == ApiErrorType.accountLocked) {
+          await _memoriserBlocage(identifier, apiError.retryAfterSeconds);
+        }
+
+        if (!mounted) return;
+
+        // Un compte supprimé ou bloqué n'est pas une erreur de saisie : le
+        // message informe sans accuser le client d'avoir mal tapé son mot de
+        // passe.
         final isServerIssue =
             apiError.type == ApiErrorType.serverUnavailable ||
             apiError.type == ApiErrorType.network ||
-            apiError.type == ApiErrorType.accountDeleted;
+            apiError.type == ApiErrorType.accountDeleted ||
+            apiError.type == ApiErrorType.accountLocked;
         _showLoginMessage(
           apiError.message,
           backgroundColor: isServerIssue ? Colors.orange.shade800 : Colors.red,
@@ -367,6 +509,58 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /// Bandeau de blocage : il porte le seul chiffre qui compte pour le client —
+  /// le temps qu'il reste avant de pouvoir réessayer.
+  Widget _buildBlocageBanner(Duration restant) {
+    return Semantics(
+      liveRegion: true,
+      container: true,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.fromLTRB(14, 14, 16, 14),
+        decoration: BoxDecoration(
+          color: const Color(0xFFB45309),
+          borderRadius: BorderRadius.circular(12),
+          border: Border.all(color: Colors.white.withValues(alpha: 0.22)),
+        ),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Icon(Icons.lock_clock_rounded, color: Colors.white, size: 22),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Compte bloqué — réessayez dans '
+                    '${libelleDelaiRestant(restant)}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w700,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'Quatre tentatives ont échoué sur ce compte. Le blocage se '
+                    'lève seul à la fin du décompte.',
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 12.5,
+                      height: 1.35,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildDemoButton() {
     return SizedBox(
       width: double.infinity,
@@ -468,12 +662,17 @@ class _LoginPageState extends State<LoginPage> {
     return PasswordRecoveryScaffold(
       stepLabel: 'Connexion · Étape unique',
       title: 'Connexion',
-      description: 'Ravi de vous revoir. Accédez à votre espace topographie et BTP.',
+      description:
+          'Ravi de vous revoir. Accédez à votre espace topographie et BTP.',
       backTooltip: 'Quitter la connexion',
       onBack: () => Navigator.maybePop(context),
       content: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          if (_estBloque) ...[
+            _buildBlocageBanner(_blocageRestant!),
+            const SizedBox(height: 20),
+          ],
           _buildFieldLabel('Email ou téléphone'),
           const SizedBox(height: 8),
           _buildIdentifierField(),
@@ -498,10 +697,10 @@ class _LoginPageState extends State<LoginPage> {
           _buildSecondaryLinks(),
         ],
       ),
-      primaryLabel: 'Se connecter',
+      primaryLabel: _estBloque ? 'Connexion bloquée' : 'Se connecter',
       primaryLoadingLabel: 'Connexion…',
       isLoading: isLoading,
-      onPrimary: login,
+      onPrimary: _estBloque ? null : login,
     );
   }
 }

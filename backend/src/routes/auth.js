@@ -39,7 +39,7 @@ const {
 } = require('../utils/temporary_password');
 
 const router = express.Router();
-// Quatre échecs bloquent le compte 24 h ; une connexion réussie remet à zéro.
+// Quatre échecs bloquent le compte 12 h ; une connexion réussie remet à zéro.
 const loginThrottle = createLoginThrottle();
 // Le code de récupération fait 8 caractères : on limite les essais pour qu'il
 // ne puisse pas être deviné par répétition. Blocage court, le temps que la
@@ -50,14 +50,37 @@ const recoveryThrottle = createLoginThrottle({
   blockMs: 15 * 60 * 1000,
 });
 
+/**
+ * Durée restante en clair : « 11 h 05 », « 47 min », « moins d'une minute ».
+ *
+ * Le même format est reproduit côté application, qui décompte seconde par
+ * seconde : les deux textes doivent rester lisibles sans dépendre l'un de
+ * l'autre. Utilisé dans le message de refus, pour un client qui lit la réponse
+ * brute (curl, navigateur) autant que sur l'écran de connexion.
+ */
+function dureeEnClair(seconds) {
+  const total = Number.isFinite(seconds) ? Math.max(0, Math.floor(seconds)) : 0;
+
+  if (total >= 3600) {
+    const heures = Math.floor(total / 3600);
+    const minutes = Math.floor((total % 3600) / 60);
+    return minutes > 0
+      ? `${heures} h ${String(minutes).padStart(2, '0')}`
+      : `${heures} h`;
+  }
+
+  if (total >= 60) return `${Math.floor(total / 60)} min`;
+
+  return "moins d'une minute";
+}
+
 /** Message de blocage, avec le délai réel pour que l'écran puisse l'afficher. */
 function refusTropDeTentatives(res, throttle, retryAfter) {
   res.set('Retry-After', String(retryAfter));
   return res.status(429).json({
     code: 'TOO_MANY_ATTEMPTS',
     retryAfterSeconds: retryAfter,
-    error:
-      'Trop de tentatives de connexion. Ce compte est bloqué temporairement, réessayez plus tard.',
+    error: `Trop de tentatives de connexion. Compte bloqué — réessayez dans ${dureeEnClair(retryAfter)}.`,
   });
 }
 
@@ -566,6 +589,14 @@ router.post('/login', [
       }
 
       loginThrottle.registerFailure(req);
+
+      // Un identifiant martelé finit bloqué comme un mot de passe martelé :
+      // sans cela, l'énumération des adresses resterait sans limite.
+      const resteInconnu = loginThrottle.retryAfterSeconds(req);
+      if (resteInconnu > 0) {
+        return refusTropDeTentatives(res, loginThrottle, resteInconnu);
+      }
+
       return res.status(401).json({
         code: 'IDENTIFIER_NOT_FOUND',
         error: 'Email ou téléphone introuvable',
@@ -588,14 +619,19 @@ router.post('/login', [
       !(await verifierHachage(password, user.password_hash))
     ) {
       loginThrottle.registerFailure(req);
-      // Le message ne révèle pas le nombre d'essais restants, mais prévient
-      // qu'un blocage vient de tomber.
-      const bloque = loginThrottle.retryAfterSeconds(req) > 0;
+
+      // L'essai qui atteint le quota répond directement avec le blocage et le
+      // délai restant : l'écran bascule alors sur le bandeau orange, au lieu de
+      // laisser croire à une simple faute de frappe découverte un essai plus
+      // tard. Le nombre d'essais restants, lui, n'est jamais révélé.
+      const reste = loginThrottle.retryAfterSeconds(req);
+      if (reste > 0) {
+        return refusTropDeTentatives(res, loginThrottle, reste);
+      }
+
       return res.status(401).json({
         code: 'INVALID_PASSWORD',
-        error: bloque
-          ? 'Mot de passe incorrect. Ce compte est désormais bloqué 24 heures.'
-          : 'Mot de passe incorrect',
+        error: 'Mot de passe incorrect',
       });
     }
 

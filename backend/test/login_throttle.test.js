@@ -9,7 +9,7 @@ function requestFor(identifier, ip = '196.0.0.1') {
 
 const HEURE = 60 * 60 * 1000;
 
-test('quatre échecs bloquent le compte pendant 24 heures', () => {
+test('quatre échecs bloquent le compte pendant 12 heures', () => {
   let clock = 0;
   const throttle = createLoginThrottle({ now: () => clock });
   const request = requestFor('Client@Example.com');
@@ -24,13 +24,18 @@ test('quatre échecs bloquent le compte pendant 24 heures', () => {
   // Le quatrième déclenche le blocage, décompté depuis cet essai.
   clock = 2 * HEURE;
   throttle.registerFailure(request);
-  assert.equal(throttle.retryAfterSeconds(request), 24 * 3600);
+  assert.equal(throttle.retryAfterSeconds(request), 12 * 3600);
 
-  clock = 2 * HEURE + 23 * HEURE;
+  clock = 2 * HEURE + 11 * HEURE;
   assert.equal(throttle.retryAfterSeconds(request), 3600);
 
-  clock = 2 * HEURE + 24 * HEURE + 1;
+  clock = 2 * HEURE + 12 * HEURE + 1;
   assert.equal(throttle.retryAfterSeconds(request), 0);
+});
+
+test('le blocage par défaut dure douze heures, pas une journée', () => {
+  assert.equal(DEFAULTS.maxAttempts, 4);
+  assert.equal(DEFAULTS.blockMs, 12 * 60 * 60 * 1000);
 });
 
 test('le blocage suit le compte, pas l’appareil', () => {

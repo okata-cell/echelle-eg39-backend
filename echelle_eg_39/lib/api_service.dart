@@ -22,6 +22,11 @@ enum ApiErrorType {
 
   /// Le compte visé par la connexion a été supprimé : il faut en créer un autre.
   accountDeleted,
+
+  /// Trop d'échecs sur cet identifiant : le serveur impose une attente avant de
+  /// réessayer. La durée restante est portée par
+  /// [ApiException.retryAfterSeconds].
+  accountLocked,
 }
 
 /// Ce que le serveur pense du jeton enregistré sur l'appareil.
@@ -53,11 +58,16 @@ class ApiException implements Exception {
     required this.type,
     required this.message,
     this.statusCode,
+    this.retryAfterSeconds,
   });
 
   final ApiErrorType type;
   final String message;
   final int? statusCode;
+
+  /// Délai imposé par le serveur, en secondes, quand [type] vaut
+  /// [ApiErrorType.accountLocked]. Nul si le serveur ne l'a pas précisé.
+  final int? retryAfterSeconds;
 
   @override
   String toString() => message;
@@ -236,6 +246,23 @@ class ApiService {
           type: ApiErrorType.invalidCredentials,
           message: 'Email, téléphone ou mot de passe incorrect.',
           statusCode: 401,
+        );
+      }
+
+      // Blocage après plusieurs échecs : le serveur donne la durée restante,
+      // que l'écran décompte seconde par seconde.
+      if (response.statusCode == 429) {
+        final secondes =
+            int.tryParse('${responseData['retryAfterSeconds'] ?? ''}') ??
+            int.tryParse(response.headers['retry-after'] ?? '');
+
+        throw ApiException(
+          type: ApiErrorType.accountLocked,
+          message:
+              responseData['error']?.toString() ??
+              'Compte bloqué. Réessayez plus tard.',
+          statusCode: 429,
+          retryAfterSeconds: secondes,
         );
       }
 
