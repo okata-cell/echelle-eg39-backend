@@ -472,6 +472,17 @@ class _LoginPageState extends State<LoginPage> {
     );
   }
 
+  /// Précision sous un champ : ce qu'il accepte, en une ligne.
+  Widget _buildFieldHint(String texte) {
+    return Text(
+      texte,
+      style: Theme.of(context).textTheme.bodySmall?.copyWith(
+        color: Colors.white.withValues(alpha: 0.78),
+        height: 1.4,
+      ),
+    );
+  }
+
   Widget _buildIdentifierField() {
     return TextField(
       controller: identifierController,
@@ -734,17 +745,18 @@ class _LoginPageState extends State<LoginPage> {
           _buildFieldLabel('Email ou téléphone'),
           const SizedBox(height: 8),
           _buildIdentifierField(),
+          const SizedBox(height: 8),
+          _buildFieldHint(
+            'nom@domaine.com, ou le numéro au format +228 suivi de 8 ou 9 chiffres.',
+          ),
           const SizedBox(height: 18),
           _buildFieldLabel('Mot de passe'),
           const SizedBox(height: 8),
           _buildPasswordField(),
-          const SizedBox(height: 10),
-          Text(
-            'Format : +228 suivi de 8 chiffres',
-            style: Theme.of(context).textTheme.bodySmall?.copyWith(
-              color: Colors.white.withValues(alpha: 0.72),
-              height: 1.4,
-            ),
+          const SizedBox(height: 8),
+          _buildFieldHint(
+            'Celui choisi à l’inscription. Majuscules, minuscules, chiffres, '
+            'symboles et espaces sont acceptés ; la casse compte.',
           ),
         ],
       ),
