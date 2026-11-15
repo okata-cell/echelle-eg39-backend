@@ -23,7 +23,8 @@ class CompanyContact {
   /// Boîte réellement relevée par l’entreprise (compte administrateur).
   static const String email = 'admin@echelle-eg39.com';
 
-  static const String hours = 'Lundi–vendredi : 8h–18h\nSamedi : sur demande';
+  static const String hours =
+      'Lundi–vendredi : 7h30–17h30\nSamedi : sur demande, sur urgence';
 
   static Uri get phoneUri => Uri(scheme: 'tel', path: phoneDial);
 

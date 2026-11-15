@@ -732,7 +732,7 @@ class _LoginPageState extends State<LoginPage> {
       stepLabel: 'Connexion · Étape unique',
       title: 'Connexion',
       description:
-          'Ravi de vous revoir. Accédez à votre espace topographie et BTP.',
+          'Ravi de vous revoir 👋. Accédez à votre espace Topographie et BTP 👷‍♂️.',
       backTooltip: 'Quitter la connexion',
       onBack: () => Navigator.maybePop(context),
       content: Column(
