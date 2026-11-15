@@ -99,6 +99,11 @@ class _RegisterPageState extends State<RegisterPage>
   bool _obscureConfirmation = true;
   String? _submissionError;
 
+  // Refus renvoyés par le serveur sur un champ précis : l'e-mail ou le numéro
+  // déjà utilisé est signalé sous le champ concerné, pas en tête de formulaire.
+  String? _emailDejaUtilise;
+  String? _phoneDejaUtilise;
+
   @override
   void initState() {
     super.initState();
@@ -116,6 +121,22 @@ class _RegisterPageState extends State<RegisterPage>
       end: Offset.zero,
     ).animate(easedEntrance);
     _entranceController.forward();
+  }
+
+  /// Dès que le client corrige l'e-mail ou le numéro, le refus de doublon
+  /// s'efface : il n'a pas à resoumettre pour voir la case redevenue normale.
+  ///
+  /// Le rappel `onChanged` des champs est utilisé plutôt qu'un écouteur de
+  /// contrôleur : demander le focus déplace la sélection, ce qui notifie aussi
+  /// le contrôleur et effacerait un message qui vient d'être posé.
+  void _onEmailEdited(String _) {
+    if (_emailDejaUtilise == null) return;
+    setState(() => _emailDejaUtilise = null);
+  }
+
+  void _onPhoneEdited(String _) {
+    if (_phoneDejaUtilise == null) return;
+    setState(() => _phoneDejaUtilise = null);
   }
 
   @override
@@ -150,7 +171,8 @@ class _RegisterPageState extends State<RegisterPage>
     if (!RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$').hasMatch(email)) {
       return 'Vérifiez le format de l’adresse e-mail.';
     }
-    return null;
+    // Adresse déjà rattachée à un autre compte, d'après le serveur.
+    return _emailDejaUtilise;
   }
 
   String? _validatePhone(String? value) {
@@ -158,7 +180,7 @@ class _RegisterPageState extends State<RegisterPage>
     if (digits.length != 8 && digits.length != 9) {
       return 'Entrez 8 ou 9 chiffres après +228.';
     }
-    return null;
+    return _phoneDejaUtilise;
   }
 
   String? _validatePassword(String? value) {
@@ -213,6 +235,16 @@ class _RegisterPageState extends State<RegisterPage>
 
   Future<void> _submit() async {
     if (_isSubmitting) return;
+
+    // Un refus de doublon ne survit pas à une nouvelle tentative : le serveur
+    // rejuge l'unicité à chaque envoi.
+    if (_emailDejaUtilise != null || _phoneDejaUtilise != null) {
+      setState(() {
+        _emailDejaUtilise = null;
+        _phoneDejaUtilise = null;
+      });
+    }
+
     final form = _formKey.currentState;
     if (form == null || !form.validate()) {
       await _focusFirstInvalidField();
@@ -285,6 +317,27 @@ class _RegisterPageState extends State<RegisterPage>
           password: password,
         );
       } else {
+        // Le serveur désigne le champ déjà pris : l'e-mail, le téléphone, ou les
+        // deux. Le message se pose alors sous la case concernée, ce qui évite au
+        // client de deviner lequel de ses deux identifiants est refusé.
+        final champsPris = error.fields;
+        if (champsPris != null && champsPris.isNotEmpty) {
+          setState(() {
+            _isSubmitting = false;
+            _submissionError = null;
+            _emailDejaUtilise = champsPris.contains('email')
+                ? 'Cette adresse e-mail est déjà utilisée par un autre compte.'
+                : null;
+            _phoneDejaUtilise = champsPris.contains('phone')
+                ? 'Ce numéro de téléphone est déjà utilisé par un autre compte.'
+                : null;
+          });
+
+          _formKey.currentState?.validate();
+          await _focusFirstInvalidField();
+          return;
+        }
+
         setState(() {
           _isSubmitting = false;
           _submissionError = error.message;
@@ -518,6 +571,7 @@ class _RegisterPageState extends State<RegisterPage>
     String? autocomplete,
     TextCapitalization textCapitalization = TextCapitalization.none,
     ValueChanged<String>? onFieldSubmitted,
+    ValueChanged<String>? onChanged,
     int? maxLength,
   }) {
     return Column(
@@ -531,6 +585,7 @@ class _RegisterPageState extends State<RegisterPage>
           enabled: !_isSubmitting,
           keyboardType: keyboardType,
           textInputAction: textInputAction,
+          onChanged: onChanged,
           textCapitalization: textCapitalization,
           autofillHints: autocomplete == null ? null : [autocomplete],
           maxLength: maxLength,
@@ -686,6 +741,7 @@ class _RegisterPageState extends State<RegisterPage>
                 inputFormatters: [_TogoPhoneInputFormatter()],
                 scrollPadding: const EdgeInsets.only(bottom: 180),
                 validator: _validatePhone,
+                onChanged: _onPhoneEdited,
                 onFieldSubmitted: (_) => _passwordFocus.requestFocus(),
                 style: GoogleFonts.poppins(
                   color: _registrationInk,
@@ -910,6 +966,7 @@ class _RegisterPageState extends State<RegisterPage>
                       keyboardType: TextInputType.emailAddress,
                       textInputAction: TextInputAction.next,
                       autocomplete: AutofillHints.email,
+                      onChanged: _onEmailEdited,
                     ),
                     const SizedBox(height: 13),
                     _buildPhoneField(),

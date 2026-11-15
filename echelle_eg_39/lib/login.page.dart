@@ -10,6 +10,7 @@ import 'register.page.dart';
 import 'forgot_password.page.dart';
 import 'demo_main.dart';
 import 'api_service.dart';
+import 'login_feedback.dart';
 import 'login_lockout.dart';
 import 'password_recovery_scaffold.dart';
 import 'widgets/clipboard_paste_action.dart';
@@ -45,12 +46,17 @@ class _LoginPageState extends State<LoginPage> {
 
   Timer? _blocageTimer;
 
+  /// Refus posés sous les champs, nuls tant que la saisie est vierge de faute.
+  String? _erreurIdentifiant;
+  String? _erreurMotDePasse;
+
   @override
   void initState() {
     super.initState();
 
     // Rafraîchir le suffixIcon "clear" quand le texte change
     identifierController.addListener(_onIdentifierChanged);
+    passwordController.addListener(_onPasswordChanged);
 
     // Un blocage posé lors d'une session précédente est réaffiché à l'ouverture,
     // sinon l'écran proposerait une connexion que le serveur refusera.
@@ -65,16 +71,41 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  void _onIdentifierChanged() {
-    final saisi = identifierController.text.trim().toLowerCase();
+  /// Pose un refus sur le champ identifiant et y ramène le curseur.
+  void _signalerIdentifiant(String message) {
+    setState(() => _erreurIdentifiant = message);
+    identifierFocus.requestFocus();
+  }
+
+  /// Saisie réelle dans le champ identifiant.
+  ///
+  /// Distinct du simple changement de sélection : demander le focus déplace le
+  /// curseur, ce qui notifie aussi le contrôleur et effacerait le message à
+  /// peine affiché.
+  void _onIdentifiantSaisi(String valeur) {
+    if (_erreurIdentifiant != null) {
+      setState(() => _erreurIdentifiant = null);
+    }
 
     // Le blocage ne concerne qu'un identifiant : dès qu'un autre est saisi, le
     // décompte disparaît, sinon il accuserait un compte qui n'est pas visé.
+    final saisi = valeur.trim().toLowerCase();
     if (_blocageIdentifiant != null && saisi != _blocageIdentifiant) {
       _leverBlocage();
-      return;
     }
+  }
 
+  void _onMotDePasseSaisi(String valeur) {
+    if (_erreurMotDePasse == null || valeur.isEmpty) return;
+    setState(() => _erreurMotDePasse = null);
+  }
+
+  void _onIdentifierChanged() {
+    setState(() {});
+  }
+
+  /// Rafraîchit l'action de marge (Coller / Effacer) au fil de la saisie.
+  void _onPasswordChanged() {
     setState(() {});
   }
 
@@ -82,6 +113,7 @@ class _LoginPageState extends State<LoginPage> {
   void dispose() {
     _blocageTimer?.cancel();
     identifierController.removeListener(_onIdentifierChanged);
+    passwordController.removeListener(_onPasswordChanged);
     identifierController.dispose();
     passwordController.dispose();
     identifierFocus.dispose();
@@ -257,33 +289,28 @@ class _LoginPageState extends State<LoginPage> {
     String identifier = identifierController.text.trim();
     String password = passwordController.text.trim();
 
-    // 🔍 VALIDATION DES CHAMPS
-    if (identifier.isEmpty) {
-      _showLoginMessage(
-        "Veuillez saisir votre téléphone ou email",
-        backgroundColor: Colors.red,
-      );
-      return;
-    }
+    // Chaque refus est posé sous le champ qui le provoque : le client voit
+    // immédiatement s'il doit corriger l'identifiant ou le mot de passe.
+    setState(() {
+      _erreurIdentifiant = null;
+      _erreurMotDePasse = null;
+    });
 
-    if (password.isEmpty) {
-      _showLoginMessage(
-        "Veuillez saisir votre mot de passe",
-        backgroundColor: Colors.red,
-      );
-      return;
-    }
-
-    // 📧 VALIDATION EMAIL OU 📱 IDENTIFIANT TÉLÉPHONE
     bool isEmail = identifier.contains('@');
 
+    if (identifier.isEmpty) {
+      _signalerIdentifiant(
+        'Saisissez votre e-mail ou votre numéro de téléphone.',
+      );
+      return;
+    }
+
     if (isEmail) {
-      // Format email attendu : okataolaniyi@gmail.com
+      // Format email attendu : nom@domaine.com
       final emailRegex = RegExp(r'^[\w-\.]+@([\w-]+\.)+[\w-]{2,}$');
       if (!emailRegex.hasMatch(identifier)) {
-        _showLoginMessage(
-          "Veuillez saisir un email valide (ex: okataolaniyi@gmail.com)",
-          backgroundColor: Colors.red,
+        _signalerIdentifiant(
+          'Adresse e-mail incomplète (ex: nom@domaine.com).',
         );
         return;
       }
@@ -291,12 +318,17 @@ class _LoginPageState extends State<LoginPage> {
       // Format identifiant attendu : +228990929132 (Togo)
       final phoneRegex = RegExp(r'^\+228[0-9]{8,9}$');
       if (!phoneRegex.hasMatch(identifier)) {
-        _showLoginMessage(
-          "Le numéro doit être au format +228 suivi de 8 chiffres (ex: +22890000000)",
-          backgroundColor: Colors.red,
+        _signalerIdentifiant(
+          'Numéro incomplet : +228 suivi de 8 ou 9 chiffres.',
         );
         return;
       }
+    }
+
+    if (password.isEmpty) {
+      setState(() => _erreurMotDePasse = 'Saisissez votre mot de passe.');
+      passwordFocus.requestFocus();
+      return;
     }
 
     // La solidité est vérifiée à l'inscription et au changement de mot de
@@ -374,6 +406,28 @@ class _LoginPageState extends State<LoginPage> {
 
         if (!mounted) return;
 
+        // Refus propre à un champ : le message se pose dessous, et le curseur
+        // revient sur la case à corriger.
+        final feedback = feedbackConnexion(
+          apiError,
+          identifiantEstEmail: isEmail,
+        );
+        if (feedback.aUneErreurDeChamp) {
+          setState(() {
+            _erreurIdentifiant = feedback.erreurIdentifiant;
+            _erreurMotDePasse = feedback.erreurMotDePasse;
+          });
+
+          if (feedback.erreurIdentifiant != null) {
+            identifierFocus.requestFocus();
+          } else {
+            // Le mot de passe saisi n'est pas effacé : le client peut l'afficher
+            // et corriger sa faute de frappe sans le retaper.
+            passwordFocus.requestFocus();
+          }
+          return;
+        }
+
         // Un compte supprimé ou bloqué n'est pas une erreur de saisie : le
         // message informe sans accuser le client d'avoir mal tapé son mot de
         // passe.
@@ -426,10 +480,12 @@ class _LoginPageState extends State<LoginPage> {
       keyboardType: TextInputType.emailAddress,
       textInputAction: TextInputAction.next,
       autofillHints: const [AutofillHints.username, AutofillHints.email],
+      onChanged: _onIdentifiantSaisi,
       onSubmitted: (_) => passwordFocus.requestFocus(),
       style: const TextStyle(color: passwordRecoveryInk),
       decoration: passwordRecoveryFieldDecoration(
         hint: 'ex: +22890000000',
+        errorText: _erreurIdentifiant,
         leading: const Icon(
           Icons.person_outline,
           color: Color(0xFF7A7A7A),
@@ -472,10 +528,12 @@ class _LoginPageState extends State<LoginPage> {
       obscureText: _obscurePassword,
       textInputAction: TextInputAction.done,
       autofillHints: const [AutofillHints.password],
+      onChanged: _onMotDePasseSaisi,
       onSubmitted: (_) => login(),
       style: const TextStyle(color: passwordRecoveryInk),
       decoration: passwordRecoveryFieldDecoration(
         hint: 'Votre mot de passe',
+        errorText: _erreurMotDePasse,
         leading: const Icon(
           Icons.lock_outline,
           color: Color(0xFF7A7A7A),

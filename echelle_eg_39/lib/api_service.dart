@@ -59,11 +59,16 @@ class ApiException implements Exception {
     required this.message,
     this.statusCode,
     this.retryAfterSeconds,
+    this.fields,
   });
 
   final ApiErrorType type;
   final String message;
   final int? statusCode;
+
+  /// Champs désignés par le serveur comme fautifs (`email`, `phone`), pour
+  /// poser le message sous la case concernée plutôt qu'en tête de formulaire.
+  final List<String>? fields;
 
   /// Délai imposé par le serveur, en secondes, quand [type] vaut
   /// [ApiErrorType.accountLocked]. Nul si le serveur ne l'a pas précisé.
@@ -369,12 +374,19 @@ class ApiService {
               .join(', ')
         : errorData?['error']?.toString() ?? 'Échec de la création du compte.';
 
+    // Le serveur désigne les champs déjà pris (`email`, `phone`) : l'écran s'en
+    // sert pour marquer la case concernée au lieu d'un message global.
+    final champsFautifs = errorData?['fields'];
+
     throw ApiException(
       type: response.statusCode >= 500
           ? ApiErrorType.serverUnavailable
           : ApiErrorType.request,
       message: message,
       statusCode: response.statusCode,
+      fields: champsFautifs is List
+          ? champsFautifs.map((champ) => champ.toString()).toList()
+          : null,
     );
   }
 

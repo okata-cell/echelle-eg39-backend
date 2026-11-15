@@ -251,12 +251,22 @@ InputDecoration passwordRecoveryFieldDecoration({
   required String hint,
   Widget? leading,
   Widget? trailing,
+  String? errorText,
 }) {
   return InputDecoration(
     hintText: hint,
     hintStyle: const TextStyle(color: _recoveryMutedText),
     prefixIcon: leading,
     suffixIcon: trailing,
+    // Message posé sous le champ concerné : lisible sur le fond blanc, avec la
+    // bordure d'erreur déjà prévue plus bas.
+    errorText: errorText,
+    errorMaxLines: 2,
+    errorStyle: const TextStyle(
+      color: Color(0xFFAA5141),
+      fontSize: 12,
+      fontWeight: FontWeight.w600,
+    ),
     filled: true,
     fillColor: Colors.white,
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
