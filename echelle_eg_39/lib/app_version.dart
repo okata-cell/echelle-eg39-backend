@@ -6,4 +6,4 @@
 /// toujours augmenter, sinon Android refuse l’installation par-dessus l’ancienne
 /// version. La procédure de publication est décrite dans
 /// `docs/invitation-test.md`.
-const String kAppVersion = '1.0.3';
+const String kAppVersion = '1.0.4';
